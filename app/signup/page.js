@@ -11,12 +11,12 @@ export default function Signup() {
   const [name, setName] = useState('')
   const [studentId, setStudentId] = useState('')
   const [secretCode, setSecretCode] = useState('')
-  const [loading, setLoading] = useState(false) // 로딩 상태 추가
+  const [loading, setLoading] = useState(false) 
   const router = useRouter()
 
   const handleSignup = async (e) => {
     e.preventDefault()
-    setLoading(true) // 가입 시작 시 로딩 시작
+    setLoading(true) 
 
     // 1. 학회원 전용 비밀 코드 확인
     if (secretCode !== "IG2024") {
@@ -25,7 +25,7 @@ export default function Signup() {
       return
     }
 
-    // 2. Supabase 회원가입 실행 (비밀 금고 계정 생성)
+    // 2. Supabase 회원가입 실행 (계정 생성)
     const { data, error: signupError } = await supabase.auth.signUp({
       email,
       password,
@@ -43,8 +43,7 @@ export default function Signup() {
       return
     }
 
-    // 3. profiles 테이블에 정보 자동 기록 (출석부에 이름 적기)
-    // 가입된 유저의 고유 ID를 가져와서 프로필 정보와 함께 저장함
+    // 3. profiles 테이블에 정보 자동 기록 (명단 등록)
     const { error: profileError } = await supabase
       .from('profiles')
       .insert([
@@ -56,18 +55,19 @@ export default function Signup() {
       ])
 
     if (profileError) {
-      console.error("출석부 작성 실패:", profileError.message)
+      console.error("명단 등록 실패:", profileError.message)
       alert("가입은 됐지만 명단 등록에 실패했어. 운영진에게 알려줘!")
     } else {
-      alert("인사이트그라피의 새로운 식구가 된 걸 환영해! 🎉")
-      router.push('/home') // 가입 성공 후 홈으로 이동
+      // ★ 변경된 부분: 가입 성공 후 로그인 페이지로 이동 ★
+      alert("인사이트그라피의 식구가 된 걸 환영해! 🎉 생성한 계정으로 다시 로그인해줘.")
+      router.push('/login') 
     }
     
-    setLoading(false) // 모든 과정 끝난 후 로딩 종료
+    setLoading(false) 
   }
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center p-6 bg-slate-50 text-slate-900">
+    <div className="flex min-h-screen flex-col items-center justify-center p-6 bg-slate-50 text-slate-900 font-sans">
       <div className="w-full max-w-md bg-white p-10 rounded-[2.5rem] shadow-xl border border-slate-100">
         <div className="text-center mb-10">
           <h1 className="text-4xl font-black mb-3 text-blue-800 tracking-tight">IG 가입하기 🚀</h1>
