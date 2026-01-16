@@ -6,6 +6,7 @@ import Link from 'next/link'
 export default function RankingPage() {
   const [rankingWeek, setRankingWeek] = useState(1)
   const [topRankers, setTopRankers] = useState([])
+  const [weekTopic, setWeekTopic] = useState('') // ★ 주차별 주제 상태 추가
   const [mostImproved, setMostImproved] = useState(null)
   const [loading, setLoading] = useState(true)
 
@@ -19,6 +20,10 @@ export default function RankingPage() {
     const { data: scores } = await supabase.from('scores').select('*')
 
     if (presentations && scores) {
+      // 해당 주차 주제 가져오기
+      const currentWeekP = presentations.find(p => p.week === rankingWeek)
+      setWeekTopic(currentWeekP ? currentWeekP.topic : '등록된 주제 없음')
+
       const getRankData = (weekNum) => {
         const weekPs = presentations.filter(p => p.week === weekNum)
         return weekPs.map(p => {
@@ -45,25 +50,29 @@ export default function RankingPage() {
     setLoading(false)
   }
 
-  if (loading && topRankers.length === 0) return <div className="p-8 text-center font-black text-black">데이터 분석 중... 👑</div>
-
   return (
     <div className="p-8 bg-slate-50 min-h-screen text-black font-sans flex flex-col items-center">
-      {/* 최상단 타이틀 */}
       <header className="max-w-2xl w-full mb-8 text-center">
         <Link href="/home" className="text-blue-600 text-[10px] font-black hover:underline uppercase tracking-widest block mb-4">← Back to Home</Link>
-        <h1 className="text-5xl font-black text-slate-800 tracking-tighter uppercase mb-8">Results</h1>
+        <h1 className="text-5xl font-black text-slate-800 tracking-tighter uppercase mb-10">Results</h1>
         
-        <div className="flex justify-between items-center mt-10 px-2">
-          <Link href="/vote/results" className="text-[10px] font-black text-slate-400 hover:text-black uppercase tracking-widest">← Back</Link>
-          <div className="flex items-center gap-3 bg-white px-4 py-2 rounded-2xl shadow-sm border border-slate-100">
-            <span className="text-[10px] font-black text-slate-300 uppercase tracking-tighter">Week Number</span>
-            <input 
-              type="number" 
-              value={rankingWeek} 
-              onChange={(e) => setRankingWeek(Number(e.target.value))} 
-              className="w-10 text-center text-lg font-black text-blue-600 outline-none"
-            />
+        {/* ★ 주차 선택 박스 그리드 추가 ★ */}
+        <div className="flex flex-col gap-4 bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100">
+          <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Select Week</span>
+          <div className="grid grid-cols-6 md:grid-cols-12 gap-2">
+            {Array.from({ length: 12 }, (_, i) => i + 1).map(w => (
+              <button
+                key={w}
+                onClick={() => setRankingWeek(w)}
+                className={`h-10 rounded-xl font-black text-xs transition-all ${
+                  rankingWeek === w 
+                  ? 'bg-blue-600 text-white shadow-md scale-110' 
+                  : 'bg-slate-50 text-slate-400 hover:bg-slate-100'
+                }`}
+              >
+                {w}
+              </button>
+            ))}
           </div>
         </div>
       </header>
@@ -71,7 +80,11 @@ export default function RankingPage() {
       <div className="max-w-2xl w-full space-y-6 animate-in fade-in duration-500">
         {/* TOP 3 카드 리스트 */}
         <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-50">
-          <h3 className="text-center text-[10px] font-black text-slate-300 uppercase tracking-[0.3em] mb-10 italic">Best Presenters of Week {rankingWeek}</h3>
+          <div className="text-center mb-10">
+            <h3 className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em] mb-2">Best Presenters of Week {rankingWeek}</h3>
+            {/* ★ 주차 주제 표시 추가 ★ */}
+            <p className="text-xl font-black text-blue-600 uppercase tracking-tight">{weekTopic}</p>
+          </div>
           
           <div className="space-y-4">
             {topRankers.length > 0 ? topRankers.map((r, idx) => (
@@ -79,7 +92,10 @@ export default function RankingPage() {
                 <div className="flex items-center gap-5">
                   <span className="text-3xl">{idx === 0 ? '🥇' : idx === 1 ? '🥈' : '🥉'}</span>
                   <div>
-                    <p className="font-black text-xl text-black">{r.name}</p>
+                    {/* ★ 1등 이름 옆 왕관 표시 추가 ★ */}
+                    <p className="font-black text-xl text-black">
+                      {r.name} {idx === 0 && '👑'}
+                    </p>
                     <p className="text-[10px] text-slate-400 font-black uppercase">Top {idx + 1}</p>
                   </div>
                 </div>
@@ -87,7 +103,7 @@ export default function RankingPage() {
               </div>
             )) : (
               <div className="py-20 text-center">
-                <p className="text-slate-300 font-bold italic">해당 주차의 데이터가 없습니다. 🧐</p>
+                <p className="text-slate-300 font-bold">해당 주차의 데이터가 없습니다. 🧐</p>
               </div>
             )}
           </div>
@@ -110,7 +126,7 @@ export default function RankingPage() {
                </div>
              </div>
            ) : (
-             <p className="text-center py-4 text-slate-500 font-bold text-sm italic">비교할 데이터가 부족합니다. 🐢</p>
+             <p className="text-center py-4 text-slate-500 font-bold text-sm">비교할 데이터가 부족합니다. 🐢</p>
            )}
         </div>
       </div>

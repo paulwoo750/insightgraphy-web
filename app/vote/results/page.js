@@ -10,7 +10,7 @@ export default function ResultsHub() {
       {/* 최상단 타이틀 섹션 */}
       <header className="max-w-2xl w-full mb-10 text-center">
         <Link href="/vote" className="text-blue-600 text-[10px] font-black hover:underline tracking-widest uppercase mb-3 block">← Vote Hub</Link>
-        <h1 className="text-5xl font-black text-black tracking-tighter italic uppercase">Report Hub</h1>
+        <h1 className="text-5xl font-black text-black tracking-tighter uppercase">Report Hub</h1>
       </header>
 
       <div className="max-w-2xl w-full space-y-6">
