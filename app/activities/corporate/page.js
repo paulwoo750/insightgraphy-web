@@ -117,7 +117,7 @@ export default function CorporateSessionPage() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-16">
             {[1, 2, 3].map((n) => (
               <div key={n} className="relative h-64 rounded-2xl overflow-hidden shadow-2xl">
-                <Image src={`/corporate-session-${n}.jpg`} alt="Presentation" fill className="object-cover" />
+                <Image src={`/activities/corporate-session-${n}.webp`} alt="Presentation" fill className="object-cover" />
               </div>
             ))}
           </div>
@@ -136,7 +136,7 @@ export default function CorporateSessionPage() {
               </p>
             </div>
             <div className="relative h-[500px] rounded-[3rem] overflow-hidden shadow-xl border border-slate-100">
-               <Image src="/andong-visit.jpg" alt="Andong Field Trip" fill className="object-cover" />
+               <Image src="/activities/andong.webp" alt="Andong Field Trip" fill className="object-cover" />
             </div>
           </div>
 
@@ -149,10 +149,10 @@ export default function CorporateSessionPage() {
              </div>
              <div className="grid grid-cols-2 gap-4 h-full">
                 <div className="relative h-[250px] rounded-2xl overflow-hidden shadow-lg">
-                  <Image src="/social-festa-1.jpg" alt="Name Tags" fill className="object-cover" />
+                  <Image src="/activities/social-festa-1.webp" alt="Name Tags" fill className="object-cover" />
                 </div>
                 <div className="relative h-[250px] rounded-2xl overflow-hidden shadow-lg">
-                  <Image src="/social-festa-2.jpg" alt="Conference" fill className="object-cover" />
+                  <Image src="/activities/social-festa-2.webp" alt="Conference" fill className="object-cover" />
                 </div>
              </div>
           </div>
