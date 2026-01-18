@@ -5,21 +5,54 @@ import Image from 'next/image'
 // 상단 네비게이션
 function PublicNav() {
   return (
-    <nav className="fixed top-0 w-full px-12 py-4 flex justify-between items-center bg-[#1a1a1a] text-white z-50 border-b border-white/5">
-      <Link href="/" className="flex items-center gap-3 group">
-        <div className="relative w-8 h-8">
-          <Image src="/logo.png" alt="IG Logo" fill className="object-contain" />
+    <nav className="fixed top-0 w-full bg-[#1a1a1a]/95 backdrop-blur-md text-white z-50 border-b border-white/5">
+      <div className="max-w-7xl mx-auto px-6 md:px-12">
+        {/* 레이아웃 컨테이너: PC에서는 한 줄, 모바일에서는 상단 바 역할 */}
+        <div className="flex justify-between items-center h-[64px] md:h-[80px]">
+          
+          {/* 1. 로고 영역 */}
+          <Link href="/" className="flex items-center gap-3 group shrink-0">
+            <div className="relative w-8 h-8 md:w-9 md:h-9">
+              <Image src="/logo.png" alt="IG Logo" fill className="object-contain" />
+            </div>
+            <span className="text-lg md:text-xl font-black uppercase tracking-tighter group-hover:text-[#a8d0cd] transition-colors">
+              InsightGraphy
+            </span>
+          </Link>
+
+          {/* 2. PC 전용 메뉴 (중간 정렬) */}
+          <div className="hidden md:flex items-center gap-x-10 text-[11px] font-black uppercase tracking-widest text-white/60">
+            <Link href="/about" className="hover:text-[#32a4a1] transition-colors">About</Link>
+            <Link href="/activities" className="hover:text-[#32a4a1] transition-colors">Activities</Link>
+            <Link href="/members" className="hover:text-[#32a4a1] transition-colors">Members</Link>
+            <Link href="/showcase" className="hover:text-[#32a4a1] transition-colors">Showcase</Link>
+            <Link href="/join" className="hover:text-[#32a4a1] transition-colors">Join Us</Link>
+          </div>
+
+          {/* 3. 우측 버튼 (PC/모바일 공용) */}
+          <div className="flex items-center">
+            <Link href="/login" className="bg-[#32a4a1] px-4 md:px-6 h-[32px] md:h-[38px] rounded-lg hover:bg-[#0d6b69] transition-all flex items-center justify-center text-white text-[10px] md:text-[11px] font-black uppercase shadow-lg shadow-brand-primary/20">
+              Login
+            </Link>
+          </div>
         </div>
-        <span className="text-xl font-black uppercase tracking-tighter group-hover:text-[#a8d0cd] transition-colors">InsightGraphy</span>
-      </Link>
-      <div className="flex items-center gap-x-10 text-[11px] font-black uppercase tracking-widest text-white/70">
-        <Link href="/about" className="text-[#32a4a1]">About</Link>
-        <Link href="/activities" className="hover:text-[#32a4a1] transition-colors">Activities</Link>
-        <Link href="/members" className="hover:text-[#32a4a1] transition-colors">Members</Link>
-        <Link href="/showcase" className="hover:text-[#32a4a1] transition-colors">Showcase</Link>
-        <Link href="/join" className="hover:text-[#32a4a1] transition-colors">Join Us</Link>
-        <Link href="/login" className="bg-[#32a4a1] px-6 h-[36px] rounded-lg hover:bg-[#0d6b69] transition-all flex items-center justify-center text-white">Login</Link>
+
+        {/* 4. 모바일 전용 메뉴 바 (가로 스크롤, PC에서는 숨김) */}
+        <div className="md:hidden border-t border-white/5 overflow-x-auto no-scrollbar whitespace-nowrap py-3">
+          <div className="flex items-center gap-x-8 px-2 text-[10px] font-black uppercase tracking-widest text-white/50">
+            <Link href="/about" className="hover:text-[#32a4a1] active:text-[#32a4a1]">About</Link>
+            <Link href="/activities" className="hover:text-[#32a4a1] active:text-[#32a4a1]">Activities</Link>
+            <Link href="/members" className="hover:text-[#32a4a1] active:text-[#32a4a1]">Members</Link>
+            <Link href="/showcase" className="hover:text-[#32a4a1] active:text-[#32a4a1]">Showcase</Link>
+            <Link href="/join" className="hover:text-[#32a4a1] active:text-[#32a4a1]">Join Us</Link>
+          </div>
+        </div>
       </div>
+      
+      <style jsx>{`
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+      `}</style>
     </nav>
   )
 }
