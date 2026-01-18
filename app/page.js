@@ -5,33 +5,36 @@ import Image from 'next/image'
 // 상단 네비게이션 바 컴포넌트 (주소 수정 완료)
 function PublicNav() {
   return (
-    <nav className="fixed top-0 w-full px-12 py-4 flex justify-between items-center bg-[#1a1a1a] text-white z-50 border-b border-white/5">
-      {/* 왼쪽: 로고 영역 */}
-      <Link href="/" className="flex items-center gap-3 group">
-        <div className="relative w-8 h-8">
-          <Image src="/logo.png" alt="IG Logo" fill className="object-contain" />
-        </div>
-        <span className="text-xl font-black uppercase tracking-tighter group-hover:text-[#a8d0cd] transition-colors">
-          InsightGraphy
-        </span>
-      </Link>
-      
-      {/* 오른쪽: 메뉴 및 버튼 영역 (주소에서 /public 삭제) */}
-      <div className="flex items-center gap-x-10 text-[13px] font-black uppercase tracking-widest">
-        <Link href="/about" className="hover:text-[#32a4a1] transition-colors">About</Link>
-        <Link href="/activities" className="hover:text-[#32a4a1] transition-colors">Activities</Link>
-        <Link href="/members" className="hover:text-[#32a4a1] transition-colors">Members</Link>
-        <Link href="/showcase" className="hover:text-[#32a4a1] transition-colors">Showcase</Link>
-        <Link href="/join" className="hover:text-[#32a4a1] transition-colors">Join Us</Link>
-        
-        {/* 로그인 버튼 */}
-        <Link 
-          href="/login" 
-          className="bg-[#32a4a1] px-6 h-[36px] rounded-lg hover:bg-[#0d6b69] transition-all text-white flex items-center justify-center"
-        >
+    <nav className="fixed top-0 w-full bg-[#1a1a1a]/95 backdrop-blur-md text-white z-50 border-b border-white/5">
+      {/* 상단 로고 & 로그인 버튼 영역 */}
+      <div className="px-6 md:px-12 py-4 flex justify-between items-center">
+        <Link href="/" className="flex items-center gap-3 group">
+          <div className="relative w-8 h-8">
+            <Image src="/logo.png" alt="IG Logo" fill className="object-contain" />
+          </div>
+          <span className="text-xl font-black uppercase tracking-tighter group-hover:text-[#a8d0cd] transition-colors">InsightGraphy</span>
+        </Link>
+        <Link href="/login" className="bg-[#32a4a1] px-4 md:px-6 h-[32px] md:h-[36px] rounded-lg hover:bg-[#0d6b69] transition-all flex items-center justify-center text-white text-[10px] md:text-[11px] font-black uppercase">
           Login
         </Link>
       </div>
+
+      {/* 하단 메뉴 영역 (모바일에서 가로 스크롤 가능) */}
+      <div className="px-4 border-t border-white/5 md:border-none">
+        <div className="flex items-center gap-x-8 md:gap-x-10 h-12 overflow-x-auto no-scrollbar whitespace-nowrap text-[11px] font-black uppercase tracking-widest text-white/60 md:justify-end md:px-12">
+          <Link href="/about" className="hover:text-[#32a4a1] transition-colors shrink-0">About</Link>
+          <Link href="/activities" className="hover:text-[#32a4a1] transition-colors shrink-0">Activities</Link>
+          <Link href="/members" className="hover:text-[#32a4a1] transition-colors shrink-0">Members</Link>
+          <Link href="/showcase" className="hover:text-[#32a4a1] transition-colors shrink-0">Showcase</Link>
+          <Link href="/join" className="hover:text-[#32a4a1] transition-colors shrink-0">Join Us</Link>
+        </div>
+      </div>
+      
+      {/* 가로 스크롤바 숨기기 스타일 */}
+      <style jsx>{`
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+      `}</style>
     </nav>
   )
 }
