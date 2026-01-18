@@ -1,6 +1,7 @@
 'use client'
 import Link from 'next/link'
 import Image from 'next/image'
+import { alumniData } from './alumni-data'
 
 // 상단 네비게이션
 function PublicNav() {
@@ -30,6 +31,7 @@ export default function AboutPage() {
       <PublicNav />
       
       {/* 1. 비전 및 소개 섹션 */}
+
       <section className="max-w-4xl mx-auto px-8 mb-24">
         <div className="text-center mb-16">
           <p className="text-[#32a4a1] font-black tracking-[0.3em] uppercase text-s mb-6">Our Vision</p>
@@ -37,7 +39,6 @@ export default function AboutPage() {
             Precision in Vision,<br/>Value in Insight.
           </h2>
         </div>
-        
         <div className="space-y-8 text-lg text-slate-700 leading-relaxed break-keep font-medium bg-slate-50 p-10 rounded-[3rem] border border-slate-100">
           <p>
             InsightGraphy는 2012년 설립된 서울대, 연세대, 고려대 연합 프레젠테이션 학회로 다양한 전공과 역량을 가진 학회원들이 모여 최고의 프레젠터가 되기 위한 훈련을 진행하고 있습니다.
@@ -49,9 +50,9 @@ export default function AboutPage() {
             노력의 결실도, 세상을 바꿀 귀한 생각도, 스스로 다져온 실력도 많은 사람들 앞에 표현할 수 있을 때 비로소 그 의미를 꽃피울 수 있습니다.
           </p>
         </div>
-      </section>
 
-      {/* 2. 3대 핵심 가치 (Core Values) - 이미지 상단 스타일 적용 */}
+      </section>
+      {/* 2. 3대 핵심 가치 */}
       <section className="py-24 px-8 bg-[#111111] text-white">
         <div className="max-w-5xl mx-auto">
           <h3 className="text-center text-[25px] font-black text-slate-500 uppercase tracking-[0.5em] mb-16">3 Core Values</h3>
@@ -60,14 +61,14 @@ export default function AboutPage() {
               <span className="text-3xl">📄</span>
               <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-6">
                 <h4 className="text-xl font-black min-w-[60px]">기획</h4>
-                <p className="opacity-80 font-medium text-sm md:text-base">매주 다양하고 시의적인 주제에 대해 창의적으로 문제 정의 및 해결</p>
+                <p className="opacity-80 font-medium text-sm md:text-base">매주 시의적인 주제에 대해 창의적으로 문제 정의 및 해결</p>
               </div>
             </div>
             <div className="bg-[#2d3d33] p-8 rounded-2xl flex items-center gap-6 border-l-8 border-[#22c55e]">
               <span className="text-3xl">📢</span>
               <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-6">
                 <h4 className="text-xl font-black min-w-[60px]">발표</h4>
-                <p className="opacity-80 font-medium text-sm md:text-base">도출한 해결책 및 시사점을 자신만의 컨텐츠로 공유</p>
+                <p className="opacity-80 font-medium text-sm md:text-base">도출한 해결책을 자신만의 컨텐츠로 공유</p>
               </div>
             </div>
             <div className="bg-[#4d452e] p-8 rounded-2xl flex items-center gap-6 border-l-8 border-[#eab308]">
@@ -78,11 +79,10 @@ export default function AboutPage() {
               </div>
             </div>
           </div>
-          <p className="text-center mt-12 font-bold opacity-50 text-sm italic">위의 3가지 핵심 가치를 추구하고 완성도 있는 활동을 진행 중입니다.</p>
         </div>
       </section>
 
-      {/* 3. IGD 핵심 역량 (Framework) - 이미지 중단 스타일 적용 */}
+      {/* 3. IGD 핵심 역량 */}
       <section className="bg-white py-32 px-8">
         <div className="max-w-5xl mx-auto text-center">
           <h3 className="text-[20px] font-black text-slate-400 uppercase tracking-[0.5em] mb-20">IGD Core Competency</h3>
@@ -90,34 +90,54 @@ export default function AboutPage() {
             <div className="bg-[#2d3e50] p-10 rounded-[2.5rem] text-white shadow-xl flex flex-col items-center">
               <span className="text-4xl mb-6">💡</span>
               <h4 className="text-2xl font-black uppercase mb-4 text-[#a8d0cd]">Insight</h4>
-              <p className="text-sm font-bold opacity-90 break-keep">깊은 생각으로 끌어내는 통찰력</p>
-              <span className="mt-2 text-[10px] opacity-40 uppercase">(Insight)</span>
+              <p className="text-sm font-bold opacity-90 break-keep text-white">깊은 생각으로 끌어내는 통찰력</p>
             </div>
-            
             <div className="bg-[#2d3d33] p-10 rounded-[2.5rem] text-white shadow-xl flex flex-col items-center">
               <span className="text-4xl mb-6">🪜</span>
               <h4 className="text-2xl font-black uppercase mb-4 text-[#a8d0cd]">Graphic</h4>
-              <p className="text-sm font-bold opacity-90 break-keep">효과적인 표현을 위한 시각화 능력</p>
-              <span className="mt-2 text-[10px] opacity-40 uppercase">(Graphic)</span>
+              <p className="text-sm font-bold opacity-90 break-keep text-white">효과적인 표현을 위한 시각화 능력</p>
             </div>
-
             <div className="bg-[#4d452e] p-10 rounded-[2.5rem] text-white shadow-xl flex flex-col items-center">
               <span className="text-4xl mb-6">🗣️</span>
               <h4 className="text-2xl font-black uppercase mb-4 text-[#a8d0cd]">Delivery</h4>
-              <p className="text-sm font-bold opacity-90 break-keep">명확하고 자신 있는 전달력</p>
-              <span className="mt-2 text-[10px] opacity-40 uppercase">(Delivery)</span>
+              <p className="text-sm font-bold opacity-90 break-keep text-white">명확하고 자신 있는 전달력</p>
             </div>
           </div>
-          <p className="mt-16 font-black text-xl text-slate-400">위 3가지 핵심 역량에서의 유의미한 성장을 목표로 합니다.</p>
         </div>
       </section>
 
-      {/* 4. 환영 문구 섹션 - 이미지 하단 텍스트 적용 */}
-      <section className="py-24 px-8 bg-slate-50 text-center border-y border-slate-100">
+      {/* 4. 알럼나이 인터뷰 리스트 섹션 (추가됨) */}
+      <section className="py-32 px-8 bg-slate-50 border-y border-slate-100">
+        <div className="max-w-6xl mx-auto">
+          <h3 className="text-center text-[20px] font-black text-slate-400 uppercase tracking-[0.5em] mb-20">Alumni Interview</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {alumniData.map((alumnus) => (
+              <Link 
+                key={alumnus.id} 
+                href={`/about/interviews/${alumnus.id}`}
+                className="group p-10 rounded-[3rem] bg-white border border-slate-100 hover:bg-[#1a1a1a] transition-all duration-300 shadow-sm hover:shadow-2xl"
+              >
+                <div className="space-y-4">
+                  <p className="text-[#32a4a1] font-black text-[14px] uppercase tracking-widest">{alumnus.generation}기 / {alumnus.dept}</p>
+                  <h4 className="text-xl font-black group-hover:text-white transition-colors">{alumnus.name} Alumni님</h4>
+                  <div className="h-px w-8 bg-[#32a4a1] group-hover:w-full transition-all duration-500"></div>
+                  <p className="text-sm text-slate-500 group-hover:text-slate-300 leading-relaxed break-keep font-medium">
+                    "{alumnus.shortQuote}"
+                  </p>
+                </div>
+                <div className="mt-8 flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-[#32a4a1] opacity-0 group-hover:opacity-100 transition-opacity">
+                  View Full Interview <span>→</span>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* 5. 환영 문구 섹션 */}
+      <section className="py-24 px-8 text-center bg-white">
         <div className="max-w-4xl mx-auto">
           <p className="text-xl md:text-2xl font-black leading-relaxed text-slate-800 break-keep">
-            발표에 대한 자신의 한계에 도전하는,<br/>
-            더 이상 무대와 많은 청중 앞에서 떨지 않을,<br/>
             자신의 창의적인 아이디어를 당당하게 말하며 성장할<br/>
             스스로를 마주하게 될 <span className="text-[#32a4a1]">IGer들을 환영합니다 🖐️</span>
           </p>
