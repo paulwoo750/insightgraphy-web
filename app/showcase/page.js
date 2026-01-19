@@ -63,15 +63,9 @@ export default function ShowcasePage() {
 
   // 9개의 발표자료 데이터 (예시 데이터)
   const works = [
-    { id: 1, title: "생성형 AI의 미래", author: "김철수", generation: "28기", topic: "Trend Analysis", thumb: "/showcase/thumb1.jpg", pdf: "/showcase/file1.pdf" },
-    { id: 2, title: "지속가능한 브랜딩", author: "이영희", generation: "27기", topic: "Marketing Strategy", thumb: "/showcase/thumb2.jpg", pdf: "/showcase/file2.pdf" },
-    { id: 3, title: "모빌리티 서비스 기획", author: "박지민", generation: "28기", topic: "Business Model", thumb: "/showcase/thumb3.jpg", pdf: "/showcase/file3.pdf" },
-    { id: 4, title: "데이터 시각화의 정석", author: "최성호", generation: "26기", topic: "Design Skill", thumb: "/showcase/thumb4.jpg", pdf: "/showcase/file4.pdf" },
-    { id: 5, title: "ESG 경영의 실재", author: "정다은", generation: "27기", topic: "Corporate Study", thumb: "/showcase/thumb5.jpg", pdf: "/showcase/file5.pdf" },
-    { id: 6, title: "뉴로 마케팅의 이해", author: "강현우", generation: "28기", topic: "Psychology", thumb: "/showcase/thumb6.jpg", pdf: "/showcase/file6.pdf" },
-    { id: 7, title: "스마트 시티 솔루션", author: "윤서연", generation: "25기", topic: "Urban Planning", thumb: "/showcase/thumb7.jpg", pdf: "/showcase/file7.pdf" },
-    { id: 8, title: "핀테크 보안 기술", author: "임재범", generation: "27기", topic: "Tech Insight", thumb: "/showcase/thumb8.jpg", pdf: "/showcase/file8.pdf" },
-    { id: 9, title: "메타버스 커머스", author: "송지효", generation: "28기", topic: "Digital Platform", thumb: "/showcase/thumb9.jpg", pdf: "/showcase/file9.pdf" },
+    { id: 1, title: "Connect KE", author: "우제윤", generation: "28기", topic: "죽은 아이디어를 부활시켜라", thumb: "/showcase/thumb1.png", pdf: "/showcase/file1.pdf" },
+    { id: 2, title: "게임과 인사가 만나다", author: "도헌", generation: "27기", topic: "기업을 위한 자기 PR", thumb: "/showcase/thumb2.png", pdf: "/showcase/file2.pdf" },
+    { id: 3, title: "뇌를 더 자연스럽게 읽는 기술들", author: "이나영", generation: "27기", topic: "Intoducing My Tech", thumb: "/showcase/thumb3.png", pdf: "/showcase/file3.pdf" },
   ];
 
   return (

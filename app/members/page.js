@@ -60,24 +60,22 @@ function PublicNav() {
 export default function MembersPage() {
   // 운영진 데이터 (6명 고정)
   const executives = [
-    { role: "학회장", name: "성함 기입", dept: "학과 기입" },
-    { role: "부학회장", name: "성함 기입", dept: "학과 기입" },
-    { role: "총무", name: "성함 기입", dept: "학과 기입" },
-    { role: "기획부장", name: "성함 기입", dept: "학과 기입" },
-    { role: "교육부장", name: "성함 기입", dept: "학과 기입" },
-    { role: "홍보부장", name: "성함 기입", dept: "학과 기입" },
+    { role: "학회장", name: "우제윤", dept: "서울대학교 산업공학과" },
+    { role: "부학회장", name: "인예서", dept: "고려대학교 생명공학부" },
+    { role: "총무", name: "최보경", dept: "고려대학교 행정학과" },
+    { role: "기획부장", name: "김현아", dept: "연세대학교 바이오융합학부" },
+    { role: "교육부장", name: "이수현", dept: "고려대학교 노어노문학과" },
+    { role: "홍보부장", name: "장은효", dept: "연세대학교 계량위험관리학과" },
   ];
 
   // 일반 학회원 데이터 (예시)
   const members = [
-    { name: "학회원 1", dept: "학과 기입" },
-    { name: "학회원 2", dept: "학과 기입" },
-    { name: "학회원 3", dept: "학과 기입" },
-    { name: "학회원 4", dept: "학과 기입" },
-    { name: "학회원 5", dept: "학과 기입" },
-    { name: "학회원 6", dept: "학과 기입" },
-    { name: "학회원 7", dept: "학과 기입" },
-    { name: "학회원 8", dept: "학과 기입" },
+    { name: "김서영", dept: "고려대학교 통계학과" },
+    { name: "김용민", dept: "연세대학교 경영학과" },
+    { name: "박수진", dept: "연세대학교 계량위험관리학과" },
+    { name: "신혜원", dept: "서울대학교 영어영문학과" },
+    { name: "우성재", dept: "고려대학교 국제학부" },
+    { name: "이승미", dept: "고려대학교 서어서문학과" },
   ];
 
   return (
