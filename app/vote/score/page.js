@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 
-// ★ 버전별 항목 이름(label)과 점수 기준(criteria) 통합 데이터 ★
+// ★ 버전별 항목 이름(label)과 점수 기준(criteria) 통합 데이터 (원본 서식 유지)
 const CRITERIA_DATA = {
   v1: {
     i1: { label: "1-1. 주제의 명료성", 
@@ -223,7 +223,7 @@ const CRITERIA_DATA = {
 export default function ScorePage() {
   const router = useRouter()
   const [user, setUser] = useState(null)
-  const [version, setVersion] = useState('v1') // ★ DB에서 가져온 버전으로 자동 설정
+  const [version, setVersion] = useState('v1') 
   const [presentations, setPresentations] = useState([]) 
   const [votedPids, setVotedPids] = useState([]) 
   const [selectedPid, setSelectedPid] = useState('')
@@ -240,30 +240,42 @@ export default function ScorePage() {
   useEffect(() => {
     const init = async () => {
       const { data: { session } } = await supabase.auth.getSession()
-      if (!session) { router.push('/login') } 
-      else { 
-        setUser(session.user); 
-        fetchData(session.user.user_metadata.name); 
+      if (!session) { 
+        router.push('/login') 
+      } else { 
+        const currentUser = session.user;
+        setUser(currentUser); 
+        const { data: latestP } = await supabase.from('presentations').select('week').order('created_at', { ascending: false }).limit(1);
+        if (latestP && latestP.length > 0) setWeek(latestP[0].week);
       }
     }
     init()
-  }, [week])
+  }, [])
 
-  const fetchData = async (userName) => {
-    // 1. 해당 주차 발표자 및 버전 가져오기
-    const { data: pData } = await supabase.from('presentations').select('*').eq('week', week) 
+  useEffect(() => {
+    if (user?.id) fetchData(user.user_metadata.name, week);
+  }, [week, user?.id]);
+
+  const fetchData = async (userName, targetWeek) => {
+    const { data: pData } = await supabase.from('presentations').select('*').eq('week', targetWeek).order('order_index', { ascending: true }) 
     if (pData && pData.length > 0) {
       setPresentations(pData)
-      // ★ Setup에서 지정한 버전을 그대로 가져옴
       setVersion(pData[0].eval_version || 'v1') 
-    }
+    } else { setPresentations([]) }
 
-    // 2. 투표 기록 가져오기
     const { data: sData } = await supabase.from('scores').select('presentation_id').eq('voter_name', userName)
-    if (sData) setVotedPids(sData.map(s => s.presentation_id))
+    const votedIds = sData ? sData.map(s => s.presentation_id) : []
+    setVotedPids(votedIds)
     
-    setSelectedPid('')
-    // 버전이 바뀌면 점수 초기화
+    // ★ 본인 제외 + 미채점자 중 가장 빠른 순서 찾기
+    const nextToScore = pData?.find(p => p.presenter_name !== userName && !votedIds.includes(p.id))
+    
+    if (nextToScore) {
+      setSelectedPid(nextToScore.id)
+    } else {
+      setSelectedPid('') // 남은 대상이 없으면 비움
+    }
+    
     setScores({i1:null,i2:null,i3:null,i4:null,g1:null,g2:null,g3:null,d1:null,d2:null,d3:null,c1:null})
   }
 
@@ -272,14 +284,12 @@ export default function ScorePage() {
   const insightTotal = (scores.i1 || 0) + (scores.i2 || 0) + (scores.i3 || 0) + (scores.i4 || 0)
   const graphicTotal = (scores.g1 || 0) + (scores.g2 || 0) + (scores.g3 || 0)
   const deliveryTotal = (scores.d1 || 0) + (scores.d2 || 0) + (scores.d3 || 0)
-  const complementarityTotal = (scores.c1 || 0)
-  const grandTotal = insightTotal + graphicTotal + deliveryTotal + complementarityTotal
+  const grandTotal = insightTotal + graphicTotal + deliveryTotal + (scores.c1 || 0)
 
   const handleSubmit = async () => {
-    if (!selectedPid) return alert("발표자를 선택해줘! 👤")
-    if (votedPids.includes(selectedPid)) return alert("이미 평가를 완료한 발표자야! ❌")
+    if (!selectedPid) return alert("채점 대상이 없어! 👤")
     const allFilled = Object.values(scores).every(v => v !== null)
-    if (!allFilled) return alert("모든 항목을 평가해줘! ✍️")
+    if (!allFilled) return alert("모든 항목을 선택해줘! ✍️")
 
     setSubmitting(true)
     const { error } = await supabase.from('scores').insert([{
@@ -288,113 +298,119 @@ export default function ScorePage() {
         insight: insightTotal,
         graphic: graphicTotal,
         delivery: deliveryTotal,
-        complementarity: complementarityTotal,
+        complementarity: scores.c1,
         total_score: grandTotal,
         details: { ...scores, version } 
     }])
 
     if (!error) {
-      alert("평가 완료! 결과 화면으로 이동할게. 🏆")
-      router.push('/vote/results') 
-    } else {
-      alert("오류 발생: " + error.message)
-    }
+      alert("평가 완료! 계속해서 다음 친구를 채점해볼까? 👏")
+      // ★ 채점 성공 시 페이지 새로고침하여 상단으로 이동 및 데이터 갱신
+      window.location.reload(); 
+    } else { alert("오류 발생: " + error.message) }
     setSubmitting(false)
   }
 
   if (!user) return <div className="p-8 text-center font-black text-black">데이터 로딩 중... 🔄</div>
-  const currentTopic = presentations.length > 0 ? presentations[0].topic : "등록된 주제 없음"
-  const evaluatedPeople = presentations.filter(p => votedPids.includes(p.id));
+  const currentPresenter = presentations.find(p => p.id === selectedPid)
+
+  // ★ 채점 완료 판단 로직 수정: 내가 채점해야 할 대상들이 모두 votedPids에 있는지 확인
+  const targetsToScore = presentations.filter(p => p.presenter_name !== user.user_metadata.name);
+  const allEvaluated = targetsToScore.length > 0 && targetsToScore.every(p => votedPids.includes(p.id));
 
   return (
-    <div className="p-6 bg-slate-50 min-h-screen text-black font-sans flex flex-col items-center">
-      <header className="w-full max-w-2xl text-center mb-8">
-        <div className="flex justify-between items-center mb-6">
-          <Link href="/vote" className="text-blue-600 text-xs font-black hover:underline tracking-widest uppercase">← Vote Hub</Link>
-          {/* ★ 버전 표시 배지 (바꾸지는 못함) ★ */}
-          <div className="flex items-center gap-2 bg-slate-900 text-white px-4 py-1.5 rounded-full shadow-lg border border-slate-700">
-            <span className="text-[9px] font-black uppercase opacity-50 tracking-tighter">Applied Version:</span>
-            <span className="text-xs font-black">{version === 'v1' ? '기획서 4-1' : '기획서 4-2'}</span>
-          </div>
-        </div>
+    <div className="p-6 bg-slate-50 min-h-screen text-black font-sans">
+      <div className="w-full flex flex-col items-center">
         
-        <h1 className="text-4xl font-black text-black tracking-tighter mb-6 uppercase">Evaluation System</h1>
-        
-        <div className="bg-slate-900 text-white p-6 rounded-3xl shadow-xl flex justify-around items-center divide-x divide-slate-700">
-          <div className="px-4 text-center">
-            <span className="text-[10px] font-black text-slate-500 uppercase block mb-1">Week</span>
-            <input type="number" value={week} onChange={(e) => setWeek(Number(e.target.value))} className="w-16 text-center text-4xl font-black bg-transparent outline-none text-blue-400" />
+        <header className="w-full max-w-2xl text-center mb-8">
+          <div className="flex justify-between items-center mb-6">
+            <Link href="/vote" className="text-blue-600 text-xs font-black hover:underline tracking-widest uppercase">← Vote Hub</Link>
+            <div className="bg-slate-900 text-white px-4 py-1.5 rounded-full shadow-lg border border-slate-700 font-black text-[10px] uppercase">
+              {version === 'v1' ? '기획서 4-1' : '기획서 4-2'}
+            </div>
           </div>
-          <div className="px-6 flex-1 text-left">
-            <span className="text-[10px] font-black text-slate-500 uppercase block mb-1">Topic</span>
-            <p className="text-xl font-black text-white leading-tight">{currentTopic}</p>
-          </div>
-          <div className="px-4 text-right">
-            <span className="text-[10px] font-black text-slate-500 uppercase block mb-1">Evaluator</span>
-            <p className="text-lg font-black text-blue-400">{user.user_metadata.name}</p>
-          </div>
-        </div>
-      </header>
+          <h1 className="text-4xl font-black text-black tracking-tighter mb-6 uppercase">Evaluation System</h1>
+        </header>
 
-      <main className="w-full max-w-2xl space-y-8 pb-32">
-        <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
-          <label className="text-xs font-black text-black uppercase tracking-widest mb-4 block text-center">Select Presenter</label>
-          <select value={selectedPid} onChange={(e) => setSelectedPid(e.target.value)} className="w-full p-4 bg-slate-50 border-none rounded-xl font-black text-black text-2xl outline-none mb-4">
-            <option value="">발표자를 선택해줘</option>
-            {presentations.map(p => (
-              <option key={p.id} value={p.id} disabled={votedPids.includes(p.id)}>
-                {p.presenter_name} {votedPids.includes(p.id) ? ' (평가 완료 ✅)' : ''}
-              </option>
-            ))}
-          </select>
+        <div className="relative w-full max-w-2xl">
           
-          {evaluatedPeople.length > 0 && (
-            <div className="mt-4 pt-4 border-t border-slate-100">
-              <span className="text-[10px] font-black text-slate-300 uppercase block mb-2 text-center">Evaluated Members</span>
-              <div className="flex flex-wrap gap-2 justify-center">
-                {evaluatedPeople.map(p => (
-                  <span key={p.id} className="px-3 py-1 bg-blue-50 text-blue-600 rounded-full text-[11px] font-black border border-blue-100">
-                    {p.presenter_name} ✅
-                  </span>
+          <div className="w-full space-y-8 pb-32">
+            <div className="bg-slate-900 text-white p-6 rounded-[2.5rem] shadow-xl space-y-6">
+              <div className="flex flex-col items-center">
+                <span className="text-[10px] font-black text-slate-500 uppercase block mb-3 tracking-widest">Select Active Week</span>
+                <div className="flex flex-wrap justify-center gap-2">
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((w) => (
+                    <button key={w} onClick={() => setWeek(w)} className={`w-10 h-10 rounded-xl font-black text-sm transition-all ${week === w ? 'bg-blue-500 text-white shadow-lg' : 'bg-slate-800 text-slate-500 hover:bg-slate-700'}`}>{w}</button>
+                  ))}
+                </div>
+              </div>
+              <div className="flex justify-around items-center pt-4 border-t border-slate-800">
+                <div className="px-6 flex-1 text-left"><span className="text-[10px] font-black text-slate-500 uppercase block mb-1">Topic</span><p className="text-xl font-black text-white leading-tight">{presentations[0]?.topic || "등록된 주제 없음"}</p></div>
+                <div className="px-4 text-right"><span className="text-[10px] font-black text-slate-500 uppercase block mb-1">Evaluator</span><p className="text-lg font-black text-blue-400">{user.user_metadata.name}</p></div>
+              </div>
+            </div>
+
+            <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
+              <label className="text-xs font-black text-black uppercase tracking-widest mb-4 block text-center">Active Target (Sequential)</label>
+              <div className="w-full p-4 bg-slate-50 border-none rounded-xl font-black text-black text-2xl text-center">
+                {allEvaluated ? "🎉 채점 완료" : currentPresenter ? `${currentPresenter.presenter_name} 님 채점 중` : "대상 없음"}
+              </div>
+            </div>
+
+            {!allEvaluated ? (
+              <>
+                <CategoryCard title="1. 인사이트" icon="💡" total={insightTotal} max={40} color="text-blue-600">
+                  {['i1', 'i2', 'i3', 'i4'].map(id => (<EvaluationItem key={id} version={version} id={id} val={scores[id]} max={10} onChange={(v)=>handleScoreChange(id, v)} />))}
+                </CategoryCard>
+                <CategoryCard title="2. 그래픽" icon="🎨" total={graphicTotal} max={30} color="text-purple-600">
+                  {['g1', 'g2', 'g3'].map(id => (<EvaluationItem key={id} version={version} id={id} val={scores[id]} max={10} onChange={(v)=>handleScoreChange(id, v)} />))}
+                </CategoryCard>
+                <CategoryCard title="3. 딜리버리" icon="🎤" total={deliveryTotal} max={30} color="text-pink-600">
+                  {['d1', 'd2', 'd3'].map(id => (<EvaluationItem key={id} version={version} id={id} val={scores[id]} max={10} onChange={(v)=>handleScoreChange(id, v)} />))}
+                </CategoryCard>
+                <CategoryCard title="4. 상호보완성" icon="🔗" total={scores.c1 || 0} max={5} color="text-emerald-600">
+                  <EvaluationItem version={version} id="c1" val={scores.c1} max={5} onChange={(v)=>handleScoreChange('c1', v)} />
+                </CategoryCard>
+                <div className="bg-slate-900 p-8 rounded-[3rem] shadow-2xl text-white flex flex-col items-center border-4 border-blue-500/30">
+                  <div className="mb-6 text-center"><p className="text-sm font-black text-slate-500 uppercase tracking-[0.4em] mb-2">Grand Total Score</p><h2 className="text-8xl font-black text-blue-400">{grandTotal}<span className="text-2xl text-slate-700 ml-3">/ 105</span></h2></div>
+                  <button onClick={handleSubmit} disabled={submitting} className="w-full py-6 bg-blue-600 rounded-2xl font-black text-2xl hover:bg-blue-500 active:scale-95 transition-all shadow-xl">{submitting ? "제출 중..." : `${currentPresenter?.presenter_name} 님 점수 제출 🚀`}</button>
+                </div>
+              </>
+            ) : (
+              <div className="bg-white p-20 rounded-[3rem] text-center border-2 border-dashed border-slate-200">
+                <span className="text-6xl mb-6 block">🏆</span>
+                <h3 className="text-3xl font-black text-black mb-2 uppercase italic tracking-tighter">채점 완료</h3>
+                <p className="text-slate-400 font-bold mb-8 leading-relaxed">오늘 모든 채점을 무사히 마치셨습니다!<br/>결과 페이지에서 학회원들의 통계를 확인해보세요.</p>
+                <Link href="/vote/results" className="bg-blue-600 text-white px-10 py-5 rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-slate-900 transition-all shadow-xl">결과 보러가기</Link>
+              </div>
+            )}
+          </div>
+
+          <aside className="hidden xl:block absolute top-0 left-[calc(100%+40px)] w-64">
+            <div className="bg-slate-900 p-6 rounded-[2.5rem] text-white shadow-2xl sticky top-2 border border-slate-800">
+              <h3 className="text-[10px] font-black text-blue-400 uppercase tracking-[0.2em] mb-8 flex items-center gap-2">
+                <span className="animate-pulse">●</span> Presentation Flow
+              </h3>
+              <div className="space-y-4">
+                {presentations.map((p, idx) => (
+                  <div key={p.id} className="flex items-center gap-4 group">
+                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-[9px] font-black border transition-all ${p.id === selectedPid ? 'bg-blue-500 border-blue-400 text-white scale-110 shadow-[0_0_15px_rgba(59,130,246,0.5)]' : votedPids.includes(p.id) ? 'bg-slate-800 border-slate-700 text-slate-500' : 'bg-transparent border-slate-700 text-slate-400'}`}>
+                      {idx + 1}
+                    </div>
+                    <div className="flex-1 border-b border-slate-800 pb-2">
+                      <p className={`text-xs font-black transition-colors ${p.id === selectedPid ? 'text-blue-400' : votedPids.includes(p.id) ? 'text-slate-600 line-through' : 'text-slate-300'}`}>
+                        {p.presenter_name} {p.presenter_name === user?.user_metadata?.name && <span className="text-[8px] text-slate-500 opacity-50">(ME)</span>}
+                      </p>
+                      {p.id === selectedPid && <p className="text-[8px] font-black text-blue-500 uppercase mt-0.5 animate-pulse"> Grading Now</p>}
+                    </div>
+                  </div>
                 ))}
               </div>
             </div>
-          )}
+          </aside>
+
         </div>
-
-        {/* 평가 카드 (version에 따라 데이터 자동 결정) */}
-        <CategoryCard title="1. 인사이트" icon="💡" total={insightTotal} max={40} color="text-blue-600">
-          {['i1', 'i2', 'i3', 'i4'].map(id => (
-            <EvaluationItem key={id} version={version} id={id} val={scores[id]} max={10} onChange={(v)=>handleScoreChange(id, v)} />
-          ))}
-        </CategoryCard>
-
-        <CategoryCard title="2. 그래픽" icon="🎨" total={graphicTotal} max={30} color="text-purple-600">
-          {['g1', 'g2', 'g3'].map(id => (
-            <EvaluationItem key={id} version={version} id={id} val={scores[id]} max={10} onChange={(v)=>handleScoreChange(id, v)} />
-          ))}
-        </CategoryCard>
-
-        <CategoryCard title="3. 딜리버리" icon="🎤" total={deliveryTotal} max={30} color="text-pink-600">
-          {['d1', 'd2', 'd3'].map(id => (
-            <EvaluationItem key={id} version={version} id={id} val={scores[id]} max={10} onChange={(v)=>handleScoreChange(id, v)} />
-          ))}
-        </CategoryCard>
-
-        <CategoryCard title="4. 상호보완성" icon="🔗" total={complementarityTotal} max={5} color="text-emerald-600">
-          <EvaluationItem version={version} id="c1" val={scores.c1} max={5} onChange={(v)=>handleScoreChange('c1', v)} />
-        </CategoryCard>
-
-        <div className="bg-slate-900 p-8 rounded-[3rem] shadow-2xl text-white flex flex-col items-center border-4 border-blue-500/30">
-          <div className="mb-6 text-center">
-            <p className="text-sm font-black text-slate-500 uppercase tracking-[0.4em] mb-2">Grand Total Score</p>
-            <h2 className="text-8xl font-black text-blue-400">{grandTotal}<span className="text-2xl text-slate-700 ml-3">/ 105</span></h2>
-          </div>
-          <button onClick={handleSubmit} disabled={submitting} className="w-full py-6 bg-blue-600 rounded-2xl font-black text-2xl hover:bg-blue-500 active:scale-95 transition-all shadow-xl">
-            {submitting ? "제출 중..." : "최종 점수 제출하기 🚀"}
-          </button>
-        </div>
-      </main>
+      </div>
     </div>
   )
 }
@@ -412,21 +428,20 @@ function CategoryCard({ title, icon, total, max, color, children }) {
 }
 
 function EvaluationItem({ version, id, val, max, onChange }) {
-  const itemData = CRITERIA_DATA[version][id] || { label: "항목 오류", criteria: [] };
+  const itemData = CRITERIA_DATA[version]?.[id] || { label: "항목 오류", criteria: [] };
   const points = Array.from({ length: max + 1 }, (_, i) => i);
-
   return (
     <div className="flex flex-col gap-6">
       <div className="flex justify-between items-center px-1">
         <span className="text-xl font-black text-black">{itemData.label}</span>
-        <span className="text-xl font-black text-blue-600 bg-blue-50 px-4 py-1 rounded-xl border border-blue-100">{val === null ? '?' : val}점</span>
+        <span className="text-xl font-black text-blue-600 bg-blue-50 px-4 py-1 rounded-full border border-blue-100">{val === null ? '?' : val}점</span>
       </div>
-      <div className="bg-slate-50 border border-slate-200 rounded-2xl overflow-hidden">
+      <div className="bg-slate-50 border border-slate-200 rounded-2xl overflow-hidden shadow-inner">
         <table className="w-full text-left border-collapse">
           <tbody>
-            {itemData.criteria.map((item, idx) => (
+            {itemData.criteria?.map((item, idx) => (
               <tr key={idx} className={`border-b border-slate-200 last:border-0 ${val === item.s ? 'bg-blue-100/50' : ''}`}>
-                <td className="p-3 text-[12px] font-bold text-black border-r border-slate-200 leading-tight">{item.t}</td>
+                <td className="p-3 text-[12px] font-bold text-slate-700 border-r border-slate-200 leading-tight">{item.t}</td>
                 <td className="w-12 p-3 text-center text-xs font-black text-blue-600 bg-white/50">{item.s}</td>
               </tr>
             ))}
@@ -435,9 +450,7 @@ function EvaluationItem({ version, id, val, max, onChange }) {
       </div>
       <div className="flex flex-wrap gap-1.5">
         {points.map((p) => (
-          <button key={p} onClick={() => onChange(p)} className={`flex-1 min-w-[36px] h-12 rounded-xl font-black text-lg transition-all border-2 ${val === p ? 'bg-blue-600 border-blue-600 text-white shadow-lg' : 'bg-white border-slate-200 text-black hover:border-blue-400'}`}>
-            {p}
-          </button>
+          <button key={p} onClick={() => onChange(p)} className={`flex-1 min-w-[36px] h-12 rounded-xl font-black text-lg transition-all border-2 ${val === p ? 'bg-blue-600 border-blue-600 text-white shadow-lg' : 'bg-white border-slate-200 text-black hover:border-blue-400'}`}>{p}</button>
         ))}
       </div>
     </div>
