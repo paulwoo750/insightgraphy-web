@@ -237,6 +237,13 @@ export default function ScorePage() {
     c1: null
   })
 
+  const [feedback, setFeedback] = useState({
+    originalMessage: '',
+    insightPlus: '', insightMinus: '',
+    graphicPlus: '', graphicMinus: '',
+    deliveryPlus: '', deliveryMinus: ''
+  })
+
   useEffect(() => {
     const init = async () => {
       const { data: { session } } = await supabase.auth.getSession()
@@ -267,19 +274,15 @@ export default function ScorePage() {
     const votedIds = sData ? sData.map(s => s.presentation_id) : []
     setVotedPids(votedIds)
     
-    // ★ 본인 제외 + 미채점자 중 가장 빠른 순서 찾기
     const nextToScore = pData?.find(p => p.presenter_name !== userName && !votedIds.includes(p.id))
-    
-    if (nextToScore) {
-      setSelectedPid(nextToScore.id)
-    } else {
-      setSelectedPid('') // 남은 대상이 없으면 비움
-    }
+    if (nextToScore) setSelectedPid(nextToScore.id)
     
     setScores({i1:null,i2:null,i3:null,i4:null,g1:null,g2:null,g3:null,d1:null,d2:null,d3:null,c1:null})
+    setFeedback({ originalMessage: '', insightPlus: '', insightMinus: '', graphicPlus: '', graphicMinus: '', deliveryPlus: '', deliveryMinus: '' })
   }
 
   const handleScoreChange = (key, val) => setScores(prev => ({ ...prev, [key]: Number(val) }))
+  const handleFeedbackChange = (key, val) => setFeedback(prev => ({ ...prev, [key]: val }))
 
   const insightTotal = (scores.i1 || 0) + (scores.i2 || 0) + (scores.i3 || 0) + (scores.i4 || 0)
   const graphicTotal = (scores.g1 || 0) + (scores.g2 || 0) + (scores.g3 || 0)
@@ -289,7 +292,7 @@ export default function ScorePage() {
   const handleSubmit = async () => {
     if (!selectedPid) return alert("채점 대상이 없어! 👤")
     const allFilled = Object.values(scores).every(v => v !== null)
-    if (!allFilled) return alert("모든 항목을 선택해줘! ✍️")
+    if (!allFilled) return alert("모든 점수 항목을 선택해줘! ✍️")
 
     setSubmitting(true)
     const { error } = await supabase.from('scores').insert([{
@@ -300,12 +303,11 @@ export default function ScorePage() {
         delivery: deliveryTotal,
         complementarity: scores.c1,
         total_score: grandTotal,
-        details: { ...scores, version } 
+        details: { ...scores, version, qualitative: feedback } 
     }])
 
     if (!error) {
-      alert("평가 완료! 계속해서 다음 친구를 채점해볼까? 👏")
-      // ★ 채점 성공 시 페이지 새로고침하여 상단으로 이동 및 데이터 갱신
+      alert("평가 완료! 다음 사람으로 이동합니다. 👏")
       window.location.reload(); 
     } else { alert("오류 발생: " + error.message) }
     setSubmitting(false)
@@ -313,45 +315,69 @@ export default function ScorePage() {
 
   if (!user) return <div className="p-8 text-center font-black text-black">데이터 로딩 중... 🔄</div>
   const currentPresenter = presentations.find(p => p.id === selectedPid)
-
-  // ★ 채점 완료 판단 로직 수정: 내가 채점해야 할 대상들이 모두 votedPids에 있는지 확인
   const targetsToScore = presentations.filter(p => p.presenter_name !== user.user_metadata.name);
   const allEvaluated = targetsToScore.length > 0 && targetsToScore.every(p => votedPids.includes(p.id));
 
   return (
     <div className="p-6 bg-slate-50 min-h-screen text-black font-sans">
-      <div className="w-full flex flex-col items-center">
+      <div className="max-w-[1650px] mx-auto">
         
-        <header className="w-full max-w-2xl text-center mb-8">
-          <div className="flex justify-between items-center mb-6">
+        {/* 상단 섹션: 주차 선택 UI 복구 */}
+        <header className="w-full text-center mb-12">
+          <div className="flex justify-between items-center mb-6 max-w-2xl mx-auto">
             <Link href="/vote" className="text-blue-600 text-xs font-black hover:underline tracking-widest uppercase">← Vote Hub</Link>
             <div className="bg-slate-900 text-white px-4 py-1.5 rounded-full shadow-lg border border-slate-700 font-black text-[10px] uppercase">
               {version === 'v1' ? '기획서 4-1' : '기획서 4-2'}
             </div>
           </div>
-          <h1 className="text-4xl font-black text-black tracking-tighter mb-6 uppercase">Evaluation System</h1>
-        </header>
-
-        <div className="relative w-full max-w-2xl">
+          <h1 className="text-4xl font-black text-black tracking-tighter mb-8 uppercase">Evaluation System</h1>
           
-          <div className="w-full space-y-8 pb-32">
-            <div className="bg-slate-900 text-white p-6 rounded-[2.5rem] shadow-xl space-y-6">
-              <div className="flex flex-col items-center">
-                <span className="text-[10px] font-black text-slate-500 uppercase block mb-3 tracking-widest">Select Active Week</span>
-                <div className="flex flex-wrap justify-center gap-2">
-                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((w) => (
-                    <button key={w} onClick={() => setWeek(w)} className={`w-10 h-10 rounded-xl font-black text-sm transition-all ${week === w ? 'bg-blue-500 text-white shadow-lg' : 'bg-slate-800 text-slate-500 hover:bg-slate-700'}`}>{w}</button>
-                  ))}
-                </div>
-              </div>
-              <div className="flex justify-around items-center pt-4 border-t border-slate-800">
-                <div className="px-6 flex-1 text-left"><span className="text-[10px] font-black text-slate-500 uppercase block mb-1">Topic</span><p className="text-xl font-black text-white leading-tight">{presentations[0]?.topic || "등록된 주제 없음"}</p></div>
-                <div className="px-4 text-right"><span className="text-[10px] font-black text-slate-500 uppercase block mb-1">Evaluator</span><p className="text-lg font-black text-blue-400">{user.user_metadata.name}</p></div>
+          <div className="bg-slate-900 text-white p-6 rounded-[2.5rem] shadow-xl space-y-6 max-w-2xl mx-auto">
+            <div className="flex flex-col items-center">
+              <span className="text-[10px] font-black text-slate-500 uppercase block mb-3 tracking-widest">Select Active Week</span>
+              <div className="flex flex-wrap justify-center gap-2">
+                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((w) => (
+                  <button key={w} onClick={() => setWeek(w)} className={`w-10 h-10 rounded-xl font-black text-sm transition-all ${week === w ? 'bg-blue-500 text-white shadow-lg' : 'bg-slate-800 text-slate-500 hover:bg-slate-700'}`}>{w}</button>
+                ))}
               </div>
             </div>
+            <div className="flex justify-around items-center pt-4 border-t border-slate-800">
+              <div className="px-6 flex-1 text-left"><span className="text-[10px] font-black text-slate-500 uppercase block mb-1">Topic</span><p className="text-xl font-black text-white leading-tight">{presentations[0]?.topic || "주제 없음"}</p></div>
+              <div className="px-4 text-right"><span className="text-[10px] font-black text-slate-500 uppercase block mb-1">Evaluator</span><p className="text-lg font-black text-blue-400">{user.user_metadata.name}</p></div>
+            </div>
+          </div>
+        </header>
 
+        {/* 메인 3단 레이아웃 */}
+        <div className="flex flex-col lg:flex-row justify-center items-start gap-8">
+          
+          {/* [좌] 발표 순서 사이드바 */}
+          <aside className="w-full lg:w-64 shrink-0 order-2 lg:order-1">
+            <div className="bg-slate-900 p-6 rounded-[2.5rem] text-white shadow-2xl sticky top-8 border border-slate-800">
+              <h3 className="text-[10px] font-black text-blue-400 uppercase tracking-[0.2em] mb-8 flex items-center gap-2">
+                <span className="animate-pulse">●</span> Presentation Flow
+              </h3>
+              <div className="space-y-4">
+                {presentations.map((p, idx) => (
+                  <div key={p.id} className="flex items-center gap-4 group">
+                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-[9px] font-black border transition-all ${p.id === selectedPid ? 'bg-blue-500 border-blue-400 text-white scale-110 shadow-[0_0_15px_rgba(59,130,246,0.5)]' : votedPids.includes(p.id) ? 'bg-slate-800 border-slate-700 text-slate-500' : 'bg-transparent border-slate-700 text-slate-400'}`}>
+                      {idx + 1}
+                    </div>
+                    <div className="flex-1 border-b border-slate-800 pb-2">
+                      <p className={`text-xs font-black transition-colors ${p.id === selectedPid ? 'text-blue-400' : votedPids.includes(p.id) ? 'text-slate-600 line-through' : 'text-slate-300'}`}>
+                        {p.presenter_name} {p.presenter_name === user?.user_metadata?.name && <span className="text-[8px] text-slate-500 opacity-50">(ME)</span>}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </aside>
+
+          {/* [중] 정량 평가창 */}
+          <div className="w-full max-w-2xl space-y-8 order-1 lg:order-2">
             <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
-              <label className="text-xs font-black text-black uppercase tracking-widest mb-4 block text-center">Active Target (Sequential)</label>
+              <label className="text-xs font-black text-black uppercase tracking-widest mb-4 block text-center">Active Target</label>
               <div className="w-full p-4 bg-slate-50 border-none rounded-xl font-black text-black text-2xl text-center">
                 {allEvaluated ? "🎉 채점 완료" : currentPresenter ? `${currentPresenter.presenter_name} 님 채점 중` : "대상 없음"}
               </div>
@@ -371,45 +397,53 @@ export default function ScorePage() {
                 <CategoryCard title="4. 상호보완성" icon="🔗" total={scores.c1 || 0} max={5} color="text-emerald-600">
                   <EvaluationItem version={version} id="c1" val={scores.c1} max={5} onChange={(v)=>handleScoreChange('c1', v)} />
                 </CategoryCard>
-                <div className="bg-slate-900 p-8 rounded-[3rem] shadow-2xl text-white flex flex-col items-center border-4 border-blue-500/30">
-                  <div className="mb-6 text-center"><p className="text-sm font-black text-slate-500 uppercase tracking-[0.4em] mb-2">Grand Total Score</p><h2 className="text-8xl font-black text-blue-400">{grandTotal}<span className="text-2xl text-slate-700 ml-3">/ 105</span></h2></div>
-                  <button onClick={handleSubmit} disabled={submitting} className="w-full py-6 bg-blue-600 rounded-2xl font-black text-2xl hover:bg-blue-500 active:scale-95 transition-all shadow-xl">{submitting ? "제출 중..." : `${currentPresenter?.presenter_name} 님 점수 제출 🚀`}</button>
-                </div>
               </>
             ) : (
-              <div className="bg-white p-20 rounded-[3rem] text-center border-2 border-dashed border-slate-200">
+              <div className="bg-white p-20 rounded-[3rem] text-center border-2 border-dashed border-slate-200 animate-in fade-in duration-500">
                 <span className="text-6xl mb-6 block">🏆</span>
-                <h3 className="text-3xl font-black text-black mb-2 uppercase italic tracking-tighter">채점 완료</h3>
-                <p className="text-slate-400 font-bold mb-8 leading-relaxed">오늘 모든 채점을 무사히 마치셨습니다!<br/>결과 페이지에서 학회원들의 통계를 확인해보세요.</p>
+                <h3 className="text-3xl font-black text-black mb-2 uppercase italic">채점 완료</h3>
+                <p className="text-slate-400 font-bold mb-8 leading-relaxed">오늘 모든 채점을 무사히 마쳤습니다!<br/>결과 보러가기 버튼을 통해 확인하세요.</p>
                 <Link href="/vote/results" className="bg-blue-600 text-white px-10 py-5 rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-slate-900 transition-all shadow-xl">결과 보러가기</Link>
               </div>
             )}
           </div>
 
-          <aside className="hidden xl:block absolute top-0 left-[calc(100%+40px)] w-64">
-            <div className="bg-slate-900 p-6 rounded-[2.5rem] text-white shadow-2xl sticky top-2 border border-slate-800">
-              <h3 className="text-[10px] font-black text-blue-400 uppercase tracking-[0.2em] mb-8 flex items-center gap-2">
-                <span className="animate-pulse">●</span> Presentation Flow
-              </h3>
-              <div className="space-y-4">
-                {presentations.map((p, idx) => (
-                  <div key={p.id} className="flex items-center gap-4 group">
-                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-[9px] font-black border transition-all ${p.id === selectedPid ? 'bg-blue-500 border-blue-400 text-white scale-110 shadow-[0_0_15px_rgba(59,130,246,0.5)]' : votedPids.includes(p.id) ? 'bg-slate-800 border-slate-700 text-slate-500' : 'bg-transparent border-slate-700 text-slate-400'}`}>
-                      {idx + 1}
-                    </div>
-                    <div className="flex-1 border-b border-slate-800 pb-2">
-                      <p className={`text-xs font-black transition-colors ${p.id === selectedPid ? 'text-blue-400' : votedPids.includes(p.id) ? 'text-slate-600 line-through' : 'text-slate-300'}`}>
-                        {p.presenter_name} {p.presenter_name === user?.user_metadata?.name && <span className="text-[8px] text-slate-500 opacity-50">(ME)</span>}
-                      </p>
-                      {p.id === selectedPid && <p className="text-[8px] font-black text-blue-500 uppercase mt-0.5 animate-pulse"> Grading Now</p>}
-                    </div>
+          {/* [우] 정성 피드백 영역: (+) / (-) 세로 정렬 및 크기 확대 [수정] */}
+          {!allEvaluated && (
+            <aside className="w-full lg:w-[480px] shrink-0 order-3">
+              <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-200 sticky top-8 space-y-8">
+                <h3 className="text-xl font-black text-black border-b border-slate-100 pb-4 flex items-center gap-2">✍️ [{currentPresenter?.presenter_name}] 피드백</h3>
+                <div className="space-y-6">
+                  <div>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-2 block">• 원메세지</label>
+                    <textarea value={feedback.originalMessage} onChange={(e)=>handleFeedbackChange('originalMessage', e.target.value)} className="w-full bg-slate-50 p-4 rounded-2xl text-sm font-bold min-h-[100px] outline-none border border-transparent focus:border-blue-100" placeholder="발표 핵심 메세지를 기록하세요." />
                   </div>
-                ))}
+                  <FeedbackSection title="1. Insight" subtitle="독창성, 완결성, 적합성" plusVal={feedback.insightPlus} minusVal={feedback.insightMinus} onPlusChange={(v)=>handleFeedbackChange('insightPlus', v)} onMinusChange={(v)=>handleFeedbackChange('insightMinus', v)} />
+                  <FeedbackSection title="2. Graphic" subtitle="가독성, 가시성, 활용성" plusVal={feedback.graphicPlus} minusVal={feedback.graphicMinus} onPlusChange={(v)=>handleFeedbackChange('graphicPlus', v)} onMinusChange={(v)=>handleFeedbackChange('graphicMinus', v)} />
+                  <FeedbackSection title="3. Delivery" subtitle="목소리, 몸짓, 흐름" plusVal={feedback.deliveryPlus} minusVal={feedback.deliveryMinus} onPlusChange={(v)=>handleFeedbackChange('deliveryPlus', v)} onMinusChange={(v)=>handleFeedbackChange('deliveryMinus', v)} />
+                </div>
+                <div className="pt-6 border-t border-slate-50 space-y-4">
+                  <div className="text-center"><p className="text-[10px] font-black text-slate-300 uppercase mb-1">Grand Total</p><h2 className="text-5xl font-black text-blue-600">{grandTotal}점</h2></div>
+                  <button onClick={handleSubmit} disabled={submitting} className="w-full py-6 bg-blue-600 rounded-2xl font-black text-xl text-white hover:bg-blue-500 active:scale-95 transition-all shadow-xl">{submitting ? "제출 중..." : "최종 제출하기 🚀"}</button>
+                </div>
               </div>
-            </div>
-          </aside>
+            </aside>
+          )}
 
         </div>
+      </div>
+    </div>
+  )
+}
+
+// 정성 피드백 섹션 컴포넌트: 세로 정렬 및 크기 확대 적용 [수정]
+function FeedbackSection({ title, subtitle, plusVal, minusVal, onPlusChange, onMinusChange }) {
+  return (
+    <div className="space-y-4">
+      <div><p className="text-sm font-black text-black">{title}</p><p className="text-[9px] text-slate-400 font-bold mb-1">- {subtitle}</p></div>
+      <div className="flex flex-col gap-3">
+        <textarea value={plusVal} onChange={(e)=>onPlusChange(e.target.value)} className="w-full bg-blue-50/50 p-4 rounded-xl text-xs font-bold min-h-[120px] outline-none border border-transparent focus:border-blue-200" placeholder="(+) 장점 및 배운 점" />
+        <textarea value={minusVal} onChange={(e)=>onMinusChange(e.target.value)} className="w-full bg-red-50/50 p-4 rounded-xl text-xs font-bold min-h-[120px] outline-none border border-transparent focus:border-red-200" placeholder="(-) 아쉬운 점 및 개선 제안" />
       </div>
     </div>
   )

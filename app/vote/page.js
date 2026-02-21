@@ -34,8 +34,8 @@ export default function VoteHub() {
           <p className="text-slate-400 font-bold">인사이트그라피 발표 평가 시스템</p>
         </header>
 
-        {/* 3대 핵심 메뉴 */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-16">
+        {/* 4대 핵심 메뉴 (2x2 그리드) */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-16">
           
           {/* 1. 점수 매기기 */}
           <button 
@@ -47,7 +47,17 @@ export default function VoteHub() {
             <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Score</p>
           </button>
 
-          {/* 2. 결과 확인하기 */}
+          {/* 2. 피드백 수정하기 (신규 추가) */}
+          <button 
+            onClick={() => router.push('/vote/feedback')}
+            className="group bg-white p-10 rounded-[3rem] shadow-sm border-2 border-transparent hover:border-emerald-500 hover:shadow-2xl transition-all text-center"
+          >
+            <div className="text-5xl mb-6 group-hover:scale-110 transition-transform duration-300">📝</div>
+            <h2 className="text-xl font-black text-slate-800 mb-2">피드백 수정하기</h2>
+            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Edit Feedback</p>
+          </button>
+
+          {/* 3. 결과 확인하기 */}
           <button 
             onClick={() => router.push('/vote/results')}
             className="group bg-white p-10 rounded-[3rem] shadow-sm border-2 border-transparent hover:border-yellow-500 hover:shadow-2xl transition-all text-center"
@@ -57,7 +67,7 @@ export default function VoteHub() {
             <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Results</p>
           </button>
 
-          {/* 3. 관리자 모드 */}
+          {/* 4. 관리자 모드 */}
           <button 
             onClick={() => router.push('/vote/setup')}
             className="group bg-white p-10 rounded-[3rem] shadow-sm border-2 border-transparent hover:border-slate-800 hover:shadow-2xl transition-all text-center"
