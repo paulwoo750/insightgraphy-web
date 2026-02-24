@@ -17,6 +17,21 @@ export const metadata = {
   description: '모든 생각은 가치있기에 공유되어야 마땅하다', // 검색 시 나타날 설명
   icons: {
     icon: '/logo.png', // public 폴더에 넣은 로고 파일 이름과 맞춰줘!
+  },
+  openGraph: {
+    title: 'InsightGraphy | SKY 연합 프레젠테이션 학회',
+    description: '모든 생각은 가치있기에 공유되어야 마땅하다',
+    url: 'https://insightgraphy.org',
+    siteName: 'InsightGraphy',
+    locale: 'ko_KR',
+    type: 'website',
+    images: [
+      {
+        url: '/logo.png', // 공유 시 나타날 대표 이미지
+        width: 800,
+        height: 600,
+      },
+    ]
   }
 };
 
