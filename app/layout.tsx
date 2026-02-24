@@ -17,7 +17,7 @@ export const metadata = {
   description: '모든 생각은 가치기있기에 공유되어야 마땅하다', // 검색 시 나타날 설명
   icons: {
     icon: '/logo.png', // public 폴더에 넣은 로고 파일 이름과 맞춰줘!
-  },
+  }
 };
 
 export default function RootLayout({
