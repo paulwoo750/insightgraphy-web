@@ -94,7 +94,11 @@ export default function EducationSessionPage() {
               <div className="bg-white p-8 rounded-3xl shadow-sm border-t-4 border-[#32a4a1]">
                 <p className="text-[#32a4a1] font-black text-xs uppercase mb-4">Advanced Course</p>
                 <h4 className="text-xl font-black mb-4">기획 심화 스킬</h4>
-                <p className="text-sm text-slate-500 font-medium">실전 비즈니스 케이스 분석 및 고도화된 전략 도출 기법 실습</p>
+                <ul className="text-sm text-slate-500 space-y-2 font-medium">
+                  <li>• 논리적 구조화 확립을 위한 틀의 정립</li>
+                  <li>• 기획 제안서 작성의 디테일</li>
+                  <li>• 발표 논리 정돈법과 구조의 확립</li>
+                </ul>
               </div>
             </div>
           </div>
@@ -118,7 +122,11 @@ export default function EducationSessionPage() {
               <div className="bg-white p-8 rounded-3xl shadow-sm border-t-4 border-[#32a4a1]">
                 <p className="text-[#32a4a1] font-black text-xs uppercase mb-4">Advanced Course</p>
                 <h4 className="text-xl font-black mb-4">비주얼 브랜딩 실전</h4>
-                <p className="text-sm text-slate-500 font-medium">인포그래픽 제작 및 툴을 활용한 고퀄리티 디자인 실습</p>
+                <ul className="text-sm text-slate-500 space-y-2 font-medium">
+                  <li>• PPT 제작 효율화를 위한 사전 세팅 노하우</li>
+                  <li>• PPT 제작에 도움이 되는 디자인 원칙의 이해</li>
+                  <li>• 프레젠테이션 효과를 배가시키는 그래픽 스킬</li>
+                </ul>
               </div>
             </div>
           </div>
@@ -142,7 +150,11 @@ export default function EducationSessionPage() {
               <div className="bg-white p-8 rounded-3xl shadow-sm border-t-4 border-[#32a4a1]">
                 <p className="text-[#32a4a1] font-black text-xs uppercase mb-4">Advanced Course</p>
                 <h4 className="text-xl font-black mb-4">딜리버리 실전 스킬</h4>
-                <p className="text-sm text-slate-500 font-medium">무대 공포증 극복 및 Q&A 대응 등 실전 발표 현장 대응력 강화</p>
+                <ul className="text-sm text-slate-500 space-y-2 font-medium">
+                  <li>• 발표 단계별 효과적인 딜리버리 스킬</li>
+                  <li>• 설득력을 낮추는 잘못된 방식 집중 분석</li>
+                  <li>• 이론을 완성시키는 실전 실습</li>
+                </ul>
               </div>
             </div>
           </div>
@@ -156,13 +168,13 @@ export default function EducationSessionPage() {
           <div className="space-y-6">
             <div className="bg-white/5 border border-white/10 p-8 rounded-3xl hover:bg-white/10 transition-all">
               <p className="text-[#32a4a1] font-black text-xs mb-2">Speaker 01</p>
-              <h4 className="text-2xl font-black mb-4">피피티프로 (@pptpro_official)</h4>
-              <p className="opacity-70 text-sm font-medium">실전에 바로 쓰는 압도적인 디자인 스킬 교육</p>
+              <h4 className="text-2xl font-black mb-4">비드리머 최현정 대표님 (http://be-dreamer.com/)</h4>
+              <p className="opacity-70 text-sm font-medium">청중의 마음을 저격하는 논리적 스토리텔링 특강</p>
             </div>
             <div className="bg-white/5 border border-white/10 p-8 rounded-3xl hover:bg-white/10 transition-all">
               <p className="text-[#32a4a1] font-black text-xs mb-2">Speaker 02</p>
               <h4 className="text-2xl font-black mb-4">피피티헌터 (@ppt_hunter)</h4>
-              <p className="opacity-70 text-sm font-medium">청중의 마음을 저격하는 논리적 스토리텔링 특강</p>
+              <p className="opacity-70 text-sm font-medium">실전에 바로 쓰는 압도적인 디자인 스킬 교육</p>
             </div>
           </div>
           <p className="text-center mt-12 text-sm font-bold opacity-50 italic">현업 전문가들의 생생한 노하우를 직접 전수받습니다.</p>
@@ -175,7 +187,7 @@ export default function EducationSessionPage() {
           <div className="p-10 rounded-[3rem] bg-slate-50">
             <h4 className="text-2xl font-black mb-6">1:1 맞춤형 멘토링</h4>
             <p className="text-sm text-slate-500 leading-relaxed font-medium break-keep">
-              선배 학회원(알럼나이)과의 매칭을 통해 개인별 강점과 보완점을 분석하고 밀착 성장을 지원합니다.
+              선배 학회원과의 매칭을 통해 개인별 강점과 보완점을 분석하고 밀착 성장을 지원합니다.
             </p>
           </div>
           <div className="p-10 rounded-[3rem] bg-slate-50">
