@@ -7,9 +7,9 @@ import Link from 'next/link'
 export default function FeedbackArxiv() {
   const router = useRouter()
   const [user, setUser] = useState(null)
-  const [myPresentations, setMyPresentations] = useState([]) // 내가 발표한 주차 목록
-  const [selectedP, setSelectedP] = useState(null) // 선택된 발표 정보
-  const [receivedFeedbacks, setReceivedFeedbacks] = useState([]) // 받은 피드백들
+  const [myPresentations, setMyPresentations] = useState([]) 
+  const [selectedP, setSelectedP] = useState(null) 
+  const [receivedFeedbacks, setReceivedFeedbacks] = useState([]) 
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -25,7 +25,6 @@ export default function FeedbackArxiv() {
     init()
   }, [])
 
-  // 1. 내가 발표자로 참여한 모든 주차 가져오기
   const fetchMyPresentations = async (userName) => {
     setLoading(true)
     const { data, error } = await supabase
@@ -36,25 +35,43 @@ export default function FeedbackArxiv() {
 
     if (!error && data) {
       setMyPresentations(data)
-      if (data.length > 0) fetchFeedbacks(data[0]) // 가장 최근 발표 피드백 자동 로드
+      if (data.length > 0) fetchFeedbacks(data[0]) 
     }
     setLoading(false)
   }
 
-  // 2. 특정 발표에 대해 학회원들이 남긴 피드백 가져오기
   const fetchFeedbacks = async (presentation) => {
     setSelectedP(presentation)
     const { data, error } = await supabase
       .from('scores')
       .select('*')
       .eq('presentation_id', presentation.id)
+      .eq('is_submitted', true)
+      .order('created_at', { ascending: true }); // ★ 생성 순으로 정렬
 
     if (!error) {
       setReceivedFeedbacks(data || [])
     }
   }
 
-  if (!user) return <div className="p-8 text-center font-black">데이터 로딩 중... 🔄</div>
+  // ★ 확인 버튼 클릭 핸들러
+  const handleCheckFeedback = async (scoreId) => {
+    const { error } = await supabase
+      .from('scores')
+      .update({ is_checked: true })
+      .eq('id', scoreId);
+
+    if (!error) {
+      // 로컬 상태 즉시 업데이트해서 화면에 바로 반영
+      setReceivedFeedbacks(prev => 
+        prev.map(fb => fb.id === scoreId ? { ...fb, is_checked: true } : fb)
+      );
+    } else {
+      alert("체크 처리 중 오류 발생: " + error.message);
+    }
+  }
+
+  if (!user) return <div className="p-8 text-center font-black text-black">데이터 로딩 중... 🔄</div>
 
   return (
     <div className="p-6 bg-slate-50 min-h-screen text-black font-sans">
@@ -73,7 +90,6 @@ export default function FeedbackArxiv() {
 
         <div className="flex flex-col lg:flex-row justify-center items-start gap-10">
           
-          {/* [좌] 내 발표 히스토리 (주차 선택) */}
           <aside className="w-full lg:w-72 shrink-0">
             <div className="bg-slate-900 p-6 rounded-[2.5rem] text-white shadow-2xl sticky top-8 border border-slate-800">
               <h3 className="text-[10px] font-black text-emerald-400 uppercase tracking-[0.2em] mb-8 flex items-center gap-2">
@@ -97,11 +113,10 @@ export default function FeedbackArxiv() {
             </div>
           </aside>
 
-          {/* [우] 받은 피드백 리스트 */}
           <main className="flex-1 max-w-4xl space-y-8 pb-32">
             {!selectedP ? (
               <div className="bg-white p-20 rounded-[3rem] text-center border-2 border-dashed border-slate-200">
-                <p className="text-slate-400 font-bold">확인할 발표 주차를 왼쪽에서 선택해줘! 👈</p>
+                <p className="text-slate-400 font-bold font-sans">확인할 발표 주차를 선택해줘! 👈</p>
               </div>
             ) : (
               <>
@@ -118,10 +133,18 @@ export default function FeedbackArxiv() {
 
                 <div className="space-y-6">
                   {receivedFeedbacks.length === 0 ? (
-                    <p className="text-center py-20 text-slate-400 font-bold">아직 도착한 피드백이 없어요! ✉️</p>
+                    <div className="py-20 text-center bg-white rounded-[2.5rem] border border-slate-100">
+                      <p className="text-slate-400 font-bold mb-1">아직 확정된 피드백이 없어요! ✉️</p>
+                    </div>
                   ) : (
                     receivedFeedbacks.map((fb, idx) => (
-                      <FeedbackCard key={fb.id} index={idx + 1} data={fb.details?.qualitative} />
+                      <FeedbackCard 
+                        key={fb.id} 
+                        index={idx + 1} 
+                        data={fb.details?.qualitative} 
+                        isChecked={fb.is_checked} // ★ 확인 상태 전달
+                        onCheck={() => handleCheckFeedback(fb.id)} // ★ 확인 함수 전달
+                      />
                     ))
                   )}
                 </div>
@@ -135,26 +158,42 @@ export default function FeedbackArxiv() {
   )
 }
 
-// 개별 피드백 카드 컴포넌트
-function FeedbackCard({ index, data }) {
+function FeedbackCard({ index, data, isChecked, onCheck }) {
   if (!data) return null;
-
   return (
-    <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-6 hover:shadow-md transition-all">
-      <div className="flex items-center gap-3 border-b border-slate-50 pb-4">
-        <span className="bg-slate-900 text-white w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black">{index}</span>
-        <p className="text-xs font-black text-slate-400 uppercase tracking-widest">Member Feedback</p>
+    <div className={`bg-white p-8 rounded-[2.5rem] shadow-sm border space-y-6 hover:shadow-md transition-all relative overflow-hidden ${isChecked ? 'border-emerald-100 opacity-80' : 'border-slate-100'}`}>
+      
+      {/* ★ 우측 상단 체크 표시 라벨 */}
+      {isChecked && (
+        <div className="absolute top-0 right-0 bg-emerald-500 text-white px-6 py-1.5 font-black text-[9px] uppercase tracking-tighter rounded-bl-2xl">
+          Checked ✅
+        </div>
+      )}
+
+      <div className="flex justify-between items-center border-b border-slate-50 pb-4">
+        <div className="flex items-center gap-3">
+          <span className="bg-slate-900 text-white w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black">{index}</span>
+          <p className="text-xs font-black text-slate-400 uppercase tracking-widest">Member Feedback</p>
+        </div>
+        
+        {/* ★ 확인하기 버튼 로직 */}
+        {!isChecked && (
+          <button 
+            onClick={onCheck}
+            className="bg-emerald-50 text-emerald-600 px-4 py-1.5 rounded-full font-black text-[10px] hover:bg-emerald-500 hover:text-white transition-all uppercase tracking-tighter border border-emerald-100"
+          >
+            확인하기
+          </button>
+        )}
       </div>
 
       <div className="space-y-6">
-        {/* 원메세지 */}
         {data.originalMessage && (
           <div>
             <label className="text-[9px] font-black text-blue-500 uppercase tracking-tighter mb-1 block">● Original Message</label>
             <p className="text-sm font-bold text-slate-700 bg-blue-50/30 p-4 rounded-xl leading-relaxed">{data.originalMessage}</p>
           </div>
         )}
-
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <FeedbackDetail title="Insight" plus={data.insightPlus} minus={data.insightMinus} />
           <FeedbackDetail title="Graphic" plus={data.graphicPlus} minus={data.graphicMinus} />
