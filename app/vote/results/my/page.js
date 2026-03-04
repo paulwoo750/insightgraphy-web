@@ -13,8 +13,6 @@ export default function MyAnalytics() {
   const [loading, setLoading] = useState(true)
   const [myWeeklyTrends, setMyWeeklyTrends] = useState([])
   const [myCurrentWeek, setMyCurrentWeek] = useState(null)
-  
-  // 추가 데이터 상태
   const [clubAverages, setClubAverages] = useState([])
   const [awards, setAwards] = useState([])
   const [varianceData, setVarianceData] = useState([])
@@ -38,6 +36,7 @@ export default function MyAnalytics() {
           const weekPs = presentations.filter(p => p.week === w)
           const weekScores = scores.filter(s => weekPs.map(p => p.id).includes(s.presentation_id))
           
+          // 전체 클럽 평균 (차트용 데이터 유지)
           const clubAvgTotal = weekScores.length > 0 
             ? parseFloat((weekScores.reduce((a, b) => a + (b.total_score || 0), 0) / weekScores.length).toFixed(1))
             : 0
@@ -48,20 +47,32 @@ export default function MyAnalytics() {
             vData.push({ name: `${w}주`, range: [Math.min(...allTotals), Math.max(...allTotals)], avg: clubAvgTotal })
           }
 
-          const rankings = weekPs.map(p => {
-            const pS = scores.filter(s => s.presentation_id === p.id)
-            const avg = pS.length > 0 ? (pS.reduce((a, b) => a + (b.total_score || 0), 0) / pS.length) : 0
-            return { name: p.presenter_name, score: avg, topic: p.topic }
-          }).sort((a, b) => b.score - a.score)
+          // ★ 핵심: 내 클러스터 찾기 및 클러스터 내 랭킹 산출
+          const myPInThisWeek = weekPs.find(p => p.presenter_name === userName)
+          if (myPInThisWeek) {
+            const myClusterId = myPInThisWeek.cluster_id
+            
+            // 같은 주차, 같은 클러스터인 발표자들만 필터링
+            const clusterRankings = weekPs
+              .filter(p => p.cluster_id === myClusterId)
+              .map(p => {
+                const pS = scores.filter(s => s.presentation_id === p.id)
+                const avg = pS.length > 0 ? (pS.reduce((a, b) => a + (b.total_score || 0), 0) / pS.length) : 0
+                return { name: p.presenter_name, score: avg, topic: p.topic }
+              })
+              .sort((a, b) => b.score - a.score)
 
-          if (rankings.length > 0 && rankings[0].name === userName && rankings[0].score > 0) {
-            winList.push({ week: w, topic: rankings[0].topic })
+            // 클러스터 내 1등이 제윤이라면 어워드 추가!
+            if (clusterRankings.length > 0 && clusterRankings[0].name === userName && clusterRankings[0].score > 0) {
+              winList.push({ week: w, topic: myPInThisWeek.topic })
+            }
           }
 
-          const pInWeek = weekPs.find(p => p.presenter_name === userName)
-          if (!pInWeek) return { name: `${w}주`, week: w, insight: 0, graphic: 0, delivery: 0, complementarity: 0, total: 0 }
-          const pScores = scores.filter(s => s.presentation_id === pInWeek.id)
+          // 내 개인 주차별 트렌드 데이터 생성 (기존 유지)
+          if (!myPInThisWeek) return { name: `${w}주`, week: w, insight: 0, graphic: 0, delivery: 0, complementarity: 0, total: 0 }
+          const pScores = scores.filter(s => s.presentation_id === myPInThisWeek.id)
           if (pScores.length === 0) return { name: `${w}주`, week: w, insight: 0, graphic: 0, delivery: 0, complementarity: 0, total: 0 }
+          
           const count = pScores.length
           return {
             name: `${w}주`, week: w,
@@ -69,7 +80,7 @@ export default function MyAnalytics() {
             graphic: parseFloat((pScores.reduce((a, b) => a + b.graphic, 0) / count).toFixed(1)),
             delivery: parseFloat((pScores.reduce((a, b) => a + b.delivery, 0) / count).toFixed(1)),
             complementarity: parseFloat((pScores.reduce((a, b) => a + (b.complementarity || 0), 0) / count).toFixed(1)),
-            total: parseFloat((pScores.reduce((a, b) => a + (b.total_score || (b.insight + b.graphic + b.delivery + (b.complementarity || 0))), 0) / count).toFixed(1))
+            total: parseFloat((pScores.reduce((a, b) => a + (b.total_score || 0), 0) / count).toFixed(1))
           }
         })
 
@@ -95,29 +106,30 @@ export default function MyAnalytics() {
 
       <main className="max-w-[98%] w-full space-y-6">
         
-        {/* 첫 번째 줄: Overall summary / Award / 총점 trend */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Summary Box */}
           <div className="bg-slate-900 p-10 rounded-[3rem] text-white shadow-2xl flex flex-col justify-center h-[350px]">
             <h3 className="text-l font-black mb-8 opacity-40 uppercase tracking-[0.4em]">Overall Summary</h3>
             {myCurrentWeek ? (
               <div className="space-y-10 text-center">
                 <p className="text-[80px] font-black leading-none text-white">{myCurrentWeek.total}<span className="text-4xl opacity-20 ml-4">/ 105</span></p>
                 <div className="grid grid-cols-4 gap-2 pt-10 border-t border-white/10">
-                  <div><p className="text-[16px] opacity-50 font-black mb-2 uppercase">INSIGHT</p><p className="text-3xl font-black text-blue-400">{myCurrentWeek.insight}</p></div>
-                  <div><p className="text-[16px] opacity-50 font-black mb-2 uppercase">GRAPHIC</p><p className="text-3xl font-black text-purple-400">{myCurrentWeek.graphic}</p></div>
-                  <div><p className="text-[16px] opacity-50 font-black mb-2 uppercase">DELIVERY</p><p className="text-3xl font-black text-pink-400">{myCurrentWeek.delivery}</p></div>
-                  <div><p className="text-[16px] opacity-50 font-black mb-2 uppercase">COMP.</p><p className="text-3xl font-black text-emerald-400">{myCurrentWeek.complementarity}</p></div>
+                  <div><p className="text-[14px] opacity-50 font-black mb-2 uppercase">INSIGHT</p><p className="text-3xl font-black text-blue-400">{myCurrentWeek.insight}</p></div>
+                  <div><p className="text-[14px] opacity-50 font-black mb-2 uppercase">GRAPHIC</p><p className="text-3xl font-black text-purple-400">{myCurrentWeek.graphic}</p></div>
+                  <div><p className="text-[14px] opacity-50 font-black mb-2 uppercase">DELIVERY</p><p className="text-3xl font-black text-pink-400">{myCurrentWeek.delivery}</p></div>
+                  <div><p className="text-[14px] opacity-50 font-black mb-2 uppercase">COMP.</p><p className="text-3xl font-black text-emerald-400">{myCurrentWeek.complementarity}</p></div>
                 </div>
               </div>
             ) : <p className="text-2xl font-black opacity-20 text-center">기록이 없습니다.</p>}
           </div>
 
+          {/* Awards Box (클러스터 1등 기준) */}
           <div className="bg-white p-10 rounded-[3rem] shadow-sm border border-slate-100 flex flex-col h-[350px]">
             <h3 className="text-xl font-black text-black uppercase tracking-tight mb-6">Awards 👑</h3>
             <div className="flex-1 overflow-y-auto pr-2 space-y-3">
               {awards.map(a => (
                 <div key={a.week} className="bg-slate-50 p-4 rounded-2xl border-l-8 border-yellow-400">
-                  <p className="text-[12px] font-black text-yellow-600 mb-1">{a.week}주차 BEST PRESENTER</p>
+                  <p className="text-[12px] font-black text-yellow-600 mb-1">{a.week}주차 CLUSTER BEST</p>
                   <p className="text-sm font-bold text-black truncate">{a.topic}</p>
                 </div>
               ))}
@@ -126,6 +138,7 @@ export default function MyAnalytics() {
             <p className="mt-4 font-black text-slate-300 text-xs text-right uppercase">Total: {awards.length}</p>
           </div>
 
+          {/* Growth Trend Chart */}
           <ChartCard title="Total Growth Trend">
             <LineChart data={myWeeklyTrends.filter(t => t.total > 0)} margin={{ right: 30, left: -10, top: 10 }}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
@@ -138,7 +151,7 @@ export default function MyAnalytics() {
           </ChartCard>
         </div>
 
-        {/* 두 번째 줄: 밸런스 차트 / 박스플롯 / 항목별 트렌드 */}
+        {/* Charts Section */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <ChartCard title="Skill Balance Comparison">
             <RadarChart cx="50%" cy="50%" outerRadius="75%" data={[
@@ -148,8 +161,7 @@ export default function MyAnalytics() {
             ]}>
               <PolarGrid stroke="#f1f5f9" />
               <PolarAngleAxis dataKey="subject" tick={{fontSize: 12, fontWeight: 'black'}} />
-              {/* 밸런스 차트 툴팁 추가 */}
-              <Tooltip contentStyle={{ borderRadius: '15px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+              <Tooltip contentStyle={{ borderRadius: '15px', border: 'none' }} />
               <Radar name="Me" dataKey="me" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.6} />
               <Radar name="Club" dataKey="club" stroke="#94a3b8" fill="#94a3b8" fillOpacity={0.2} />
             </RadarChart>
@@ -160,8 +172,7 @@ export default function MyAnalytics() {
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
               <XAxis dataKey="name" tick={{fontSize: 12, fontWeight: 'bold'}} axisLine={false} />
               <YAxis domain={[0, 105]} tick={{fontSize: 12}} axisLine={false} />
-              {/* 박스플롯 툴팁 추가 */}
-              <Tooltip contentStyle={{ borderRadius: '15px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+              <Tooltip contentStyle={{ borderRadius: '15px', border: 'none' }} />
               <Bar dataKey="range" fill="#e2e8f0" radius={[6, 6, 6, 6]} barSize={30} name="Range" />
               <Line dataKey="avg" stroke="#334155" strokeWidth={2} dot={{r: 3}} name="Club Avg" />
             </ComposedChart>
@@ -172,7 +183,7 @@ export default function MyAnalytics() {
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
               <XAxis dataKey="name" tick={{fontSize: 12}} axisLine={false} />
               <YAxis domain={[0, 40]} tick={{fontSize: 12}} axisLine={false} />
-              <Tooltip contentStyle={{ borderRadius: '15px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+              <Tooltip contentStyle={{ borderRadius: '15px', border: 'none' }} />
               <Legend iconType="circle" wrapperStyle={{fontSize: '11px', fontWeight: 'bold'}} />
               <Line name="I" type="monotone" dataKey="insight" stroke="#3b82f6" strokeWidth={3} dot={{r: 3}} />
               <Line name="G" type="monotone" dataKey="graphic" stroke="#a855f7" strokeWidth={3} dot={{r: 3}} />
@@ -183,7 +194,7 @@ export default function MyAnalytics() {
 
         <hr className="my-10 border-slate-200" />
 
-        {/* 주차별 기록 그리드 (기존 서식 그대로) */}
+        {/* Weekly History Grid */}
         <div className="bg-white p-10 rounded-[3.5rem] shadow-sm border border-slate-100">
           <h3 className="text-xl font-black text-black uppercase tracking-widest mb-10 border-b border-slate-100 pb-4">Weekly History (W1-W12)</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
@@ -215,15 +226,12 @@ export default function MyAnalytics() {
   )
 }
 
-// 개별 차트 카드 컴포넌트
 function ChartCard({ title, children }) {
   return (
     <div className="bg-white p-8 rounded-[3rem] shadow-sm border border-slate-100 h-[350px] flex flex-col">
       <h3 className="text-sm font-black text-black uppercase tracking-tight mb-6">{title}</h3>
       <div className="flex-1 w-full">
-        <ResponsiveContainer width="100%" height="100%">
-          {children}
-        </ResponsiveContainer>
+        <ResponsiveContainer width="100%" height="100%">{children}</ResponsiveContainer>
       </div>
     </div>
   )
