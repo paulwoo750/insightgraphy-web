@@ -11,10 +11,13 @@ export default function VoteSetup() {
   const [activeGenerations, setActiveGenerations] = useState([]) 
   
   const [selectedMembers, setSelectedMembers] = useState([]) 
+  
+  const [semester, setSemester] = useState('2026-1')
+  const [totalWeeks, setTotalWeeks] = useState(12)
   const [week, setWeek] = useState(1)
+  
   const [topic, setTopic] = useState('') 
   
-  // 🌟 DB에서 불러온 동적 버전 리스트 저장용
   const [availableVersions, setAvailableVersions] = useState(['v1']) 
   const [evalVersion, setEvalVersion] = useState('v1') 
   
@@ -23,6 +26,7 @@ export default function VoteSetup() {
   
   const [groupToCluster, setGroupToCluster] = useState({ 1: 1 })
   const [loading, setLoading] = useState(true)
+  const [archiving, setArchiving] = useState(false)
   const [currentPs, setCurrentPs] = useState([])
   const [currentScores, setCurrentScores] = useState([])
   const router = useRouter()
@@ -31,30 +35,37 @@ export default function VoteSetup() {
     const initPage = async () => {
       setLoading(true)
       
-      // 1. Content Manager에서 만든 버전 목록(versions) 불러오기
       const { data: vData } = await supabase.from('pr_vote_criteria').select('version')
       if (vData && vData.length > 0) {
         const vList = vData.map(v => v.version)
         setAvailableVersions(vList)
       }
 
-      // 2. 활동 기수 가져오기
       let currentActiveGens = []
-      const { data: config } = await supabase.from('pr_members_config').select('active_generations').eq('id', 'main').single()
-      if (config && config.active_generations) {
-        currentActiveGens = config.active_generations
+      const { data: mConfig } = await supabase.from('pr_members_config').select('active_generations').eq('id', 'main').single()
+      if (mConfig && mConfig.active_generations) {
+        currentActiveGens = mConfig.active_generations
         setActiveGenerations(currentActiveGens)
       }
 
-      // 3. 가장 최근 주차 정보 가져오기
+      const { data: configData } = await supabase.from('pr_config').select('*')
+      let currentSem = '2026-1'
+      if (configData) {
+        const sem = configData.find(c => c.key === 'current_semester')?.value
+        const wks = configData.find(c => c.key === 'total_weeks')?.value
+        if (sem) { currentSem = sem; setSemester(sem); }
+        if (wks) setTotalWeeks(Number(wks))
+      }
+
       let currentWeek = 1
-      const { data: latestP } = await supabase.from('presentations').select('week').order('created_at', { ascending: false }).limit(1)
+      // 🌟 최근 주차를 가져올 때도 현재 학기 기준으로 가져오기
+      const { data: latestP } = await supabase.from('presentations').select('week').eq('semester', currentSem).order('created_at', { ascending: false }).limit(1)
       if (latestP && latestP.length > 0) {
         currentWeek = latestP[0].week
         setWeek(currentWeek)
       }
 
-      await fetchInitialData(currentWeek, currentActiveGens)
+      await fetchInitialData(currentWeek, currentActiveGens, currentSem)
     }
     
     initPage()
@@ -62,10 +73,10 @@ export default function VoteSetup() {
 
   const handleWeekChange = (newWeek) => {
     setWeek(newWeek)
-    fetchInitialData(newWeek, activeGenerations)
+    fetchInitialData(newWeek, activeGenerations, semester)
   }
 
-  const fetchInitialData = async (targetWeek, activeGens) => {
+  const fetchInitialData = async (targetWeek, activeGens, currentSem) => {
     setLoading(true)
     
     const { data: mData } = await supabase.from('pr_members').select('*').order('name', { ascending: true })
@@ -81,12 +92,12 @@ export default function VoteSetup() {
     setMembers(validMembers)
     setFilteredMembers(validMembers) 
 
-    const { data: pData } = await supabase.from('presentations').select('*').eq('week', targetWeek).order('order_index', { ascending: true })
-    const { data: sData } = await supabase.from('scores').select('*') 
+    // 🌟 핵심: 명단을 불러올 때 반드시 `semester` 조건 포함!
+    const { data: pData } = await supabase.from('presentations').select('*').eq('week', targetWeek).eq('semester', currentSem).order('order_index', { ascending: true })
+    const { data: sData } = await supabase.from('scores').select('*').eq('semester', currentSem) 
     
     if (pData && pData.length > 0) {
       setTopic(pData[0].topic || '')
-      // 만약 세팅된 버전이 삭제되어서 목록에 없으면 0번째 버전으로 강제 세팅
       const savedVersion = pData[0].eval_version
       setEvalVersion(savedVersion || 'v1')
       
@@ -95,6 +106,16 @@ export default function VoteSetup() {
       setGroupCount(maxG); setClusterCount(maxC);
       const mapping = {}; pData.forEach(p => { mapping[p.group_id] = p.cluster_id });
       setGroupToCluster(mapping)
+      
+      const savedMembers = pData.map(p => {
+        const originalMember = validMembers.find(m => m.name === p.presenter_name)
+        return originalMember ? { ...originalMember, group_id: p.group_id, cluster_id: p.cluster_id } : null
+      }).filter(Boolean)
+      setSelectedMembers(savedMembers)
+    } else {
+      // 새 주차, 새 학기면 완전 빈 껍데기로 시작!
+      setSelectedMembers([])
+      setTopic('')
     }
     setCurrentPs(pData || []); setCurrentScores(sData || []); 
     
@@ -122,35 +143,93 @@ export default function VoteSetup() {
 
   const randomizeOrderByCluster = (cId) => {
     setSelectedMembers(prev => {
-      const others = prev.filter(m => m.cluster_id !== cId);
-      const targets = prev.filter(m => m.cluster_id === cId).sort(() => Math.random() - 0.5);
-      return [...others, ...targets];
+      const newMembers = [];
+      for (let i = 1; i <= clusterCount; i++) {
+        let clusterList = prev.filter(m => m.cluster_id === i);
+        if (i === cId) {
+          clusterList = clusterList.sort(() => Math.random() - 0.5);
+        }
+        newMembers.push(...clusterList);
+      }
+      return newMembers;
     })
   }
 
   const onDragEnd = (result) => {
     if (!result.destination) return;
-    const items = [...selectedMembers];
-    const [reorderedItem] = items.splice(result.source.index, 1);
-    items.splice(result.destination.index, 0, reorderedItem);
-    setSelectedMembers(items);
+    const { source, destination } = result;
+    
+    if (source.droppableId !== destination.droppableId) return; 
+
+    const cId = Number(source.droppableId.split('-')[1]);
+    
+    setSelectedMembers(prev => {
+      const newMembers = [];
+      for (let i = 1; i <= clusterCount; i++) {
+        let clusterList = prev.filter(m => m.cluster_id === i);
+        if (i === cId) {
+          const [moved] = clusterList.splice(source.index, 1);
+          clusterList.splice(destination.index, 0, moved);
+        }
+        newMembers.push(...clusterList);
+      }
+      return newMembers;
+    });
   };
 
   const handleSave = async () => {
     if (selectedMembers.length === 0) return alert("발표자를 선택해줘! 👤")
-    if (!evalVersion) return alert("채점표 버전을 선택해줘! 📝") // 버전 선택 필수 체크
+    if (!evalVersion) return alert("채점표 버전을 선택해줘! 📝")
     
-    if (!confirm(`${week}주차 정보를 저장할까?`)) return
+    if (!confirm(`${semester} 학기 ${week}주차 투표 정보를 저장할까?`)) return
     
-    await supabase.from('presentations').delete().eq('week', week)
+    // 🌟 덮어쓰기 할 때 반드시 '해당 학기'의 주차만 지우도록 안전장치!
+    await supabase.from('presentations').delete().eq('week', week).eq('semester', semester)
+    
     const insertData = selectedMembers.map((m, idx) => ({
-      presenter_name: m.name, topic: topic, week: week,
-      eval_version: evalVersion, order_index: idx, 
-      group_id: m.group_id, cluster_id: m.cluster_id
+      presenter_name: m.name, 
+      topic: topic, 
+      week: week,
+      eval_version: evalVersion, 
+      order_index: idx, 
+      group_id: m.group_id, 
+      cluster_id: m.cluster_id,
+      semester: semester // 🌟 꼬리표 부착!
     }))
+    
     const { error } = await supabase.from('presentations').insert(insertData)
-    if (!error) { alert(`모든 설정 저장 완료! 🏁`); fetchInitialData(week, activeGenerations); setSelectedMembers([]); }
+    if (!error) { alert(`모든 설정 저장 완료! 🏁`); fetchInitialData(week, activeGenerations, semester); }
     else alert("오류: " + error.message)
+  }
+
+  // 🌟 핵심: 데이터를 지우지 않고, 새로운 학기를 시작하도록 로직 전면 변경!
+  const handleArchiveTransfer = async () => {
+    const nextSem = prompt(`현재 [${semester}] 학기를 마감합니다.\n새롭게 시작할 학기 이름을 입력해주세요. (예: 2026-2)`)
+    if (!nextSem) return;
+
+    const confirmMsg = `정말 [${nextSem}] 학기로 새로 시작하시겠습니까?\n기존 데이터는 보관소(Arxiv, My Analytics)에 안전하게 유지되며, 세팅 화면만 1주차 빈 화면으로 초기화됩니다.`
+    if (!confirm(confirmMsg)) return
+
+    setArchiving(true)
+    try {
+      // 삭제 쿼리(DELETE)는 모두 버리고, pr_config의 현재 학기값만 업데이트함.
+      const { error } = await supabase.from('pr_config')
+        .upsert({ key: 'current_semester', value: nextSem })
+
+      if (error) throw new Error("새 학기 적용 중 오류가 발생했습니다.")
+
+      alert(`성공적으로 [${nextSem}] 학기가 시작되었습니다! 새 학기 세팅을 진행하세요. ✨`)
+      
+      // 상태 업데이트 및 새 학기 1주차 빈 도화지 로드
+      setSemester(nextSem)
+      setWeek(1)
+      fetchInitialData(1, activeGenerations, nextSem) 
+
+    } catch (error) {
+      alert(error.message)
+    } finally {
+      setArchiving(false)
+    }
   }
 
   const getVoterStatus = (presenterName) => {
@@ -180,11 +259,29 @@ export default function VoteSetup() {
           </header>
 
           <div className="bg-white p-10 rounded-[3rem] shadow-sm border border-slate-100 space-y-10">
-            {/* 기본 설정 */}
+            
+            <div className="flex flex-col md:flex-row justify-between items-center bg-red-50 p-6 rounded-2xl border border-red-100 gap-4">
+              <div>
+                <p className="text-[10px] font-black text-red-400 uppercase tracking-widest mb-1">Global Semester Setting</p>
+                <p className="text-xl font-black text-red-900">현재 <span className="underline">{semester}</span> 학기 진행 중 (총 {totalWeeks}주차)</p>
+              </div>
+              <button 
+                onClick={handleArchiveTransfer} 
+                disabled={archiving}
+                className="bg-red-600 text-white px-6 py-3 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-red-700 transition-colors shadow-md disabled:opacity-50 whitespace-nowrap"
+              >
+                {archiving ? '학기 전환 중...' : '🎓 새 학기 시작하기 (과거 데이터 보존)'}
+              </button>
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
               <div className="col-span-1">
                 <label className="text-[9px] font-black text-slate-400 block mb-1 uppercase">Week</label>
-                <input type="number" value={week} onChange={(e)=>handleWeekChange(Number(e.target.value))} className="w-full bg-slate-50 p-4 rounded-2xl font-black text-xl text-blue-600 outline-none" />
+                <select value={week} onChange={(e)=>handleWeekChange(Number(e.target.value))} className="w-full bg-slate-50 p-4 rounded-2xl font-black text-xl text-blue-600 outline-none border-r-[16px] border-transparent cursor-pointer">
+                  {Array.from({ length: totalWeeks }, (_, i) => i + 1).map(w => (
+                    <option key={w} value={w}>{w}주차</option>
+                  ))}
+                </select>
               </div>
               <div className="col-span-2">
                 <label className="text-[9px] font-black text-slate-400 block mb-1 uppercase">Topic</label>
@@ -200,7 +297,6 @@ export default function VoteSetup() {
               </div>
             </div>
 
-            {/* 🌟 동적 평가 폼 버전 선택 🌟 */}
             <div className="space-y-4">
               <div className="flex justify-between items-end border-b border-slate-100 pb-2">
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Step 1. Scoreboard Version</label>
@@ -218,11 +314,10 @@ export default function VoteSetup() {
                     {v} 버전
                   </button>
                 ))}
-                {availableVersions.length === 0 && <p className="col-span-full text-xs text-red-500 font-bold py-4">사용 가능한 채점표 버전이 없습니다. Content 관리자에서 버전을 생성해주세요.</p>}
+                {availableVersions.length === 0 && <p className="col-span-full text-xs text-red-500 font-bold py-4">사용 가능한 채점표 버전이 없습니다.</p>}
               </div>
             </div>
 
-            {/* 그룹-클러스터 매핑 */}
             <div className="bg-slate-900 p-8 rounded-[2.5rem] space-y-4 shadow-xl">
               <label className="text-[10px] font-black text-purple-400 uppercase tracking-widest block">• Step 2. Group to Cluster Mapping</label>
               <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
@@ -237,7 +332,6 @@ export default function VoteSetup() {
               </div>
             </div>
 
-            {/* 발표자 선택 */}
             <div className="space-y-4">
               <div className="flex justify-between items-end border-b border-slate-100 pb-2">
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Step 3. Select Presenters</label>
@@ -259,11 +353,9 @@ export default function VoteSetup() {
                     </div>
                   )
                 })}
-                {filteredMembers.length === 0 && <p className="col-span-full text-center text-xs text-slate-400 py-4">해당 기수의 학회원이 없습니다.</p>}
               </div>
             </div>
 
-            {/* 순서 조정 */}
             <div className="space-y-8 bg-slate-50 p-8 rounded-[3rem] border border-slate-100">
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block border-b border-slate-200 pb-4">Step 4. Order Control by Cluster 🖐️</label>
               <DragDropContext onDragEnd={onDragEnd}>
@@ -277,7 +369,7 @@ export default function VoteSetup() {
                       {(provided) => (
                         <div {...provided.droppableProps} ref={provided.innerRef} className="space-y-2 min-h-[50px] bg-slate-100/50 p-6 rounded-[2.5rem] max-w-xl mx-auto border-2 border-dashed border-slate-200">
                           {selectedMembers.filter(m => m.cluster_id === cId).map((m, idx) => (
-                            <Draggable key={m.id} draggableId={String(m.id)} index={selectedMembers.findIndex(sm => sm.id === m.id)}>
+                            <Draggable key={m.id} draggableId={String(m.id)} index={idx}>
                               {(provided, snapshot) => (
                                 <div ref={provided.innerRef} {...provided.draggableProps} {...provided.dragHandleProps} className={`bg-white p-4 rounded-2xl flex items-center justify-between border shadow-sm transition-all ${snapshot.isDragging ? 'border-purple-500 scale-105 z-50 shadow-2xl' : 'border-slate-100'}`}>
                                   <div className="flex items-center gap-4"><span className="bg-slate-900 text-white w-6 h-6 rounded-lg flex items-center justify-center text-[10px] font-black">{idx + 1}</span><p className="font-black text-sm">{m.name}</p></div>
@@ -299,7 +391,6 @@ export default function VoteSetup() {
           </div>
         </div>
 
-        {/* 우측 현황판 */}
         <div className="lg:col-span-1 space-y-6">
           <div className="bg-slate-900 p-8 rounded-[3rem] text-white shadow-2xl sticky top-8">
             <h3 className="text-xs font-black text-blue-400 uppercase tracking-[0.2em] mb-8 flex items-center gap-2">● 실시간 채점 현황</h3>

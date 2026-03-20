@@ -19,7 +19,7 @@ export default function Signup() {
     setLoading(true) 
 
     // 1. 학회원 전용 비밀 코드 확인
-    if (secretCode !== "IG2024") {
+    if (secretCode !== "IG2012") {
       alert("비밀 코드가 틀렸습니다! 운영진에게 문의하세요. 🤫")
       setLoading(false)
       return
@@ -34,6 +34,8 @@ export default function Signup() {
           name: name,
           student_id: studentId,
         },
+        // 🌟 핵심 파트: 이메일 인증 후 돌아올 주소를 /welcome 페이지로 지정!
+        emailRedirectTo: `${window.location.origin}/welcome`,
       },
     })
 
@@ -58,8 +60,8 @@ export default function Signup() {
       console.error("명단 등록 실패:", profileError.message)
       alert("가입은 됐지만 명단 등록에 실패했어. 운영진에게 알려줘!")
     } else {
-      // ★ 변경된 부분: 가입 성공 후 로그인 페이지로 이동 ★
-      alert("인사이트그라피의 식구가 된 걸 환영해! 🎉 생성한 계정으로 다시 로그인해줘.")
+      // 가입 성공 후 알림 및 로그인 페이지로 이동
+      alert("인사이트그라피의 식구가 된 걸 환영해! 🎉 이메일함에서 인증 버튼을 누른 뒤 다시 로그인해줘.")
       router.push('/login') 
     }
     

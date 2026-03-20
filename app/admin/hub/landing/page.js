@@ -32,15 +32,22 @@ export default function LandingManager() {
     const { data: schData } = await supabase.from('pr_schedules').select('*').eq('is_public', true).order('full_date', { ascending: true })
     if (schData) setAllSchedules(schData)
 
-    // 2. ★ 수정됨: 제윤이가 만든 진짜 쇼케이스 테이블(pr_showcase)에서 불러오기
+    // 2. 쇼케이스 불러오기
     const { data: showData } = await supabase.from('pr_showcase').select('*').order('created_at', { ascending: false })
     if (showData) setAllShowcases(showData)
 
     // 3. 현재 랜딩 페이지에 설정된 선택값 불러오기
     const { data: config } = await supabase.from('pr_landing_config').select('*').eq('id', 'main').single()
     if (config) {
-      if (config.selected_schedules) setSelectedSchIds(config.selected_schedules)
-      if (config.selected_showcases) setSelectedShowIds(config.selected_showcases)
+      // 🌟 핵심 수정: DB에 '실제로 존재하는' 항목의 ID만 남기도록 교차 검증 (유령 데이터 퇴치!)
+      if (config.selected_schedules && schData) {
+        const validSchIds = config.selected_schedules.filter(id => schData.some(sch => sch.id === id))
+        setSelectedSchIds(validSchIds)
+      }
+      if (config.selected_showcases && showData) {
+        const validShowIds = config.selected_showcases.filter(id => showData.some(show => show.id === id))
+        setSelectedShowIds(validShowIds)
+      }
     }
 
     setLoading(false)
@@ -165,7 +172,6 @@ export default function LandingManager() {
                   className={`flex items-center gap-4 p-3 rounded-2xl cursor-pointer transition-all border-2 ${selectedShowIds.includes(item.id) ? 'border-blue-500 bg-blue-50/50' : 'border-slate-100 bg-slate-50 hover:border-slate-300'}`}
                 >
                   <div className="w-24 h-16 bg-slate-200 rounded-lg overflow-hidden shrink-0 relative">
-                    {/* ★ 수정됨: 제윤이 코드에 맞춘 thumb_url 사용 */}
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={item.thumb_url || '/showcase/thumb1.png'} alt="thumb" className="w-full h-full object-cover" />
                   </div>

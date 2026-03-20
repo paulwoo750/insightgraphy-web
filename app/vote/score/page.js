@@ -8,6 +8,7 @@ export default function ScorePage() {
   const router = useRouter()
   const [user, setUser] = useState(null)
   const [version, setVersion] = useState('v1') 
+  const [semester, setSemester] = useState('') // 🌟 현재 학기 상태 추가
   const [presentations, setPresentations] = useState([]) 
   const [votedPids, setVotedPids] = useState([]) 
   const [selectedPid, setSelectedPid] = useState('')
@@ -27,6 +28,11 @@ export default function ScorePage() {
       if (!session) { router.push('/login') } 
       else { 
         setUser(session.user); 
+        
+        // 🌟 현재 학기(semester) 정보 불러오기
+        const { data: configData } = await supabase.from('pr_config').select('value').eq('key', 'current_semester').single();
+        if (configData) setSemester(configData.value);
+
         const { data: latestP } = await supabase.from('presentations').select('week').order('created_at', { ascending: false }).limit(1);
         if (latestP && latestP.length > 0) setWeek(latestP[0].week);
       }
@@ -96,10 +102,13 @@ export default function ScorePage() {
     if (!Object.values(scores).every(v => v !== null)) return alert("모든 항목을 평가해줘! ✍️")
     
     setSubmitting(true)
+    
+    // 🌟 INSERT 구문에 semester 컬럼 추가
     const { error } = await supabase.from('scores').insert([{
         presentation_id: selectedPid, 
         voter_name: user.user_metadata.name,
         total_score: grandTotal, 
+        semester: semester, // 현재 진행 중인 학기 기록
         details: { scores, version, qualitative: feedback } 
     }])
     if (!error) { alert("채점 완료! 👏"); window.location.reload(); }
@@ -121,7 +130,11 @@ export default function ScorePage() {
         <header className="w-full text-center mb-12">
           <div className="flex justify-between items-center mb-6 max-w-2xl mx-auto">
             <Link href="/vote" className="text-blue-600 text-xs font-black hover:underline uppercase tracking-widest">← Vote Hub</Link>
-            <div className="bg-slate-900 text-white px-4 py-1.5 rounded-full shadow-lg font-black text-[10px] uppercase">{version.toUpperCase()} VERSION</div>
+            <div className="flex gap-2">
+              {/* 🌟 학기 표시 뱃지 추가 */}
+              {semester && <div className="bg-emerald-100 text-emerald-700 px-3 py-1.5 rounded-full shadow-sm font-black text-[10px] uppercase tracking-wider">{semester} 학기</div>}
+              <div className="bg-slate-900 text-white px-4 py-1.5 rounded-full shadow-lg font-black text-[10px] uppercase">{version.toUpperCase()} VERSION</div>
+            </div>
           </div>
           <h1 className="text-4xl font-black mb-8 uppercase italic">Evaluation System</h1>
           
@@ -130,7 +143,7 @@ export default function ScorePage() {
               <span className="text-[10px] font-black text-slate-500 uppercase block mb-3 tracking-widest">Select Active Week</span>
               <div className="flex flex-wrap justify-center gap-2">
                 {weeks.map((w) => (
-                  <button key={w} onClick={() => setWeek(w)} className={`w-10 h-10 rounded-xl font-black text-sm transition-all ${week === w ? 'bg-blue-500 text-white shadow-lg' : 'bg-slate-800 text-slate-500 hover:bg-slate-700'}`}>{w}</button>
+                  <button key={w} onClick={() => setWeek(w)} className={`w-10 h-10 rounded-xl font-black text-sm transition-all ${week === w ? 'bg-blue-500 text-white shadow-lg scale-110' : 'bg-slate-800 text-slate-500 hover:bg-slate-700'}`}>{w}</button>
                 ))}
               </div>
             </div>
@@ -165,7 +178,7 @@ export default function ScorePage() {
             </div>
           </aside>
 
-          {/* [중] 🌟 동적 정량 평가창 🌟 */}
+          {/* [중] 동적 정량 평가창 */}
           <div className="w-full space-y-8">
             <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
               <label className="text-xs font-black text-black uppercase tracking-widest mb-4 block text-center">Active Target</label>
@@ -196,7 +209,7 @@ export default function ScorePage() {
 
                 <div className="bg-slate-900 p-8 rounded-[3rem] shadow-2xl text-center space-y-6 border border-slate-800">
                   <h2 className="text-6xl font-black text-blue-500">{grandTotal}<span className="text-2xl text-slate-700 ml-1">/ {maxPossibleScore}</span></h2>
-                  <button onClick={handleSubmit} disabled={submitting} className="w-full py-6 bg-blue-600 rounded-2xl font-black text-xl text-white hover:bg-blue-500 transition-all shadow-xl">{submitting ? "제출 중..." : "이 평가 최종 제출하기 🚀"}</button>
+                  <button onClick={handleSubmit} disabled={submitting} className="w-full py-6 bg-blue-600 rounded-2xl font-black text-xl text-white hover:bg-blue-500 transition-all shadow-xl active:scale-95">{submitting ? "제출 중..." : "이 평가 최종 제출하기 🚀"}</button>
                 </div>
               </>
             ) : (
@@ -204,8 +217,8 @@ export default function ScorePage() {
                 <span className="text-6xl mb-6 block">🏆</span>
                 <h3 className="text-3xl font-black text-black mb-10 uppercase italic">채점 완료!</h3>
                 <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                  <Link href="/vote/results" className="bg-blue-600 text-white px-8 py-5 rounded-2xl font-black text-sm uppercase shadow-xl">📊 결과 확인</Link>
-                  <Link href="/vote/feedback" className="bg-emerald-600 text-white px-8 py-5 rounded-2xl font-black text-sm uppercase shadow-xl">✍️ 피드백 수정</Link>
+                  <Link href="/vote/results" className="bg-blue-600 text-white px-8 py-5 rounded-2xl font-black text-sm uppercase shadow-xl hover:bg-blue-700 transition-colors">📊 결과 확인</Link>
+                  <Link href="/vote/feedback" className="bg-emerald-600 text-white px-8 py-5 rounded-2xl font-black text-sm uppercase shadow-xl hover:bg-emerald-700 transition-colors">✍️ 임시저장 피드백 작성</Link>
                 </div>
               </div>
             )}
@@ -225,7 +238,7 @@ export default function ScorePage() {
                   <div className="space-y-6">
                     <div>
                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 block mb-2">• 원메세지</label>
-                      <textarea value={feedback.originalMessage} onChange={(e)=>handleFeedbackChange('originalMessage', e.target.value)} className="w-full bg-slate-50 p-4 rounded-2xl text-xs font-bold min-h-[40px] h-[50px] outline-none border border-transparent focus:border-blue-100" placeholder="메시지 기록" />
+                      <textarea value={feedback.originalMessage} onChange={(e)=>handleFeedbackChange('originalMessage', e.target.value)} className="w-full bg-slate-50 p-4 rounded-2xl text-xs font-bold min-h-[40px] h-[50px] outline-none border border-transparent focus:border-blue-100 transition-colors" placeholder="메시지 기록" />
                     </div>
                     <FeedbackSection title="1. Insight" subtitle="독창성, 적합성" plusVal={feedback.insightPlus} minusVal={feedback.insightMinus} onPlusChange={(v)=>handleFeedbackChange('insightPlus', v)} onMinusChange={(v)=>handleFeedbackChange('insightMinus', v)} />
                     <FeedbackSection title="2. Graphic" subtitle="가독성, 가시성" plusVal={feedback.graphicPlus} minusVal={feedback.graphicMinus} onPlusChange={(v)=>handleFeedbackChange('graphicPlus', v)} onMinusChange={(v)=>handleFeedbackChange('graphicMinus', v)} />
@@ -234,7 +247,7 @@ export default function ScorePage() {
                 ) : (
                   <div className="animate-in fade-in duration-500">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-2 block">● Evaluation Memo</label>
-                    <textarea value={feedback.memo} onChange={(e)=>handleFeedbackChange('memo', e.target.value)} className="w-full bg-slate-50 p-6 rounded-[2rem] text-sm font-bold min-h-[450px] outline-none border-2 border-dashed border-slate-100 focus:border-amber-200" placeholder="발표를 보며 자유롭게 메모해줘!" />
+                    <textarea value={feedback.memo} onChange={(e)=>handleFeedbackChange('memo', e.target.value)} className="w-full bg-slate-50 p-6 rounded-[2rem] text-sm font-bold min-h-[450px] outline-none border-2 border-dashed border-slate-100 focus:border-amber-200 transition-colors" placeholder="발표를 보며 자유롭게 메모해줘!" />
                   </div>
                 )}
               </div>
@@ -259,7 +272,6 @@ function CategoryCard({ title, icon, total, max, color, children }) {
 }
 
 function EvaluationItem({ itemData, val, onChange }) {
-  // 🌟 핵심 마법: 등록된 점수 중 최고점(max)과 최저점(min)을 찾아 1점 단위 배열 생성
   const scoresList = itemData.criteria.map(c => c.s);
   const maxScore = scoresList.length > 0 ? Math.max(...scoresList) : 10;
   const minScore = scoresList.length > 0 ? Math.min(...scoresList) : 0;
@@ -271,7 +283,7 @@ function EvaluationItem({ itemData, val, onChange }) {
   
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex justify-between px-1">
+      <div className="flex justify-between px-1 items-end">
         <span className="text-xl font-black text-black">{itemData.label}</span>
         <span className="text-xl font-black text-blue-600 bg-blue-50 px-4 py-1 rounded-full border border-blue-100">{val === null ? '?' : val}점</span>
       </div>
@@ -287,13 +299,12 @@ function EvaluationItem({ itemData, val, onChange }) {
           </tbody>
         </table>
       </div>
-      {/* 만들어진 1점 단위 배열(points)로 버튼 뿌리기 */}
       <div className="flex flex-wrap gap-1.5">
         {points.map((p) => (
           <button 
             key={p} 
             onClick={() => onChange(p)} 
-            className={`flex-1 min-w-[32px] h-11 rounded-xl font-black text-sm border-2 transition-all ${val === p ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-slate-200 hover:border-blue-400'}`}
+            className={`flex-1 min-w-[32px] h-11 rounded-xl font-black text-sm border-2 transition-all active:scale-95 ${val === p ? 'bg-blue-600 border-blue-600 text-white shadow-md' : 'bg-white border-slate-200 hover:border-blue-400 text-slate-600'}`}
           >
             {p}
           </button>
@@ -308,8 +319,8 @@ function FeedbackSection({ title, subtitle, plusVal, minusVal, onPlusChange, onM
     <div className="space-y-4">
       <div className="flex justify-between items-end"><p className="text-sm font-black text-black">{title}</p><p className="text-[9px] text-slate-400 font-bold mb-1">- {subtitle}</p></div>
       <div className="flex flex-col gap-3">
-        <textarea value={plusVal} onChange={(e)=>onPlusChange(e.target.value)} className="w-full bg-blue-50/50 p-4 rounded-xl text-xs font-bold min-h-[60px] h-[70px] outline-none border border-transparent focus:border-blue-200" placeholder="(+) 장점" />
-        <textarea value={minusVal} onChange={(e)=>onMinusChange(e.target.value)} className="w-full bg-red-50/50 p-4 rounded-xl text-xs font-bold min-h-[60px] h-[70px] outline-none border border-transparent focus:border-red-200" placeholder="(-) 개선점" />
+        <textarea value={plusVal} onChange={(e)=>onPlusChange(e.target.value)} className="w-full bg-blue-50/50 p-4 rounded-xl text-xs font-bold min-h-[60px] h-[70px] outline-none border border-transparent focus:border-blue-200 transition-colors" placeholder="(+) 장점 및 인상 깊었던 점" />
+        <textarea value={minusVal} onChange={(e)=>onMinusChange(e.target.value)} className="w-full bg-red-50/50 p-4 rounded-xl text-xs font-bold min-h-[60px] h-[70px] outline-none border border-transparent focus:border-red-200 transition-colors" placeholder="(-) 아쉬운 점 및 개선 아이디어" />
       </div>
     </div>
   )

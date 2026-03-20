@@ -8,15 +8,13 @@ export default function HomeHub() {
   const router = useRouter()
   const [user, setUser] = useState(null)
   
-  // DB에서 불러온 스케줄을 담을 상자
   const [schedules, setSchedules] = useState([])
-  
-  // 캘린더 상태 관리
-  const [currentDate, setCurrentDate] = useState(new Date(2026, 2, 1)); // 기본: 2026년 3월 시작
+  const [currentDate, setCurrentDate] = useState(new Date()) 
+  const [deadlines, setDeadlines] = useState([])
+  const [currentWeek, setCurrentWeek] = useState(1)
 
   useEffect(() => {
     const initHub = async () => {
-      // 1. 로그인 유저 확인
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) {
         router.push('/login')
@@ -24,13 +22,25 @@ export default function HomeHub() {
       }
       setUser(session.user)
 
-      // 2. DB에서 전체 일정 불러오기 (내부/외부 모두 가져옴)
-      const { data: schData } = await supabase
-        .from('pr_schedules')
-        .select('*')
-        .order('full_date', { ascending: true })
-      
+      const { data: schData } = await supabase.from('pr_schedules').select('*').order('full_date', { ascending: true })
       if (schData) setSchedules(schData)
+
+      const { data: configData } = await supabase.from('pr_config').select('*').eq('key', 'current_week').single()
+      const week = configData ? Number(configData.value) : 1
+      setCurrentWeek(week)
+
+      const { data: dlData } = await supabase.from('pr_deadlines').select('*').eq('week', week)
+      if (dlData) {
+        const uniqueDl = dlData.reduce((acc, current) => {
+          if (!current.deadline_time) return acc;
+          const exists = acc.find(item => item.category === current.category);
+          if (!exists) return [...acc, current];
+          return acc;
+        }, []);
+
+        const sortedDl = uniqueDl.sort((a, b) => new Date(a.deadline_time) - new Date(b.deadline_time));
+        setDeadlines(sortedDl)
+      }
     }
     
     initHub()
@@ -41,9 +51,25 @@ export default function HomeHub() {
     router.push('/login')
   }
 
-  // 캘린더 계산 로직
-  const nextMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
-  const prevMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
+  const formatTime = (dateStr) => {
+    if(!dateStr) return ''
+    const d = new Date(dateStr)
+    return `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+  }
+
+  const getCategoryLabel = (category) => {
+    switch(category) {
+      case 'proposal': return '📄 기획서 제출';
+      case 'slide': return '🖼️ 슬라이드 제출';
+      case 'video': return '🎬 발표영상 등록';
+      case 'proposal_comment': return '💬 기획서 피드백';
+      case 'vote_feedback': return '✅ 정성 피드백';
+      case 'video_comment': return '🎬 셀프 피드백';
+      case 'absence': return '📝 사유서 제출';
+      default: return `📌 ${category} 마감`;
+    }
+  }
+
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
@@ -51,166 +77,166 @@ export default function HomeHub() {
   const blanks = Array.from({ length: firstDayOfMonth }, (_, i) => i);
   const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
 
-  // 이번 달 일정만 필터링
   const eventsThisMonth = schedules.filter(s => {
     if (!s.full_date) return false;
     const [sy, sm] = s.full_date.split('-');
     return parseInt(sy) === year && parseInt(sm) === month + 1;
   });
 
-  if (!user) return <div className="min-h-screen bg-slate-50 flex items-center justify-center font-bold text-slate-400">로딩 중... 🔄</div>
+  if (!user) return <div className="min-h-screen bg-white flex items-center justify-center font-bold text-slate-400">로딩 중... 🔄</div>
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-start p-6 pt-12 pb-24 text-slate-900 font-sans relative">
+    // 🌟 배경을 완전한 흰색(bg-white)으로 변경
+    <div className="min-h-screen bg-white flex flex-col p-6 lg:p-10 text-slate-900 font-sans relative">
       
-      {/* ★ 메인 랜딩페이지로 돌아가기 버튼 (좌측 상단) */}
-      <Link 
-        href="/" 
-        className="absolute top-6 left-6 flex items-center gap-2 text-slate-400 hover:text-blue-600 font-black text-xs uppercase tracking-widest transition-colors bg-white px-4 py-2 rounded-full shadow-sm border border-slate-100"
-      >
-        <span>🏠</span> Back to Landing
-      </Link>
+      {/* 🌟 헤더에 그림자(shadow-md)를 줘서 떠 있는 느낌 강화 */}
+      <header className="max-w-[1500px] w-full mx-auto bg-white rounded-[2rem] shadow-md border border-slate-100 px-6 py-4 flex flex-col md:flex-row justify-between items-center gap-4 mb-10 z-10 relative">
+        
+        <div className="flex items-center gap-4">
+          <Link href="/" className="flex items-center gap-2 text-slate-400 hover:text-slate-800 font-black text-xs uppercase tracking-widest transition-colors group">
+            <span className="bg-slate-50 text-slate-500 w-8 h-8 flex items-center justify-center rounded-full group-hover:bg-slate-200 transition-colors shadow-inner">🏠</span>
+            <span className="hidden sm:inline">Back to Landing</span>
+          </Link>
+          <div className="w-px h-6 bg-slate-200 hidden md:block"></div>
+          <span className="text-sm font-black text-slate-800 hidden md:block tracking-tight">InsightGraphy Hub</span>
+        </div>
 
-      {/* ★ 관리자 페이지 버튼 (우측 하단 구석 - 톱니바퀴) */}
-      <Link 
-        href="/admin" 
-        className="fixed bottom-6 right-6 w-12 h-12 flex items-center justify-center bg-slate-200 text-slate-500 rounded-full hover:bg-slate-800 hover:text-white transition-all opacity-30 hover:opacity-100 shadow-md z-50"
-        title="Admin Control Panel"
-      >
+        <nav className="flex gap-1 overflow-x-auto no-scrollbar w-full md:w-auto">
+          <Link href="/dashboard" className="whitespace-nowrap px-5 py-2.5 rounded-xl text-xs font-black text-slate-500 hover:bg-teal-50 hover:text-teal-700 transition-all flex items-center gap-2">
+            <span className="text-base">📂</span> 주차별 자료실
+          </Link>
+          <Link href="/archive" className="whitespace-nowrap px-5 py-2.5 rounded-xl text-xs font-black text-slate-500 hover:bg-teal-50 hover:text-teal-700 transition-all flex items-center gap-2">
+            <span className="text-base">📚</span> 아카이브
+          </Link>
+          <Link href="/vote" className="whitespace-nowrap px-5 py-2.5 rounded-xl text-xs font-black text-slate-500 hover:bg-teal-50 hover:text-teal-700 transition-all flex items-center gap-2">
+            <span className="text-base">🗳️</span> 실시간 투표
+          </Link>
+        </nav>
+      </header>
+
+      <Link href="/admin" className="fixed bottom-8 right-8 md:bottom-10 md:right-10 w-12 h-12 flex items-center justify-center bg-slate-800 text-white rounded-full hover:scale-110 transition-all opacity-30 hover:opacity-100 shadow-2xl z-[100] border-2 border-white/20">
         <span className="text-xl">⚙️</span>
       </Link>
 
-      <div className="max-w-6xl w-full text-center mt-10">
+      <div className="max-w-[1500px] w-full mx-auto grid grid-cols-1 xl:grid-cols-[1fr_350px] gap-8">
         
-        {/* 상단 환영 메시지 */}
-        <div className="mb-12">
-          <span className="bg-blue-100 text-blue-600 px-5 py-1.5 rounded-full text-[10px] font-black uppercase tracking-[0.2em]">
-            InsightGraphy Member Hub
-          </span>
-          <h1 className="text-4xl md:text-5xl font-black text-slate-800 mt-6 mb-3">
-            반가워요, <span className="text-blue-600">{user.user_metadata?.name || '학회원'}</span>님! 👋
-          </h1>
-          <p className="text-slate-400 font-bold text-sm md:text-base">내부 일정 확인 및 학회 자산을 관리하세요.</p>
-        </div>
-
-        {/* ★ 1. 중앙 캘린더 구역 (내부/외부 일정 자동 연동) */}
-        <div className="bg-white p-8 md:p-12 rounded-[3rem] shadow-sm border border-slate-100 mb-12 text-left">
-          <div className="flex flex-col md:flex-row gap-12">
+        {/* ======================================================== */}
+        {/* 🌟 좌측: 메인 워크스페이스 (프로필 + 퀵 메뉴 그리드) */}
+        {/* ======================================================== */}
+        <div className="space-y-8">
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             
-            {/* 좌측: 달력 컨트롤 및 그리드 */}
-            <div className="flex-1">
-              <div className="flex justify-between items-center mb-8 px-2">
-                <button onClick={prevMonth} className="w-10 h-10 flex items-center justify-center bg-slate-50 rounded-full shadow-sm text-blue-500 hover:bg-blue-500 hover:text-white transition-all font-bold">←</button>
-                <h3 className="text-2xl font-black text-slate-800 uppercase tracking-widest">
-                  {year}. {String(month + 1).padStart(2, '0')}
-                </h3>
-                <button onClick={nextMonth} className="w-10 h-10 flex items-center justify-center bg-slate-50 rounded-full shadow-sm text-blue-500 hover:bg-blue-500 hover:text-white transition-all font-bold">→</button>
+            {/* 🌟 로고 색상을 반영한 그라데이션 및 로고 워터마크 추가 */}
+            <div className="bg-gradient-to-br from-teal-600 via-blue-700 to-slate-900 p-8 rounded-[2rem] text-white shadow-xl relative overflow-hidden flex flex-col justify-center border border-teal-800/50">
+              {/* 로고 워터마크 효과 */}
+              <img src="/logo.png" alt="IG Logo" className="absolute -right-10 -bottom-10 w-64 h-64 object-contain opacity-20 transform -rotate-12" />
+              
+              <div className="relative z-10">
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] mb-1 opacity-80 text-teal-100">Welcome back,</p>
+                <h1 className="text-4xl font-black mb-1 drop-shadow-md">{user.user_metadata?.name || '학회원'} 님!</h1>
+                <p className="text-xs font-bold opacity-80 mb-6 text-teal-50">InsightGraphy 멤버십</p>
+                <button onClick={handleLogout} className="bg-white/10 hover:bg-white/20 w-fit px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest backdrop-blur-sm transition-colors border border-white/20 shadow-sm">
+                  로그아웃 🚪
+                </button>
               </div>
+            </div>
 
-              <div className="grid grid-cols-7 gap-2 mb-4 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                <div className="text-red-400">Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div className="text-blue-400">Sat</div>
+            {/* 마감일 알림 카드 - 입체감(shadow-lg) 추가 */}
+            <div className="bg-white p-8 rounded-[2rem] shadow-lg border border-slate-100 flex flex-col justify-center">
+              <div className="flex justify-between items-center mb-4 border-b border-slate-100 pb-3">
+                <h2 className="text-sm font-black text-slate-800 flex items-center gap-2"><span>🚨</span> {currentWeek}주차 해야 할 일</h2>
+                <span className="bg-red-50 text-red-600 px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest">Deadline</span>
               </div>
-
-              <div className="grid grid-cols-7 gap-2 md:gap-3">
-                {blanks.map(b => (
-                  <div key={`blank-${b}`} className="aspect-square rounded-2xl bg-transparent" />
+              
+              <div className="space-y-3">
+                {deadlines.length === 0 ? <p className="text-xs font-bold text-slate-400 py-4 text-center">이번 주 등록된 마감일이 없습니다. 🙌</p> : deadlines.map(d => (
+                  <div key={d.id} className="flex justify-between items-center bg-slate-50 p-3 rounded-xl border border-slate-100 hover:border-red-200 transition-colors shadow-sm">
+                    <span className="text-xs font-black text-slate-600 flex items-center gap-1.5">
+                      {getCategoryLabel(d.category)}
+                    </span>
+                    <span className="text-[10px] font-black text-red-500 bg-red-50 px-2 py-1 rounded-md">{formatTime(d.deadline_time)} 마감</span>
+                  </div>
                 ))}
-                {days.map(d => {
-                  const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-                  const dayEvents = schedules.filter(s => s.full_date === dateStr);
-                  const hasEvent = dayEvents.length > 0;
-                  
-                  // 내부 일정(is_public: false)이 하나라도 있으면 주황색 테마 적용
-                  const isInternalDay = hasEvent && dayEvents.some(e => !e.is_public);
-
-                  return (
-                    <div 
-                      key={d} 
-                      className={`relative aspect-square rounded-2xl flex flex-col items-center justify-center text-sm font-black transition-all ${
-                        hasEvent 
-                        ? (isInternalDay ? 'bg-amber-50 border-2 border-amber-400 text-amber-700 shadow-sm' : 'bg-blue-50 border-2 border-blue-500 text-blue-700 shadow-sm') 
-                        : 'bg-white border border-slate-100 text-slate-500 hover:bg-slate-50'
-                      }`}
-                    >
-                      <span>{d}</span>
-                      {hasEvent && (
-                        <div className="absolute bottom-1.5 flex gap-1">
-                          {dayEvents.map((e, i) => (
-                            <div key={i} className={`w-1.5 h-1.5 rounded-full ${!e.is_public ? 'bg-amber-500' : 'bg-blue-600'}`} />
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )
-                })}
               </div>
             </div>
+          </div>
 
-            {/* 우측: 이달의 일정 리스트 */}
-            <div className="w-full md:w-80 bg-slate-900 p-8 rounded-[2.5rem] text-white shadow-xl flex flex-col">
-              <h3 className="text-xs font-black text-blue-400 uppercase tracking-[0.2em] mb-6 border-b border-white/10 pb-4">
-                {month + 1}월 학회 일정
-              </h3>
-              <div className="flex-1 overflow-y-auto pr-2 space-y-6 no-scrollbar">
-                {eventsThisMonth.length > 0 ? (
-                  // 날짜 오름차순 정렬
-                  eventsThisMonth.sort((a,b) => new Date(a.full_date) - new Date(b.full_date)).map((ev, idx) => (
-                    <div key={idx} className="relative pl-5 before:absolute before:left-0 before:top-2 before:w-2 before:h-2 before:rounded-full" style={{ '--tw-before-bg': !ev.is_public ? '#f59e0b' : '#3b82f6' }}>
-                      <style jsx>{`div::before { background-color: var(--tw-before-bg); }`}</style>
-                      
-                      <div className="flex items-center gap-2 mb-1">
-                        <p className="text-[10px] font-black text-white/50">
-                          {ev.date_display} 
-                          {ev.type === 'regular' && ev.week && ` (W${ev.week})`}
-                          {' · '}
-                          {ev.is_allday ? '종일' : `${ev.start_time} - ${ev.end_time}`}
-                        </p>
-                        {!ev.is_public && <span className="bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest border border-amber-500/30">Internal</span>}
-                      </div>
-                      
-                      <p className={`text-sm font-black leading-tight mb-1 ${ev.is_break ? 'text-slate-500 line-through' : 'text-white'}`}>
-                        {ev.title} {ev.is_break && '(휴회)'}
-                      </p>
-                      
-                      {ev.description && <p className="text-[11px] text-white/60 font-medium break-keep">{ev.description}</p>}
-                    </div>
-                  ))
-                ) : (
-                  <div className="py-10 text-center opacity-50 font-bold text-sm">예정된 일정이 없습니다.</div>
-                )}
-              </div>
+          {/* 퀵 메뉴 타일 - 입체감(shadow-lg) 추가 */}
+          <div className="bg-white p-8 rounded-[2.5rem] shadow-lg border border-slate-100">
+            <h2 className="text-lg font-black text-slate-800 mb-6 border-b border-slate-100 pb-4">📌 Quick Services</h2>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <Tile href="/dashboard/proposal" icon="📄" title="기획서 제출함" desc="주차별 기획서 양식 다운 및 과제 제출" color="bg-blue-50" text="text-blue-700" />
+              <Tile href="/dashboard/slide" icon="🖼️" title="발표 슬라이드" desc="완성된 발표 ppt를 드라이브로 제출" color="bg-indigo-50" text="text-indigo-700" />
+              <Tile href="/vote" icon="🗳️" title="실시간 채점 투표" desc="오늘 진행되는 세션 발표자 평가하기" color="bg-teal-50" text="text-teal-700" />
+              <Tile href="/vote/results" icon="🏆" title="채점 결과 & 랭킹" desc="나의 평가 점수와 명예의 전당 확인" color="bg-amber-50" text="text-amber-700" />
+              <Tile href="/archive" icon="📚" title="통합 아카이브" desc="교육/특별세션 및 과거 학기 자료 열람" color="bg-purple-50" text="text-purple-700" />
+              <Tile href="/archive/absence" icon="📝" title="사유서 제출" desc="결석, 지각, 조퇴 사전 보고서 제출" color="bg-rose-50" text="text-rose-700" />
+              <Tile href="/rules" icon="📜" title="회칙 열람" desc="인사이트그라피 전체 규정 및 벌금 확인" color="bg-slate-50" text="text-slate-700" />
+              <Tile href="#" icon="⚙️" title="마이페이지" desc="(준비 중) 내 정보 및 누적 벌금 내역 확인" color="bg-slate-50" text="text-slate-400" />
             </div>
-
           </div>
         </div>
 
-        {/* ★ 2. 하단 메인 메뉴 카드 그리드 (수정 없음) */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-16">
-          <button onClick={() => router.push('/dashboard')} className="group bg-white p-8 rounded-[2.5rem] shadow-sm border-2 border-transparent hover:border-blue-500 hover:shadow-xl transition-all text-left">
-            <div className="text-4xl mb-4 group-hover:scale-110 transition-transform duration-300">📂</div>
-            <h2 className="text-xl font-black text-slate-800 mb-2">주차별 자료실</h2>
-            <p className="text-xs text-slate-400 font-medium leading-relaxed">매주 올라오는 학회 자료를 확인하고 개인 과제를 업로드하세요.</p>
-          </button>
-          <button onClick={() => router.push('/archive')} className="group bg-white p-8 rounded-[2.5rem] shadow-sm border-2 border-transparent hover:border-blue-600 hover:shadow-xl transition-all text-left">
-            <div className="text-4xl mb-4 group-hover:scale-110 transition-transform duration-300">🏛️</div>
-            <h2 className="text-xl font-black text-slate-800 mb-2">IG Archive</h2>
-            <p className="text-xs text-slate-400 font-medium leading-relaxed">디자인 소스, 기획서 양식 등 학회의 소중한 공용 자산을 관리하세요.</p>
-          </button>
-          <button onClick={() => router.push('/vote')} className="group bg-white p-8 rounded-[2.5rem] shadow-sm border-2 border-transparent hover:border-yellow-500 hover:shadow-xl transition-all text-left">
-            <div className="text-4xl mb-4 group-hover:scale-110 transition-transform duration-300">🗳️</div>
-            <h2 className="text-xl font-black text-slate-800 mb-2">실시간 발표 채점</h2>
-            <p className="text-xs text-slate-400 font-medium leading-relaxed">오늘 진행되는 프레젠테이션을 실시간으로 평가하고 투표하세요.</p>
-          </button>
-        </div>
+        {/* ======================================================== */}
+        {/* 🌟 우측: 미니 캘린더 및 일정 리스트 패널 */}
+        {/* ======================================================== */}
+        <aside className="w-full xl:w-[350px] bg-white rounded-[2.5rem] shadow-lg border border-slate-100 overflow-hidden flex flex-col min-h-[600px]">
+          {/* 🌟 캘린더 상단 컬러를 로고의 어두운 컬러 톤으로 매칭 */}
+          <div className="bg-slate-900 text-white p-6 pb-4">
+            <div className="flex justify-between items-center mb-6">
+              <button onClick={() => setCurrentDate(new Date(year, month - 1, 1))} className="text-slate-400 hover:text-white font-black text-lg">←</button>
+              <h3 className="text-lg font-black tracking-widest uppercase text-teal-400">{year}. {String(month + 1).padStart(2, '0')}</h3>
+              <button onClick={() => setCurrentDate(new Date(year, month + 1, 1))} className="text-slate-400 hover:text-white font-black text-lg">→</button>
+            </div>
+            <div className="grid grid-cols-7 text-center text-[9px] font-black text-slate-500 uppercase mb-2">
+              <div className="text-red-400">Su</div><div>Mo</div><div>Tu</div><div>We</div><div>Th</div><div>Fr</div><div className="text-teal-400">Sa</div>
+            </div>
+            <div className="grid grid-cols-7 gap-1">
+              {blanks.map(b => <div key={`blank-${b}`} className="aspect-square" />)}
+              {days.map(d => {
+                const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+                const hasEvent = schedules.some(s => s.full_date === dateStr);
+                const isToday = new Date().toISOString().split('T')[0] === dateStr;
+                return (
+                  <div key={d} className={`aspect-square rounded-lg flex items-center justify-center text-xs font-black ${isToday ? 'bg-teal-500 text-white shadow-md' : hasEvent ? 'bg-slate-800 text-teal-300' : 'text-slate-300 hover:bg-slate-800/50'}`}>
+                    {d}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
 
-        {/* 로그아웃 구역 */}
-        <div className="flex flex-col items-center gap-4">
-          <button onClick={handleLogout} className="text-slate-300 hover:text-red-500 font-bold text-xs transition-colors underline underline-offset-4">
-            안전하게 로그아웃하기 🚪
-          </button>
-          <p className="text-[9px] text-slate-200 font-black tracking-[0.3em] uppercase">InsightGraphy System</p>
-        </div>
+          <div className="p-6 flex-1 overflow-y-auto no-scrollbar bg-white">
+            <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 pb-2 mb-4">이달의 상세 일정</h4>
+            <div className="space-y-4">
+              {eventsThisMonth.length > 0 ? eventsThisMonth.sort((a,b) => new Date(a.full_date) - new Date(b.full_date)).map((ev, idx) => (
+                <div key={idx} className="flex gap-3 items-start bg-slate-50 p-3 rounded-xl border border-slate-100">
+                  <div className={`w-2 h-2 mt-1.5 rounded-full shrink-0 ${ev.is_public ? 'bg-teal-500' : 'bg-amber-400 shadow-sm'}`} />
+                  <div>
+                    <p className="text-[10px] font-black text-slate-400 mb-0.5">{ev.date_display} {ev.is_allday ? '(종일)' : `(${ev.start_time})`}</p>
+                    <p className={`text-xs font-black text-slate-800 ${ev.is_break ? 'line-through opacity-50' : ''}`}>{ev.title}</p>
+                    {ev.description && <p className="text-[10px] text-slate-500 font-bold mt-1 line-clamp-2 leading-tight">{ev.description}</p>}
+                  </div>
+                </div>
+              )) : <p className="text-xs font-bold text-slate-400 text-center py-4">일정이 없습니다.</p>}
+            </div>
+          </div>
+        </aside>
+
       </div>
     </div>
+  )
+}
+
+function Tile({ href, icon, title, desc, color, text }) {
+  return (
+    <Link href={href} className={`${color} p-5 rounded-3xl border border-white/50 hover:border-black/5 shadow-sm hover:shadow-lg transition-all group flex flex-col gap-2`}>
+      <span className="text-2xl group-hover:scale-110 transition-transform origin-left">{icon}</span>
+      <div>
+        <h3 className={`text-sm font-black ${text} tracking-tight`}>{title}</h3>
+        <p className="text-[9px] font-bold text-slate-500 mt-1 leading-snug line-clamp-2">{desc}</p>
+      </div>
+    </Link>
   )
 }

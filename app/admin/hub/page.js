@@ -127,7 +127,7 @@ export default function AdminHubPage() {
               color="purple" 
             />
             <AdminCard 
-              href="/admin/hub/attendance" 
+              href="/admin/hub/fine" 
               icon="📊" 
               title="Attendance & Fines" 
               desc="학회원 세션 참석률 트래킹 및 회칙 기반 벌금 자동 계산·관리" 
