@@ -12,11 +12,11 @@ export default function VideoRoom() {
   const [selectedWeek, setSelectedWeek] = useState(1) 
   const [targetWeek, setTargetWeek] = useState(1) 
   
-  const [presentationsInWeek, setPresentationsInWeek] = useState([]) 
-  const [selectedPId, setSelectedPId] = useState('') 
+  // 🌟 영상 주인(활동기수) 목록 상태
+  const [activeMembers, setActiveMembers] = useState([]) 
+  const [selectedOwnerName, setSelectedOwnerName] = useState('') 
   const [ytUrl, setYtUrl] = useState('') 
 
-  // 🌟 시스템 설정 상태 (totalWeeks 추가)
   const [currentSemester, setCurrentSemester] = useState('2026-1')
   const [totalWeeks, setTotalWeeks] = useState(12) 
   const [deadlines, setDeadlines] = useState({})
@@ -33,7 +33,6 @@ export default function VideoRoom() {
     deliveryPlus: '', deliveryMinus: ''
   })
 
-  // 🌟 하드코딩 제거: totalWeeks를 기반으로 0부터 배열 생성
   const weeks = Array.from({ length: totalWeeks + 1 }, (_, i) => i)
 
   useEffect(() => {
@@ -45,16 +44,17 @@ export default function VideoRoom() {
     checkUser()
   }, [])
 
+  // 🌟 유저 확인되면 바로 멤버(활동기수) 목록 불러오기
   useEffect(() => {
-    if (user) fetchPresentations();
-  }, [targetWeek, user])
+    if (user) fetchMembers();
+  }, [user])
 
   const fetchSystemData = async () => {
     const { data: configData } = await supabase.from('pr_config').select('*')
     if (configData) {
       const sem = configData.find(c => c.key === 'current_semester')?.value
       const topics = configData.find(c => c.key === 'week_topics')?.value
-      const wks = configData.find(c => c.key === 'total_weeks')?.value // 🌟 총 주차 수 불러오기
+      const wks = configData.find(c => c.key === 'total_weeks')?.value
 
       if (sem) setCurrentSemester(sem)
       if (topics) setWeekTopics(JSON.parse(topics))
@@ -78,9 +78,26 @@ export default function VideoRoom() {
     return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
   }
 
-  const fetchPresentations = async () => {
-    const { data } = await supabase.from('presentations').select('*').eq('week', targetWeek).order('presenter_name');
-    if (data) setPresentationsInWeek(data);
+  // 🌟 members 테이블에서 활동기수 목록 가져오기 로직 🌟
+  const fetchMembers = async () => {
+    // 1. members 테이블에서 가져오기
+    const { data: memberData } = await supabase.from('members').select('*').order('name');
+    
+    if (memberData && memberData.length > 0) {
+      // 활동기수를 판별하는 컬럼명이 다를 수 있으니 유연하게 필터링
+      const active = memberData.filter(m => 
+        m.status === '활동' || 
+        m.status === '활동기수' || 
+        m.role === '활동기수' || 
+        m.is_active === true
+      );
+      // 필터링 결과가 없으면 전체를 보여줌
+      setActiveMembers(active.length > 0 ? active : memberData);
+    } else {
+      // 2. 만약 members 테이블이 아예 비어있다면 profiles 테이블에서 전체 회원 가져오기 (안전장치)
+      const { data: profData } = await supabase.from('profiles').select('*').order('name');
+      if (profData) setActiveMembers(profData);
+    }
   }
 
   const fetchFiles = async () => {
@@ -89,13 +106,11 @@ export default function VideoRoom() {
   }
 
   const handleRegisterYoutube = async () => {
-    const pInfo = presentationsInWeek.find(p => String(p.id) === String(selectedPId));
-    if (!pInfo || !ytUrl.trim()) return alert("영상 주인과 유튜브 링크를 모두 입력해줘! 🔗")
+    if (!selectedOwnerName || !ytUrl.trim()) return alert("영상 주인과 유튜브 링크를 모두 입력해줘! 🔗")
     
     setUploading(true)
-    // 🌟 0주차 OT/자유주제 자동 완성 처리
     const currentTopic = weekTopics[targetWeek] || (targetWeek === 0 ? 'OT 및 자유 주제' : '자유 주제')
-    const autoTitle = `${pInfo.week}W (${currentTopic}) ${pInfo.presenter_name}`;
+    const autoTitle = `${targetWeek}W (${currentTopic}) ${selectedOwnerName} 발표영상`;
     
     const deadline = deadlines[targetWeek]?.video
     const isLate = deadline ? new Date() > new Date(deadline) : false
@@ -106,12 +121,12 @@ export default function VideoRoom() {
       week: targetWeek,
       file_category: 'video', 
       is_archive: false, 
-      uploader: pInfo.presenter_name, 
+      uploader: selectedOwnerName, // 🌟 선택한 사람 이름 저장
       storage_path: 'youtube',
       semester: currentSemester,
       is_late: isLate
     }])
-    if (!error) { alert('영상 등록 완료! 🎬'); setYtUrl(''); setSelectedPId(''); fetchFiles(); }
+    if (!error) { alert('영상 등록 완료! 🎬'); setYtUrl(''); setSelectedOwnerName(''); fetchFiles(); }
     else { alert("등록 실패: " + error.message); }
     setUploading(false)
   }
@@ -155,7 +170,6 @@ export default function VideoRoom() {
     } else { alert("오류: " + error.message); }
   }
 
-  // 🌟 읽음 확인 토글 
   const handleToggleRead = async (commentId, currentDetails) => {
     const isCurrentlyRead = currentDetails?.is_read || false;
     const now = new Date().toISOString();
@@ -243,10 +257,15 @@ export default function VideoRoom() {
             <div className="flex flex-col gap-2 w-full xl:w-[400px]">
               <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2">YouTube 영상 등록</span>
               <div className="flex flex-col sm:flex-row gap-2">
-                <select value={selectedPId} onChange={(e) => setSelectedPId(e.target.value)} className="w-full sm:w-1/3 p-3 rounded-xl bg-white text-slate-700 font-bold text-xs outline-none border-2 border-slate-200 cursor-pointer focus:border-red-400 transition-all">
+                
+                {/* 🌟 수정된 영상 주인 선택 창 */}
+                <select value={selectedOwnerName} onChange={(e) => setSelectedOwnerName(e.target.value)} className="w-full sm:w-1/3 p-3 rounded-xl bg-white text-slate-700 font-bold text-xs outline-none border-2 border-slate-200 cursor-pointer focus:border-red-400 transition-all">
                   <option value="">누구 영상이야?</option>
-                  {presentationsInWeek.map(p => <option key={p.id} value={p.id}>{p.presenter_name}</option>)}
+                  {activeMembers.map((m, idx) => (
+                    <option key={m.id || idx} value={m.name}>{m.name}</option>
+                  ))}
                 </select>
+                
                 <input 
                   type="text" 
                   value={ytUrl}
@@ -302,6 +321,7 @@ export default function VideoRoom() {
         </div>
       </div>
 
+      {/* 🌟 통합 뷰어 모달 (유튜브 플레이어 + 댓글) */}
       {viewingFile && (
         <div className="fixed inset-0 bg-slate-900/95 backdrop-blur-md flex items-center justify-center p-4 z-[100]">
           <div className="bg-slate-100 w-full max-w-[1800px] h-[95vh] rounded-[3rem] flex flex-col lg:flex-row overflow-hidden relative shadow-2xl border border-slate-200">
@@ -349,7 +369,6 @@ export default function VideoRoom() {
               <div className="flex-1 overflow-y-auto p-6 space-y-8 bg-slate-50">
                 <div className="space-y-4">
                   
-                  {/* 🌟 1. 공식 평가단 삭제 / 셀프 & 조원 피드백만 남김 */}
                   <h4 className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">● 셀프 피드백 (발표자 본인)</h4>
                   {selfFeedbacks.map((c) => {
                     const isLate = deadlines[viewingFile.week]?.video_comment && new Date(c.created_at) > new Date(deadlines[viewingFile.week].video_comment);
