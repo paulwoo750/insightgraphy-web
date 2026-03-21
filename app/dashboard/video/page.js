@@ -16,7 +16,9 @@ export default function VideoRoom() {
   const [selectedPId, setSelectedPId] = useState('') 
   const [ytUrl, setYtUrl] = useState('') 
 
+  // 🌟 시스템 설정 상태 (totalWeeks 추가)
   const [currentSemester, setCurrentSemester] = useState('2026-1')
+  const [totalWeeks, setTotalWeeks] = useState(12) 
   const [deadlines, setDeadlines] = useState({})
   const [weekTopics, setWeekTopics] = useState({}) 
 
@@ -31,7 +33,8 @@ export default function VideoRoom() {
     deliveryPlus: '', deliveryMinus: ''
   })
 
-  const weeks = Array.from({ length: 12 }, (_, i) => i + 1);
+  // 🌟 하드코딩 제거: totalWeeks를 기반으로 0부터 배열 생성
+  const weeks = Array.from({ length: totalWeeks + 1 }, (_, i) => i)
 
   useEffect(() => {
     const checkUser = async () => {
@@ -51,8 +54,11 @@ export default function VideoRoom() {
     if (configData) {
       const sem = configData.find(c => c.key === 'current_semester')?.value
       const topics = configData.find(c => c.key === 'week_topics')?.value
+      const wks = configData.find(c => c.key === 'total_weeks')?.value // 🌟 총 주차 수 불러오기
+
       if (sem) setCurrentSemester(sem)
       if (topics) setWeekTopics(JSON.parse(topics))
+      if (wks) setTotalWeeks(Number(wks))
     }
     
     const { data: dlData } = await supabase.from('pr_deadlines').select('*')
@@ -87,7 +93,8 @@ export default function VideoRoom() {
     if (!pInfo || !ytUrl.trim()) return alert("영상 주인과 유튜브 링크를 모두 입력해줘! 🔗")
     
     setUploading(true)
-    const currentTopic = weekTopics[targetWeek] || '자유 주제'
+    // 🌟 0주차 OT/자유주제 자동 완성 처리
+    const currentTopic = weekTopics[targetWeek] || (targetWeek === 0 ? 'OT 및 자유 주제' : '자유 주제')
     const autoTitle = `${pInfo.week}W (${currentTopic}) ${pInfo.presenter_name}`;
     
     const deadline = deadlines[targetWeek]?.video
@@ -206,7 +213,7 @@ export default function VideoRoom() {
                 {weeks.map(w => <option key={w} value={w}>{w}주차</option>)}
               </select>
               <h2 className="text-2xl font-black text-slate-800 tracking-tight">
-                {weekTopics[targetWeek] || '자유 주제'}
+                {weekTopics[targetWeek] || (targetWeek === 0 ? 'OT 및 자유 주제' : '자유 주제')}
               </h2>
             </div>
             

@@ -14,6 +14,7 @@ export default function ProposalRoom() {
   
   // 시스템 설정 상태
   const [currentSemester, setCurrentSemester] = useState('2026-1')
+  const [totalWeeks, setTotalWeeks] = useState(12) // 🌟 전체 주차 수 상태 추가!
   const [deadlines, setDeadlines] = useState({})
   const [weekTopics, setWeekTopics] = useState({}) 
 
@@ -28,7 +29,8 @@ export default function ProposalRoom() {
   const [editingCommentId, setEditingCommentId] = useState(null)
   const [editCommentText, setEditCommentText] = useState('')
 
-  const weeks = Array.from({ length: 12 }, (_, i) => i + 1);
+  // 🌟 하드코딩 삭제! 관리자가 설정한 totalWeeks를 기준으로 0부터 배열 생성
+  const weeks = Array.from({ length: totalWeeks + 1 }, (_, i) => i)
 
   useEffect(() => {
     const checkUser = async () => {
@@ -44,8 +46,11 @@ export default function ProposalRoom() {
     if (configData) {
       const sem = configData.find(c => c.key === 'current_semester')?.value
       const topics = configData.find(c => c.key === 'week_topics')?.value
+      const wks = configData.find(c => c.key === 'total_weeks')?.value // 🌟 DB에서 전체 주차 불러오기
+
       if (sem) setCurrentSemester(sem)
       if (topics) setWeekTopics(JSON.parse(topics))
+      if (wks) setTotalWeeks(Number(wks)) // 🌟 상태 업데이트
     }
     
     const { data: dlData } = await supabase.from('pr_deadlines').select('*').in('category', ['proposal', 'proposal_comment'])
@@ -123,7 +128,7 @@ export default function ProposalRoom() {
     setUploading(true)
     
     const fileExt = file.name.split('.').pop()
-    const currentTopic = weekTopics[targetWeek] || '자유 주제' 
+    const currentTopic = weekTopics[targetWeek] || (targetWeek === 0 ? 'OT 및 자유 주제' : '자유 주제') 
     const autoFileName = `${targetWeek}W (${currentTopic}) ${user.user_metadata.name || '익명'}.${fileExt}`
     const storagePath = `dashboard/proposal/${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`
     
@@ -164,7 +169,6 @@ export default function ProposalRoom() {
           </div>
         </div>
 
-        {/* 🌟 명시적인 업로드 패널 */}
         <div className="bg-white p-8 rounded-[2rem] shadow-xl border border-blue-100 flex flex-col md:flex-row justify-between items-center gap-6 mt-8">
           
           <div className="flex flex-col gap-3 w-full md:w-auto">
@@ -173,7 +177,7 @@ export default function ProposalRoom() {
                 {weeks.map(w => <option key={w} value={w}>{w}주차</option>)}
               </select>
               <h2 className="text-2xl font-black text-slate-800 tracking-tight">
-                {weekTopics[targetWeek] || '자유 주제'}
+                {weekTopics[targetWeek] || (targetWeek === 0 ? 'OT 및 자유 주제' : '자유 주제')}
               </h2>
             </div>
             
