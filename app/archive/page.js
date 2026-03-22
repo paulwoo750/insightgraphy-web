@@ -17,14 +17,14 @@ export default function ArchiveUserPage() {
   const [eduSection, setEduSection] = useState('Insight')
   const [specialFolder, setSpecialFolder] = useState(null)
   
-  // 🌟 링크 복붙 업로드 폼 상태
+  // 🌟 링크 복붙 업로드 폼 및 타입 상태 (드라이브 vs 유튜브)
   const [uploadForm, setUploadForm] = useState({ title: '', url: '', description: '' })
+  const [uploadType, setUploadType] = useState('drive') // 'drive' or 'youtube'
   const [isUploading, setIsUploading] = useState(false)
 
-  // 🌟 공용 구글 드라이브 폴더 링크 (필요 시 용도별로 다르게 분리 가능)
+  // 🌟 공용 구글 드라이브 폴더 링크 
   const GOOGLE_DRIVE_FOLDER_URL = "https://drive.google.com/drive/folders/1N4BAGYNk5PQEdPxQP5zUAuPehWQkr5bV?usp=drive_link"
 
-  // 🌟 사유서 탭 삭제 및 양식 자료실 추가
   const tabs = [
     { id: 'past', icon: '📦', label: '과거 자료실' },
     { id: 'edu', icon: '📘', label: '교육자료실' },
@@ -66,13 +66,17 @@ export default function ArchiveUserPage() {
   }
 
   // ==========================================
-  // 🌟 기능: 교육 & 특별세션 & 양식 구글드라이브 링크 제출
+  // 🌟 기능: 교육 & 특별세션 링크 제출 (구글드라이브 OR 유튜브)
   // ==========================================
-  const handleUploadDrive = async (category, folderName) => {
-    if (!uploadForm.title.trim() || !uploadForm.url.trim()) return alert("제목과 구글 드라이브 링크를 모두 입력해 줘! 🔗")
+  const handleUploadResource = async (category, folderName) => {
+    if (!uploadForm.title.trim() || !uploadForm.url.trim()) return alert("제목과 링크를 모두 입력해 줘! 🔗")
     
-    if (!uploadForm.url.includes("drive.google.com") && !uploadForm.url.includes("docs.google.com")) {
+    // 업로드 타입에 따른 링크 유효성 검사
+    if (uploadType === 'drive' && !uploadForm.url.includes("drive.google.com") && !uploadForm.url.includes("docs.google.com")) {
       return alert("올바른 구글 드라이브 링크가 아닌 것 같아! 다시 확인해 봐! 🤔")
+    }
+    if (uploadType === 'youtube' && !uploadForm.url.includes("youtube.com") && !uploadForm.url.includes("youtu.be")) {
+      return alert("올바른 유튜브 링크가 아닌 것 같아! 다시 확인해 봐! 🤔")
     }
 
     setIsUploading(true)
@@ -88,7 +92,7 @@ export default function ArchiveUserPage() {
     }])
 
     if (!error) {
-      alert("자료 링크 등록 완료! 🎉")
+      alert("자료 등록 완료! 🎉")
       setUploadForm({ title: '', url: '', description: '' })
       fetchData(user.user_metadata.name)
     } else {
@@ -97,9 +101,35 @@ export default function ArchiveUserPage() {
     setIsUploading(false)
   }
 
-  // ==========================================
-  // 🌟 기능: 특별세션 폴더 생성
-  // ==========================================
+  // 양식 자료실 전용 업로드 (무조건 드라이브)
+  const handleUploadTemplate = async () => {
+    if (!uploadForm.title.trim() || !uploadForm.url.trim()) return alert("제목과 링크를 모두 입력해 줘! 🔗")
+    if (!uploadForm.url.includes("drive.google.com") && !uploadForm.url.includes("docs.google.com")) {
+      return alert("올바른 구글 드라이브 링크가 아닌 것 같아! 다시 확인해 봐! 🤔")
+    }
+
+    setIsUploading(true)
+
+    const { error } = await supabase.from('archive_files').insert([{
+      uploader_name: user.user_metadata.name,
+      category: 'template',
+      file_type: 'common',
+      semester: '상시', 
+      title: uploadForm.title,
+      file_url: uploadForm.url.trim(),
+      description: uploadForm.description
+    }])
+
+    if (!error) {
+      alert("양식 등록 완료! 🎉")
+      setUploadForm({ title: '', url: '', description: '' })
+      fetchData(user.user_metadata.name)
+    } else {
+      alert("등록 실패: " + error.message)
+    }
+    setIsUploading(false)
+  }
+
   const handleCreateFolder = async () => {
     const folderName = prompt("새로운 특별세션 폴더 이름을 입력해 줘! 📁")
     if (!folderName) return
@@ -118,6 +148,9 @@ export default function ArchiveUserPage() {
       fetchData(user.user_metadata.name)
     }
   }
+
+  // URL을 판별해서 유튜브인지 확인하는 헬퍼 함수
+  const isYoutubeLink = (url) => url && (url.includes('youtube.com') || url.includes('youtu.be'))
 
   if (loading) return <div className="min-h-screen flex items-center justify-center font-black text-slate-400">아카이브 여는 중... 🔄</div>
 
@@ -158,9 +191,8 @@ export default function ArchiveUserPage() {
 
               <hr className="my-4 border-slate-100" />
               
-              {/* 🌟 사유서 페이지로 바로 이동하는 버튼 추가 */}
               <Link 
-                href="archive/absence" 
+                href="/archive/absence" 
                 className="flex items-center justify-between gap-4 p-4 rounded-2xl text-left transition-all font-black text-sm bg-rose-50 text-rose-600 hover:bg-rose-100 hover:scale-[1.02] shadow-sm border border-rose-100"
               >
                 <div className="flex items-center gap-3">
@@ -242,13 +274,13 @@ export default function ArchiveUserPage() {
             )}
 
             {/* ======================================= */}
-            {/* 2. 교육자료실 */}
+            {/* 🌟 2. 교육자료실 (영상 업로드 토글 포함) */}
             {/* ======================================= */}
             {activeTab === 'edu' && (
               <div className="animate-in fade-in duration-500 space-y-8">
                 <div className="border-b border-slate-100 pb-6">
                   <h2 className="text-3xl font-black text-slate-800 mb-2">📘 교육자료실</h2>
-                  <p className="text-xs font-bold text-slate-400">자료를 공용 드라이브에 올린 후, 공유 링크를 제출하세요.</p>
+                  <p className="text-xs font-bold text-slate-400">자료 형태에 따라 파일을 드라이브에 올리거나 유튜브 링크를 직접 제출하세요.</p>
                 </div>
 
                 <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">
@@ -259,52 +291,85 @@ export default function ArchiveUserPage() {
                   ))}
                 </div>
 
-                {/* 🌟 2-Step 업로드 UI */}
-                <div className="flex flex-col xl:flex-row gap-4 bg-slate-50 p-4 rounded-3xl border border-slate-100">
-                  <a href={GOOGLE_DRIVE_FOLDER_URL} target="_blank" rel="noopener noreferrer" className="flex-shrink-0 bg-white border-2 border-slate-200 hover:border-blue-300 text-slate-700 px-6 py-6 rounded-2xl font-black text-xs transition-all shadow-sm flex flex-col items-center justify-center gap-2 group">
-                    <span className="text-2xl group-hover:scale-110 transition-transform">📁</span>
-                    Step 1. 드라이브에 올리기
-                  </a>
-                  
-                  <div className="flex flex-col gap-2 w-full">
-                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2 mt-2">Step 2. 정보 및 링크 제출</span>
-                    <div className="flex flex-col sm:flex-row gap-2">
-                      <input type="text" placeholder="자료 제목" value={uploadForm.title} onChange={e => setUploadForm({...uploadForm, title: e.target.value})} className="w-full sm:w-1/3 border-2 border-slate-200 p-3 rounded-xl font-bold text-sm outline-none focus:border-blue-500 bg-white" />
-                      <input type="text" placeholder="복사한 구글 드라이브 링크 붙여넣기!" value={uploadForm.url} onChange={e => setUploadForm({...uploadForm, url: e.target.value})} className="w-full sm:w-2/3 border-2 border-slate-200 p-3 rounded-xl font-bold text-sm outline-none focus:border-blue-500 bg-white text-blue-600" />
-                    </div>
-                    <div className="flex flex-col sm:flex-row gap-2 mt-1">
-                      <input type="text" placeholder="간단한 설명 (선택)" value={uploadForm.description} onChange={e => setUploadForm({...uploadForm, description: e.target.value})} className="flex-1 border-2 border-slate-200 p-3 rounded-xl font-bold text-sm outline-none focus:border-blue-500 bg-white" />
-                      <button onClick={() => handleUploadDrive('edu', eduSection)} disabled={isUploading} className="bg-blue-600 text-white px-8 py-3 rounded-xl font-black text-sm hover:bg-blue-700 transition-all shrink-0 active:scale-95">
-                        {isUploading ? '제출 중...' : '제출하기 🚀'}
-                      </button>
+                {/* 🌟 자료 형태 선택 토글 */}
+                <div className="bg-slate-50 p-4 rounded-3xl border border-slate-100">
+                  <div className="flex gap-2 mb-4 border-b border-slate-200 pb-4">
+                    <button onClick={() => setUploadType('drive')} className={`flex-1 py-2.5 rounded-xl text-xs font-black transition-all ${uploadType === 'drive' ? 'bg-blue-600 text-white shadow-md' : 'bg-white border border-slate-200 text-slate-500 hover:bg-slate-100'}`}>
+                      📁 일반 파일 (구글 드라이브)
+                    </button>
+                    <button onClick={() => setUploadType('youtube')} className={`flex-1 py-2.5 rounded-xl text-xs font-black transition-all ${uploadType === 'youtube' ? 'bg-red-600 text-white shadow-md' : 'bg-white border border-slate-200 text-slate-500 hover:bg-slate-100'}`}>
+                      🎬 영상 (유튜브 링크)
+                    </button>
+                  </div>
+
+                  <div className="flex flex-col xl:flex-row gap-4">
+                    {/* Step 1 영역 분기 처리 */}
+                    {uploadType === 'drive' ? (
+                      <a href={GOOGLE_DRIVE_FOLDER_URL} target="_blank" rel="noopener noreferrer" className="flex-shrink-0 bg-white border-2 border-slate-200 hover:border-blue-300 text-slate-700 px-6 py-6 rounded-2xl font-black text-xs transition-all shadow-sm flex flex-col items-center justify-center gap-2 group">
+                        <span className="text-2xl group-hover:scale-110 transition-transform">📁</span>
+                        Step 1. 드라이브에 파일 올리기
+                      </a>
+                    ) : (
+                      <div className="flex-shrink-0 bg-white border-2 border-slate-200 text-slate-700 px-6 py-6 rounded-2xl font-black text-xs shadow-sm flex flex-col items-center justify-center gap-2">
+                        <span className="text-2xl">📹</span>
+                        Step 1. 유튜브에 영상 올리기
+                      </div>
+                    )}
+                    
+                    <div className="flex flex-col gap-2 w-full">
+                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2 mt-2">Step 2. 정보 및 링크 제출</span>
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        <input type="text" placeholder="자료 제목" value={uploadForm.title} onChange={e => setUploadForm({...uploadForm, title: e.target.value})} className={`w-full sm:w-1/3 border-2 border-slate-200 p-3 rounded-xl font-bold text-sm outline-none bg-white ${uploadType === 'youtube' ? 'focus:border-red-400' : 'focus:border-blue-500'}`} />
+                        <input type="text" placeholder={uploadType === 'drive' ? "복사한 구글 드라이브 링크 붙여넣기!" : "유튜브 공유 링크 붙여넣기!"} value={uploadForm.url} onChange={e => setUploadForm({...uploadForm, url: e.target.value})} className={`w-full sm:w-2/3 border-2 border-slate-200 p-3 rounded-xl font-bold text-sm outline-none bg-white ${uploadType === 'youtube' ? 'text-red-600 focus:border-red-400' : 'text-blue-600 focus:border-blue-500'}`} />
+                      </div>
+                      <div className="flex flex-col sm:flex-row gap-2 mt-1">
+                        <input type="text" placeholder="간단한 설명 (선택)" value={uploadForm.description} onChange={e => setUploadForm({...uploadForm, description: e.target.value})} className={`flex-1 border-2 border-slate-200 p-3 rounded-xl font-bold text-sm outline-none bg-white ${uploadType === 'youtube' ? 'focus:border-red-400' : 'focus:border-blue-500'}`} />
+                        <button onClick={() => handleUploadResource('edu', eduSection)} disabled={isUploading} className={`${uploadType === 'youtube' ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'} text-white px-8 py-3 rounded-xl font-black text-sm transition-all shrink-0 active:scale-95`}>
+                          {isUploading ? '제출 중...' : '제출하기 🚀'}
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {archiveFiles.filter(f => f.category === 'edu' && f.file_type === eduSection).map(f => (
-                    <a key={f.id} href={f.file_url} target="_blank" rel="noopener noreferrer" className="bg-white p-6 rounded-3xl border border-slate-200 hover:border-blue-400 hover:shadow-lg transition-all group block">
-                      <div className="flex justify-between items-start mb-3">
-                        <span className="bg-blue-100 text-blue-600 text-[9px] font-black px-2 py-1 rounded uppercase">공유자: {f.uploader_name}</span>
-                        <span className="text-[10px] font-black text-blue-400 opacity-0 group-hover:opacity-100 transition-all">자료 열기 ↗</span>
-                      </div>
-                      <h4 className="font-black text-slate-800 text-lg mb-1">{f.title}</h4>
-                      {f.description && <p className="text-xs text-slate-400 font-bold line-clamp-2">{f.description}</p>}
-                    </a>
-                  ))}
+                  {archiveFiles.filter(f => f.category === 'edu' && f.file_type === eduSection).map(f => {
+                    const isYt = isYoutubeLink(f.file_url)
+                    return (
+                      <a key={f.id} href={f.file_url} target="_blank" rel="noopener noreferrer" className={`bg-white p-6 rounded-3xl border border-slate-200 hover:shadow-lg transition-all group block ${isYt ? 'hover:border-red-400' : 'hover:border-blue-400'}`}>
+                        <div className="flex justify-between items-start mb-3">
+                          <div className="flex items-center gap-2">
+                            {isYt ? (
+                              <span className="bg-red-100 text-red-600 text-[9px] font-black px-2 py-1 rounded uppercase tracking-widest">YOUTUBE</span>
+                            ) : (
+                              <span className="bg-blue-100 text-blue-600 text-[9px] font-black px-2 py-1 rounded uppercase tracking-widest">DRIVE</span>
+                            )}
+                            <span className="text-[10px] font-bold text-slate-400">공유자: {f.uploader_name}</span>
+                          </div>
+                          <span className={`text-[10px] font-black opacity-0 group-hover:opacity-100 transition-all ${isYt ? 'text-red-500' : 'text-blue-500'}`}>
+                            {isYt ? '영상 시청 ↗' : '자료 열기 ↗'}
+                          </span>
+                        </div>
+                        <h4 className="font-black text-slate-800 text-lg mb-1 flex items-center gap-2">
+                          <span>{isYt ? '🎬' : '📁'}</span> {f.title}
+                        </h4>
+                        {f.description && <p className="text-xs text-slate-400 font-bold line-clamp-2 mt-2">{f.description}</p>}
+                      </a>
+                    )
+                  })}
                 </div>
               </div>
             )}
 
             {/* ======================================= */}
-            {/* 3. 특별세션 자료실 */}
+            {/* 🌟 3. 특별세션 자료실 (영상 업로드 토글 포함) */}
             {/* ======================================= */}
             {activeTab === 'special' && (
               <div className="animate-in fade-in duration-500 space-y-8">
                 <div className="flex justify-between items-end border-b border-slate-100 pb-6">
                   <div>
                     <h2 className="text-3xl font-black text-slate-800 mb-2">🌟 특별세션 자료실</h2>
-                    <p className="text-xs font-bold text-slate-400">특강/행사 폴더를 만들고 공유 링크를 제출하세요.</p>
+                    <p className="text-xs font-bold text-slate-400">특강/행사 폴더를 만들고 공유 링크나 유튜브 영상을 등록하세요.</p>
                   </div>
                   <button onClick={handleCreateFolder} className="bg-slate-900 text-white px-5 py-2.5 rounded-xl font-black text-xs uppercase hover:bg-blue-600 transition-colors shadow-md">
                     + 새 세션 폴더 만들기
@@ -324,34 +389,61 @@ export default function ArchiveUserPage() {
                     <button onClick={() => setSpecialFolder(null)} className="text-[10px] font-black text-slate-400 hover:text-yellow-600 uppercase tracking-widest mb-2 block">← 폴더 목록으로 돌아가기</button>
                     <h3 className="text-2xl font-black text-yellow-600 flex items-center gap-3"><span className="text-3xl">📂</span> {specialFolder}</h3>
                     
-                    <div className="flex flex-col xl:flex-row gap-4 bg-yellow-50 p-4 rounded-3xl border border-yellow-100">
-                      <a href={GOOGLE_DRIVE_FOLDER_URL} target="_blank" rel="noopener noreferrer" className="flex-shrink-0 bg-white border-2 border-yellow-200 hover:border-yellow-400 text-slate-700 px-6 py-6 rounded-2xl font-black text-xs transition-all shadow-sm flex flex-col items-center justify-center gap-2 group">
-                        <span className="text-2xl group-hover:scale-110 transition-transform">📂</span>
-                        Step 1. 드라이브 업로드
-                      </a>
-                      
-                      <div className="flex flex-col gap-2 w-full">
-                        <span className="text-[10px] font-black text-yellow-600 uppercase tracking-widest pl-2 mt-2">Step 2. 정보 및 링크 제출</span>
-                        <div className="flex flex-col sm:flex-row gap-2">
-                          <input type="text" placeholder="자료 제목" value={uploadForm.title} onChange={e => setUploadForm({...uploadForm, title: e.target.value})} className="w-full sm:w-1/3 border-2 border-white p-3 rounded-xl font-bold text-sm outline-none focus:border-yellow-400 bg-white" />
-                          <input type="text" placeholder="복사한 구글 드라이브 링크 붙여넣기!" value={uploadForm.url} onChange={e => setUploadForm({...uploadForm, url: e.target.value})} className="w-full sm:w-2/3 border-2 border-white p-3 rounded-xl font-bold text-sm outline-none focus:border-yellow-400 bg-white text-yellow-700" />
-                        </div>
-                        <button onClick={() => handleUploadDrive('special', specialFolder)} disabled={isUploading} className="w-full py-3 bg-yellow-500 text-white rounded-xl font-black text-sm hover:bg-yellow-600 transition-all shrink-0 active:scale-95 mt-1">
-                          {isUploading ? '제출 중...' : '제출하기 🚀'}
+                    {/* 🌟 자료 형태 선택 토글 */}
+                    <div className="bg-yellow-50 p-4 rounded-3xl border border-yellow-100">
+                      <div className="flex gap-2 mb-4 border-b border-yellow-200/50 pb-4">
+                        <button onClick={() => setUploadType('drive')} className={`flex-1 py-2.5 rounded-xl text-xs font-black transition-all ${uploadType === 'drive' ? 'bg-yellow-500 text-white shadow-md' : 'bg-white border border-yellow-200 text-yellow-600 hover:bg-yellow-100'}`}>
+                          📁 일반 파일 (구글 드라이브)
                         </button>
+                        <button onClick={() => setUploadType('youtube')} className={`flex-1 py-2.5 rounded-xl text-xs font-black transition-all ${uploadType === 'youtube' ? 'bg-red-500 text-white shadow-md' : 'bg-white border border-yellow-200 text-yellow-600 hover:bg-yellow-100'}`}>
+                          🎬 영상 (유튜브 링크)
+                        </button>
+                      </div>
+
+                      <div className="flex flex-col xl:flex-row gap-4">
+                        {uploadType === 'drive' ? (
+                          <a href={GOOGLE_DRIVE_FOLDER_URL} target="_blank" rel="noopener noreferrer" className="flex-shrink-0 bg-white border-2 border-yellow-200 hover:border-yellow-400 text-slate-700 px-6 py-6 rounded-2xl font-black text-xs transition-all shadow-sm flex flex-col items-center justify-center gap-2 group">
+                            <span className="text-2xl group-hover:scale-110 transition-transform">📁</span>
+                            Step 1. 드라이브 업로드
+                          </a>
+                        ) : (
+                          <div className="flex-shrink-0 bg-white border-2 border-yellow-200 text-slate-700 px-6 py-6 rounded-2xl font-black text-xs shadow-sm flex flex-col items-center justify-center gap-2">
+                            <span className="text-2xl">📹</span>
+                            Step 1. 유튜브 업로드
+                          </div>
+                        )}
+                        
+                        <div className="flex flex-col gap-2 w-full">
+                          <span className="text-[10px] font-black text-yellow-700 uppercase tracking-widest pl-2 mt-2">Step 2. 정보 및 링크 제출</span>
+                          <div className="flex flex-col sm:flex-row gap-2">
+                            <input type="text" placeholder="자료 제목" value={uploadForm.title} onChange={e => setUploadForm({...uploadForm, title: e.target.value})} className={`w-full sm:w-1/3 border-2 border-white p-3 rounded-xl font-bold text-sm outline-none bg-white ${uploadType === 'youtube' ? 'focus:border-red-400' : 'focus:border-yellow-400'}`} />
+                            <input type="text" placeholder={uploadType === 'drive' ? "복사한 구글 드라이브 링크 붙여넣기!" : "유튜브 공유 링크 붙여넣기!"} value={uploadForm.url} onChange={e => setUploadForm({...uploadForm, url: e.target.value})} className={`w-full sm:w-2/3 border-2 border-white p-3 rounded-xl font-bold text-sm outline-none bg-white ${uploadType === 'youtube' ? 'text-red-600 focus:border-red-400' : 'text-yellow-700 focus:border-yellow-400'}`} />
+                          </div>
+                          <button onClick={() => handleUploadResource('special', specialFolder)} disabled={isUploading} className={`w-full py-3 text-white rounded-xl font-black text-sm transition-all shrink-0 active:scale-95 mt-1 ${uploadType === 'youtube' ? 'bg-red-500 hover:bg-red-600' : 'bg-yellow-500 hover:bg-yellow-600'}`}>
+                            {isUploading ? '제출 중...' : '제출하기 🚀'}
+                          </button>
+                        </div>
                       </div>
                     </div>
 
                     <div className="space-y-3">
-                      {archiveFiles.filter(f => f.category === 'special' && f.file_type === specialFolder && f.title !== '--FOLDER--').map(f => (
-                        <a key={f.id} href={f.file_url} target="_blank" rel="noopener noreferrer" className="bg-white p-5 rounded-2xl border border-slate-200 hover:border-yellow-400 hover:shadow-md transition-all flex justify-between items-center group block">
-                          <div>
-                            <p className="font-black text-slate-800 text-sm group-hover:text-yellow-600 transition-colors">{f.title}</p>
-                            <p className="text-[10px] font-bold text-slate-400 mt-1">공유자: {f.uploader_name}</p>
-                          </div>
-                          <span className="text-[10px] font-black text-yellow-500 opacity-0 group-hover:opacity-100 transition-all">자료 열람 ↗</span>
-                        </a>
-                      ))}
+                      {archiveFiles.filter(f => f.category === 'special' && f.file_type === specialFolder && f.title !== '--FOLDER--').map(f => {
+                        const isYt = isYoutubeLink(f.file_url)
+                        return (
+                          <a key={f.id} href={f.file_url} target="_blank" rel="noopener noreferrer" className={`bg-white p-5 rounded-2xl border border-slate-200 hover:shadow-md transition-all flex justify-between items-center group block ${isYt ? 'hover:border-red-400' : 'hover:border-yellow-400'}`}>
+                            <div className="flex items-center gap-3">
+                              <span className="text-2xl">{isYt ? '🎬' : '📁'}</span>
+                              <div>
+                                <p className={`font-black text-sm transition-colors ${isYt ? 'group-hover:text-red-500 text-slate-800' : 'group-hover:text-yellow-600 text-slate-800'}`}>{f.title}</p>
+                                <p className="text-[10px] font-bold text-slate-400 mt-1">공유자: {f.uploader_name}</p>
+                              </div>
+                            </div>
+                            <span className={`text-[10px] font-black opacity-0 group-hover:opacity-100 transition-all ${isYt ? 'text-red-500' : 'text-yellow-500'}`}>
+                              {isYt ? '영상 시청 ↗' : '자료 열람 ↗'}
+                            </span>
+                          </a>
+                        )
+                      })}
                     </div>
                   </div>
                 )}
@@ -359,7 +451,7 @@ export default function ArchiveUserPage() {
             )}
 
             {/* ======================================= */}
-            {/* 🌟 4. 양식 자료실 (새로 추가됨) */}
+            {/* 4. 양식 자료실 */}
             {/* ======================================= */}
             {activeTab === 'template' && (
               <div className="animate-in fade-in duration-500 space-y-8">
@@ -382,7 +474,7 @@ export default function ArchiveUserPage() {
                     </div>
                     <div className="flex flex-col sm:flex-row gap-2 mt-1">
                       <input type="text" placeholder="간단한 설명 (선택)" value={uploadForm.description} onChange={e => setUploadForm({...uploadForm, description: e.target.value})} className="flex-1 border-2 border-slate-200 p-3 rounded-xl font-bold text-sm outline-none focus:border-blue-500 bg-white" />
-                      <button onClick={() => handleUploadDrive('template', 'common')} disabled={isUploading} className="bg-slate-800 text-white px-8 py-3 rounded-xl font-black text-sm hover:bg-slate-900 transition-all shrink-0 active:scale-95 shadow-md">
+                      <button onClick={handleUploadTemplate} disabled={isUploading} className="bg-slate-800 text-white px-8 py-3 rounded-xl font-black text-sm hover:bg-slate-900 transition-all shrink-0 active:scale-95 shadow-md">
                         {isUploading ? '업로드 중...' : '양식 등록하기 🚀'}
                       </button>
                     </div>
