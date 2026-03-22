@@ -6,15 +6,12 @@ import Link from 'next/link'
 export default function FineAdmin() {
   const [loading, setLoading] = useState(true)
   
-  const [absences, setAbsences] = useState([])
   const [fines, setFines] = useState([])
   const [penalties, setPenalties] = useState({})
   const [deadlines, setDeadlines] = useState([])
   
   const [scanWeek, setScanWeek] = useState(1)
   const [scannedResults, setScannedResults] = useState([])
-  const [rejectReason, setRejectReason] = useState('')
-  const [partialTask, setPartialTask] = useState(false)
 
   useEffect(() => {
     fetchData()
@@ -29,9 +26,6 @@ export default function FineAdmin() {
     const { data: dlData } = await supabase.from('pr_deadlines').select('*')
     if (dlData) setDeadlines(dlData)
 
-    const { data: absData } = await supabase.from('absence_forms').select('*').eq('status', '대기').order('created_at', { ascending: false })
-    if (absData) setAbsences(absData)
-
     const { data: fineData } = await supabase.from('pr_fines').select('*').eq('is_paid', false).order('week', { ascending: true })
     if (fineData) setFines(fineData)
 
@@ -39,43 +33,7 @@ export default function FineAdmin() {
   }
 
   // ==========================================
-  // 📝 1. 사유서 결재
-  // ==========================================
-  const handleAbsenceApproval = async (id, userName, statusType) => {
-    let finalStatus = ''
-    let comment = ''
-    let fineAmount = 0
-
-    if (statusType === 'full') {
-      finalStatus = '완전인정'
-      comment = '사유 타당. 벌금 면제'
-    } else if (statusType === 'partial') {
-      finalStatus = `부분인정 (대체과제: ${partialTask ? 'O' : 'X'})`
-      comment = '부분 인정 (기본 벌금 부과)'
-      fineAmount = penalties.sessionLeaveUnder1h || 8000 
-    } else if (statusType === 'reject') {
-      if (!rejectReason.trim()) return alert('반려 사유 필수 입력!')
-      finalStatus = '불허'
-      comment = rejectReason
-      fineAmount = penalties.absenceLate || 20000 
-    }
-
-    await supabase.from('absence_forms').update({ status: finalStatus, admin_comment: comment }).eq('id', id)
-
-    // 🌟 에러 체크 보강!
-    if (fineAmount > 0) {
-      const { error } = await supabase.from('pr_fines').insert([{
-        user_name: userName, week: scanWeek, category: '사유서/출결 페널티', amount: fineAmount, reason: comment, is_paid: false
-      }])
-      
-      if (error) return alert("벌금 DB 등록 에러: " + error.message)
-    }
-
-    setRejectReason(''); fetchData()
-  }
-
-  // ==========================================
-  // 🧮 2. 제출 시간 기반 벌금 자동 스캐너
+  // 🧮 제출 시간 기반 벌금 자동 스캐너
   // ==========================================
   const handleRunScanner = async () => {
     const weekDeadlines = deadlines.filter(d => d.week === scanWeek)
@@ -101,9 +59,9 @@ export default function FineAdmin() {
         const diffMinutes = Math.floor((submitTime - dueTime) / 60000)
         const diffHours = Math.floor(diffMinutes / 60)
         
-        if (category === 'plan') {
-          fine = penalties.planInitial + (diffHours * penalties.planHourly)
-          if (fine > penalties.planMax) fine = penalties.planMax
+        if (category === 'proposal' || category === 'plan') { // 🌟 plan과 proposal 둘 다 커버!
+          fine = penalties.proposalInitial + (diffHours * penalties.proposalHourly)
+          if (fine > penalties.proposalMax) fine = penalties.proposalMax
           reason = `기획서 ${diffMinutes}분 지각`
         } else if (category === 'slide') {
           fine = penalties.slideInitial + (diffHours * penalties.slideHourly)
@@ -135,7 +93,7 @@ export default function FineAdmin() {
     const inserts = scannedResults.map(r => ({
       user_name: r.user,
       week: scanWeek,
-      category: r.file === 'plan' ? '기획서 지각' : r.file === 'slide' ? '슬라이드 지각' : '피드백 지각',
+      category: (r.file === 'proposal' || r.file === 'plan') ? '기획서 지각' : r.file === 'slide' ? '슬라이드 지각' : '피드백 지각',
       amount: r.fine,
       reason: r.reason,
       is_paid: false
@@ -153,7 +111,7 @@ export default function FineAdmin() {
   }
 
   // ==========================================
-  // 💸 3. 누적 정산 관리
+  // 💸 누적 정산 관리
   // ==========================================
   const handleMarkAsPaid = async (id) => {
     await supabase.from('pr_fines').update({ is_paid: true }).eq('id', id)
@@ -179,67 +137,19 @@ export default function FineAdmin() {
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans p-6 md:p-12 pb-32">
       <div className="max-w-[1400px] mx-auto space-y-12">
         
-        {/* 🌟 헤더 부분에 바뀐 경로로 연결되는 유저용 페이지 바로가기 추가! */}
         <header className="border-b border-slate-200 pb-6 flex flex-col md:flex-row md:justify-between md:items-end gap-4">
           <div>
             <Link href="/admin/hub" className="text-xs font-black text-slate-400 hover:text-blue-600 uppercase tracking-widest mb-2 block transition-colors">← Back to Hub</Link>
             <h1 className="text-4xl font-black uppercase tracking-tighter text-slate-800">
-              ⚖️ 벌금 및 사유서 관리
+              📊 Attendance & Fines
             </h1>
+            <p className="text-xs font-bold text-slate-500 mt-2">과제 제출 시간 기반 벌금 스캔 및 학회원별 누적 벌금 정산소입니다.</p>
           </div>
-          <Link href="/archive/absence" target="_blank" className="bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-800 px-5 py-2.5 rounded-xl text-xs font-black uppercase transition-colors flex items-center gap-2">
-            <span>📝</span> 유저용 사유서 페이지 확인 ↗
-          </Link>
         </header>
-
-        {/* 🌟 1. 사유서 결재함 */}
-        <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-200">
-          <h2 className="text-xl font-black text-slate-800 mb-6 border-b border-slate-100 pb-4">📝 사유서 결재 대기함</h2>
-          <div className="space-y-4">
-            {absences.length === 0 ? <p className="text-slate-400 font-bold">현재 대기 중인 사유서 없음 👏</p> : absences.map(abs => (
-              <div key={abs.id} className="bg-slate-50 p-6 rounded-2xl border border-slate-100 flex flex-col lg:flex-row justify-between gap-6">
-                <div>
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="bg-slate-800 text-white px-2 py-0.5 rounded text-[10px] font-black uppercase">{abs.type}</span>
-                    <span className="text-xs font-black text-slate-500">{abs.user_name} | {abs.target_date}</span>
-                  </div>
-                  <p className="text-sm font-bold text-slate-700 whitespace-pre-wrap">{abs.reason}</p>
-                  
-                  {abs.proof_url && (
-                    <a href={abs.proof_url} target="_blank" rel="noopener noreferrer" className="inline-block mt-3 px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-[10px] font-black hover:bg-blue-100 transition-colors border border-blue-100">
-                      🔗 첨부된 증빙자료 확인하기
-                    </a>
-                  )}
-                </div>
-                
-                <div className="flex flex-col gap-2 min-w-[300px]">
-                  <button onClick={() => handleAbsenceApproval(abs.id, abs.user_name, 'full')} className="bg-emerald-500 text-white py-2 rounded-lg font-black text-xs hover:bg-emerald-600 transition-colors">
-                    완전 인정 (벌금 면제)
-                  </button>
-                  <div className="flex gap-2">
-                    <button onClick={() => handleAbsenceApproval(abs.id, abs.user_name, 'partial')} className="flex-1 bg-blue-500 text-white py-2 rounded-lg font-black text-xs hover:bg-blue-600 transition-colors">
-                      부분 인정
-                    </button>
-                    <label className="flex items-center gap-2 text-[10px] font-black text-slate-500 bg-blue-50 px-3 rounded-lg border border-blue-100 cursor-pointer hover:bg-blue-100 transition-colors">
-                      <input type="checkbox" checked={partialTask} onChange={(e) => setPartialTask(e.target.checked)} />
-                      대체 과제
-                    </label>
-                  </div>
-                  <div className="flex gap-2">
-                    <input type="text" placeholder="반려 사유 입력..." value={rejectReason} onChange={e => setRejectReason(e.target.value)} className="flex-1 border border-slate-200 rounded-lg px-3 text-xs outline-none focus:border-red-400 bg-white" />
-                    <button onClick={() => handleAbsenceApproval(abs.id, abs.user_name, 'reject')} className="bg-red-500 text-white px-4 py-2 rounded-lg font-black text-xs hover:bg-red-600 transition-colors">
-                      불허 (반려)
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
           
-          {/* 🌟 2. 자동 정산 스캐너 */}
+          {/* 🌟 1. 자동 정산 스캐너 */}
           <div className="bg-slate-900 p-8 rounded-[2.5rem] shadow-2xl border border-slate-800">
             <div className="flex justify-between items-center mb-6 border-b border-slate-700 pb-4">
               <h2 className="text-xl font-black text-white">🧮 벌금 자동 스캐너</h2>
@@ -272,7 +182,7 @@ export default function FineAdmin() {
             )}
           </div>
 
-          {/* 🌟 3. 개인별 누적 정산 현황 */}
+          {/* 🌟 2. 개인별 누적 정산 현황 */}
           <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-200">
             <h2 className="text-xl font-black text-slate-800 mb-6 border-b border-slate-100 pb-4">💸 누적 벌금 정산소</h2>
             <div className="space-y-6 max-h-[600px] overflow-y-auto pr-2 no-scrollbar">

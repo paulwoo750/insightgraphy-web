@@ -117,8 +117,8 @@ export default function AdminHubPage() {
             </div>
           </div>
 
-          {/* 카드 크기 통일을 위해 4열 그리드 유지 후 2개 배치 */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {/* 🌟 카드 3개 배치: Rules, Fines, Absence */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             <AdminCard 
               href="/admin/hub/rules" 
               icon="📜" 
@@ -126,6 +126,16 @@ export default function AdminHubPage() {
               desc="지각·결석 벌금 및 학회원 제명 등 세부 회칙 규정 관리" 
               color="purple" 
             />
+            
+            {/* 🌟 새로 추가된 사유서 관리 카드 */}
+            <AdminCard 
+              href="/admin/hub/absence" 
+              icon="📝" 
+              title="Absence Form" 
+              desc="주차별 사유서 마감 기한 설정 및 제출된 사유서 결재 관리" 
+              color="purple" 
+            />
+
             <AdminCard 
               href="/admin/hub/fine" 
               icon="📊" 
@@ -141,7 +151,7 @@ export default function AdminHubPage() {
   )
 }
 
-// 재사용 가능한 관리자 카드 컴포넌트 (Purple 테마 추가)
+// 재사용 가능한 관리자 카드 컴포넌트
 function AdminCard({ href, icon, title, desc, color = "teal" }) {
   let hoverColor = "hover:border-[#32a4a1] hover:shadow-[#32a4a1]/10";
   let titleColor = "group-hover:text-[#32a4a1]";

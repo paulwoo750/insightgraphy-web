@@ -7,14 +7,11 @@ export default function RulesAdmin() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 
-  // 🌟 대시보드 연동 상태
+  // 🌟 대시보드 연동 상태 (보여주기용)
   const [currentSemester, setCurrentSemester] = useState('2026-1')
   const [totalWeeks, setTotalWeeks] = useState(12)
 
-  // 주차별 사유서 마감일 상태
-  const [absenceDeadlines, setAbsenceDeadlines] = useState([])
-
-  // 🌟 plan -> proposal 로 변수명 통일
+  // 🌟 벌금 규정 상태
   const [penalties, setPenalties] = useState({
     absenceLate: 20000,
     sessionLatePerMin: 200,
@@ -59,7 +56,7 @@ export default function RulesAdmin() {
       if (wksConfig) wks = Number(wksConfig.value)
       if (penConfig && penConfig.value) {
         const parsed = JSON.parse(penConfig.value)
-        // 🌟 하위 호환성 유지: 기존 plan 데이터가 있으면 proposal로 이름 교체
+        // 하위 호환성 유지: 기존 plan 데이터가 있으면 proposal로 이름 교체
         if (parsed.planInitial !== undefined) {
           parsed.proposalInitial = parsed.planInitial
           parsed.proposalHourly = parsed.planHourly
@@ -79,48 +76,12 @@ export default function RulesAdmin() {
     setCurrentSemester(sem)
     setTotalWeeks(wks)
 
-    // 🌟 사유서 마감일 불러오기 (타임존 문제 해결)
-    const { data: dlData } = await supabase.from('pr_deadlines').select('*').eq('category', 'absence')
-    const newDeadlines = Array(wks).fill('')
-    
-    if (dlData) {
-      dlData.forEach(d => {
-        if (d.week >= 1 && d.week <= wks && d.deadline_time) {
-          const date = new Date(d.deadline_time)
-          const localString = new Date(date.getTime() - (date.getTimezoneOffset() * 60000)).toISOString().slice(0, 16)
-          newDeadlines[d.week - 1] = localString
-        }
-      })
-    }
-    setAbsenceDeadlines(newDeadlines)
-
     setLoading(false)
   }
 
   const handlePenaltyChange = (key, value) => {
     const numericValue = value.replace(/[^0-9]/g, '')
     setPenalties(prev => ({ ...prev, [key]: Number(numericValue) }))
-  }
-
-  const handleDeadlineChange = (weekIndex, value) => {
-    const newDl = [...absenceDeadlines]
-    newDl[weekIndex] = value
-    setAbsenceDeadlines(newDl)
-  }
-
-  const handleResetSemester = async () => {
-    if (!confirm(`[${currentSemester}] 학기 사유서 마감일을 전부 초기화할까?\n(금액 규정은 그대로 유지돼!)`)) return
-    
-    setSaving(true)
-    const { error } = await supabase.from('pr_deadlines').delete().eq('category', 'absence')
-    
-    if (!error) {
-      setAbsenceDeadlines(Array(totalWeeks).fill(''))
-      alert('새 학기 마감일 초기화 완료! ✨')
-    } else {
-      alert('초기화 실패: ' + error.message)
-    }
-    setSaving(false)
   }
 
   const handleSave = async () => {
@@ -131,25 +92,8 @@ export default function RulesAdmin() {
       value: JSON.stringify(penalties) 
     })
 
-    await supabase.from('pr_deadlines').delete().eq('category', 'absence')
-    
-    // 🌟 저장 시 다시 ISO 표준 시간으로 변환
-    const dlInserts = absenceDeadlines
-      .map((time, idx) => ({ 
-        week: idx + 1, 
-        category: 'absence', 
-        deadline_time: time ? new Date(time).toISOString() : null 
-      }))
-      .filter(d => d.deadline_time !== null)
-
-    let dlErr = null
-    if (dlInserts.length > 0) {
-      const { error } = await supabase.from('pr_deadlines').insert(dlInserts)
-      dlErr = error
-    }
-
-    if (!configErr && !dlErr) alert('모든 규정 및 벌금 세팅 완료! 💾✨')
-    else alert('저장 중 오류 발생 ㅠㅠ')
+    if (!configErr) alert('벌금 세부 규정 저장 완료! 💾✨')
+    else alert('저장 중 오류 발생 ㅠㅠ: ' + configErr.message)
     
     setSaving(false)
   }
@@ -162,48 +106,32 @@ export default function RulesAdmin() {
         
         <header className="flex flex-col md:flex-row md:justify-between md:items-end border-b border-slate-200 pb-6 gap-4">
           <div>
-            <Link href="/admin/hub" className="text-xs font-black text-slate-400 hover:text-red-600 uppercase tracking-widest mb-2 block transition-colors">← Back to Hub</Link>
+            <Link href="/admin/hub" className="text-xs font-black text-slate-400 hover:text-purple-600 uppercase tracking-widest mb-2 block transition-colors">← Back to Hub</Link>
             <h1 className="text-4xl font-black uppercase tracking-tighter text-slate-800 flex items-center gap-3">
-              <span className="text-4xl">⚖️</span> Rules & Penalties
+              <span className="text-4xl">📜</span> Society Rules
             </h1>
-            <p className="text-xs font-bold text-slate-500 mt-2">사유서 마감일과 각 과제별 상세 지각/미제출 벌금 규정을 설정합니다.</p>
+            <p className="text-xs font-bold text-slate-500 mt-2">각 과제별 상세 지각/미제출 벌금 규정을 설정합니다.</p>
           </div>
           <div className="flex flex-col md:flex-row items-center gap-3">
-            <div className="bg-red-50 text-red-700 px-6 py-3 rounded-xl font-black text-sm uppercase shadow-sm border border-red-100">
+            <div className="bg-purple-50 text-purple-700 px-6 py-3 rounded-xl font-black text-sm uppercase shadow-sm border border-purple-100">
               현재 학기: {currentSemester} ({totalWeeks}주)
             </div>
-            <button onClick={handleSave} disabled={saving} className="bg-red-600 text-white px-8 py-3 rounded-xl font-black text-sm uppercase tracking-widest hover:bg-red-700 transition-colors shadow-lg active:scale-95">
-              {saving ? '저장 중...' : '전체 규정 저장 💾'}
+            <button onClick={handleSave} disabled={saving} className="bg-purple-600 text-white px-8 py-3 rounded-xl font-black text-sm uppercase tracking-widest hover:bg-purple-700 transition-colors shadow-lg active:scale-95">
+              {saving ? '저장 중...' : '규정 저장하기 💾'}
             </button>
           </div>
         </header>
 
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-8 items-start">
           
-          {/* 🌟 좌측: 사유서 및 세션 규정 */}
+          {/* 🌟 좌측: 세션 규정 */}
           <div className="space-y-8">
             <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-200">
               <div className="flex justify-between items-center border-b border-slate-100 pb-4 mb-6">
-                <h2 className="text-xl font-black text-slate-800 flex items-center gap-2"><span>📝</span> 사유서 & 세션 출결 규정</h2>
-                <button onClick={handleResetSemester} className="bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-700 px-4 py-2 rounded-lg text-[10px] font-black uppercase transition-all">
-                  새 학기 마감일 초기화 🔄
-                </button>
+                <h2 className="text-xl font-black text-slate-800 flex items-center gap-2"><span>🏫</span> 세션 출결 규정</h2>
               </div>
               
               <div className="space-y-6">
-                <div>
-                  <h3 className="text-xs font-black text-blue-600 uppercase tracking-widest mb-3">• 주차별 사유서 마감기한</h3>
-                  {/* 🌟 스크롤(max-h-[300px] overflow-y-auto) 제거! 전체가 펼쳐져서 보임 */}
-                  <div className="grid grid-cols-2 gap-3">
-                    {absenceDeadlines.map((dl, idx) => (
-                      <div key={idx} className="bg-slate-50 p-3 rounded-xl border border-slate-100">
-                        <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">Week {idx + 1}</label>
-                        <input type="datetime-local" value={dl} onChange={(e) => handleDeadlineChange(idx, e.target.value)} className="w-full bg-transparent font-bold text-xs outline-none text-slate-700" />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
                 <div className="bg-red-50 p-5 rounded-2xl border border-red-100">
                   <h3 className="text-xs font-black text-red-600 uppercase tracking-widest mb-3 flex justify-between">
                     <span>• 사유서 지각 (사전 공지 미준수)</span>
@@ -214,7 +142,7 @@ export default function RulesAdmin() {
                       type="text" 
                       value={penalties.absenceLate ? penalties.absenceLate.toLocaleString() : ''} 
                       onChange={(e) => handlePenaltyChange('absenceLate', e.target.value)} 
-                      className="flex-1 p-3 rounded-xl font-black text-lg text-red-600 outline-none focus:ring-2 ring-red-200 bg-white text-right" 
+                      className="flex-1 p-3 rounded-xl font-black text-lg text-red-600 outline-none focus:ring-2 ring-red-200 bg-white text-right shadow-sm" 
                       placeholder="0"
                     />
                     <span className="font-black text-slate-400">원</span>
@@ -288,7 +216,7 @@ export default function RulesAdmin() {
 
 function PenaltyInput({ title, val, onChange, isDark = false, highlight = false }) {
   return (
-    <div className={`${isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-100'} p-4 rounded-2xl border flex flex-col gap-2`}>
+    <div className={`${isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-100'} p-4 rounded-2xl border flex flex-col gap-2 shadow-sm`}>
       <label className={`text-[10px] font-black uppercase tracking-widest ${isDark ? 'text-slate-400' : 'text-slate-500'} ${highlight ? 'text-red-400' : ''}`}>
         • {title}
       </label>
