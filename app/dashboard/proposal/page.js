@@ -14,9 +14,12 @@ export default function ProposalRoom() {
   
   // 시스템 설정 상태
   const [currentSemester, setCurrentSemester] = useState('2026-1')
-  const [totalWeeks, setTotalWeeks] = useState(12) // 🌟 전체 주차 수 상태 추가!
+  const [totalWeeks, setTotalWeeks] = useState(12) 
   const [deadlines, setDeadlines] = useState({})
   const [weekTopics, setWeekTopics] = useState({}) 
+  
+  // 관리자가 설정한 주차별 조 편성 데이터 저장용
+  const [weeklySetup, setWeeklySetup] = useState({})
 
   // 파일 정보 수정 상태
   const [editItem, setEditItem] = useState(null)
@@ -29,7 +32,6 @@ export default function ProposalRoom() {
   const [editingCommentId, setEditingCommentId] = useState(null)
   const [editCommentText, setEditCommentText] = useState('')
 
-  // 🌟 하드코딩 삭제! 관리자가 설정한 totalWeeks를 기준으로 0부터 배열 생성
   const weeks = Array.from({ length: totalWeeks + 1 }, (_, i) => i)
 
   useEffect(() => {
@@ -46,11 +48,13 @@ export default function ProposalRoom() {
     if (configData) {
       const sem = configData.find(c => c.key === 'current_semester')?.value
       const topics = configData.find(c => c.key === 'week_topics')?.value
-      const wks = configData.find(c => c.key === 'total_weeks')?.value // 🌟 DB에서 전체 주차 불러오기
+      const wks = configData.find(c => c.key === 'total_weeks')?.value 
+      const setupStr = configData.find(c => c.key === 'weekly_setup')?.value 
 
       if (sem) setCurrentSemester(sem)
       if (topics) setWeekTopics(JSON.parse(topics))
-      if (wks) setTotalWeeks(Number(wks)) // 🌟 상태 업데이트
+      if (wks) setTotalWeeks(Number(wks)) 
+      if (setupStr) setWeeklySetup(JSON.parse(setupStr))
     }
     
     const { data: dlData } = await supabase.from('pr_deadlines').select('*').in('category', ['proposal', 'proposal_comment'])
@@ -129,9 +133,18 @@ export default function ProposalRoom() {
     
     const fileExt = file.name.split('.').pop()
     const currentTopic = weekTopics[targetWeek] || (targetWeek === 0 ? 'OT 및 자유 주제' : '자유 주제') 
-    const autoFileName = `${targetWeek}W (${currentTopic}) ${user.user_metadata.name || '익명'}.${fileExt}`
+    const uploaderName = user.user_metadata.name || '익명'
+    const autoFileName = `${targetWeek}W (${currentTopic}) ${uploaderName}.${fileExt}`
     const storagePath = `dashboard/proposal/${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`
     
+    let myGroup = null
+    if (weeklySetup[targetWeek] && weeklySetup[targetWeek].members) {
+      const g = weeklySetup[targetWeek].members[uploaderName]
+      if (g && g !== '미정' && g !== '결석') {
+        myGroup = Number(g) 
+      }
+    }
+
     const { error: uploadError } = await supabase.storage.from('ig-files').upload(storagePath, file)
     if (uploadError) { alert('업로드 실패: ' + uploadError.message); setUploading(false); return; }
     
@@ -146,10 +159,11 @@ export default function ProposalRoom() {
       week: targetWeek,
       file_category: 'proposal', 
       is_archive: false,
-      uploader: user.user_metadata.name || '익명', 
+      uploader: uploaderName, 
       storage_path: storagePath,
       semester: currentSemester,
-      is_late: isLate
+      is_late: isLate,
+      group_id: myGroup 
     }])
     
     alert('기획서 제출 완료! 🎉'); 
@@ -159,9 +173,45 @@ export default function ProposalRoom() {
 
   if (!user) return <div className="p-8 text-center font-bold italic">데이터 불러오는 중... 🔄</div>
 
+  const filesThisWeek = files.filter(f => f.week === selectedWeek)
+  const groupedFiles = {}
+  
+  let maxGroup = 0
+  if (weeklySetup[selectedWeek] && weeklySetup[selectedWeek].groupCount) {
+    maxGroup = Number(weeklySetup[selectedWeek].groupCount)
+  }
+
+  const getDynamicGroup = (file) => {
+    if (weeklySetup[selectedWeek] && weeklySetup[selectedWeek].members && weeklySetup[selectedWeek].members[file.uploader]) {
+      const g = weeklySetup[selectedWeek].members[file.uploader]
+      if (g !== '미정' && g !== '결석') return Number(g)
+    }
+    if (file.group_id) return file.group_id
+    return null
+  }
+  
+  filesThisWeek.forEach(f => {
+    const dGroup = getDynamicGroup(f)
+    if (dGroup && dGroup > maxGroup) maxGroup = dGroup
+  })
+
+  for (let i = 1; i <= maxGroup; i++) {
+    groupedFiles[i] = []
+  }
+  groupedFiles['미분류'] = [] 
+
+  filesThisWeek.forEach(f => {
+    const dGroup = getDynamicGroup(f)
+    if (dGroup && groupedFiles[dGroup]) {
+      groupedFiles[dGroup].push(f)
+    } else {
+      groupedFiles['미분류'].push(f)
+    }
+  })
+
   return (
-    <div className="p-8 bg-white min-h-screen text-slate-900 font-sans pb-32">
-      <header className="max-w-6xl mx-auto mb-12">
+    <div className="p-8 bg-slate-50 min-h-screen text-slate-900 font-sans pb-32">
+      <header className="max-w-[1550px] mx-auto mb-12">
         <div className="flex justify-between items-end">
           <div>
             <Link href="/dashboard" className="inline-block mb-4 px-4 py-2 bg-slate-100 text-slate-600 rounded-xl text-xs font-black hover:bg-slate-200 transition-all">← 대시보드 메인으로 가기</Link>
@@ -170,10 +220,9 @@ export default function ProposalRoom() {
         </div>
 
         <div className="bg-white p-8 rounded-[2rem] shadow-xl border border-blue-100 flex flex-col md:flex-row justify-between items-center gap-6 mt-8">
-          
           <div className="flex flex-col gap-3 w-full md:w-auto">
             <div className="flex items-center gap-4">
-              <select value={targetWeek} onChange={(e) => setTargetWeek(Number(e.target.value))} className="p-2 px-4 rounded-xl bg-blue-50 text-blue-900 font-black text-lg outline-none cursor-pointer">
+              <select value={targetWeek} onChange={(e) => setTargetWeek(Number(e.target.value))} className="p-2 px-4 rounded-xl bg-blue-50 text-blue-900 font-black text-lg outline-none cursor-pointer border border-blue-100 shadow-sm">
                 {weeks.map(w => <option key={w} value={w}>{w}주차</option>)}
               </select>
               <h2 className="text-2xl font-black text-slate-800 tracking-tight">
@@ -200,46 +249,80 @@ export default function ProposalRoom() {
               {uploading ? '업로드 중...' : '기획서 업로드하기'}
             </label>
           </div>
-
         </div>
       </header>
 
-      <div className="max-w-6xl mx-auto">
+      <div className="max-w-[1550px] mx-auto">
         <div className="flex gap-2 mb-12 overflow-x-auto pb-4 no-scrollbar">
-          {weeks.map(w => (<button key={w} onClick={() => setSelectedWeek(w)} className={`px-6 py-3 rounded-2xl text-xs font-black transition-all flex-shrink-0 ${selectedWeek === w ? 'bg-blue-900 text-white shadow-xl scale-110' : 'bg-white border border-slate-200 text-slate-400 hover:border-blue-300'}`}>W{w}</button>))}
+          {weeks.map(w => (
+            <button 
+              key={w} 
+              onClick={() => setSelectedWeek(w)} 
+              className={`px-6 py-3 rounded-2xl text-xs font-black transition-all flex-shrink-0 ${selectedWeek === w ? 'bg-blue-900 text-white shadow-xl scale-110' : 'bg-white border border-slate-200 text-slate-400 hover:border-blue-300'}`}
+            >
+              W{w}
+            </button>
+          ))}
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {files.filter(f => f.week === selectedWeek).map(file => (
-            <div key={file.id} className="bg-white p-8 rounded-[3rem] border-2 border-slate-100 hover:border-blue-200 hover:shadow-2xl transition-all group cursor-pointer relative" onClick={() => { setViewingFile(file); fetchComments(file.id); }}>
+        {filesThisWeek.length === 0 ? (
+          <div className="text-center py-24 text-slate-300 font-bold border-4 border-dashed border-slate-200 bg-white rounded-[3rem]">
+            아직 업로드된 기획서가 없어! 첫 번째로 올려볼까? 👀
+          </div>
+        ) : (
+          /* 🌟 가운데 정렬을 위해 w-full과 w-max mx-auto를 조합한 컨테이너 도입 */
+          <div className="w-full overflow-x-auto pb-8 no-scrollbar">
+            <div className="flex gap-6 items-start w-max mx-auto">
               
-              {file.is_late && (
-                <span className="absolute -top-3 -right-3 bg-red-500 text-white text-[10px] font-black px-3 py-1.5 rounded-xl shadow-lg z-10 animate-bounce">
-                  LATE
-                </span>
+              {Array.from({ length: maxGroup }, (_, i) => i + 1).map(gId => {
+                const groupList = groupedFiles[gId]
+                const isGroupSetup = weeklySetup[selectedWeek] && weeklySetup[selectedWeek].groupCount >= gId;
+                if (groupList.length === 0 && !isGroupSetup) return null 
+                
+                return (
+                  <div key={gId} className="flex-shrink-0 w-[320px] flex flex-col gap-4">
+                    <h3 className="text-sm font-black text-blue-600 bg-blue-100 px-4 py-2 rounded-xl w-fit shadow-sm">Group {gId}</h3>
+                    <div className="space-y-4">
+                      {groupList.length === 0 ? (
+                        <div className="bg-white/50 border border-dashed border-slate-300 p-6 rounded-[2rem] text-center text-xs font-bold text-slate-400">
+                          이 조에 제출된 기획서가 없습니다.
+                        </div>
+                      ) : groupList.map(file => (
+                        <ProposalCard 
+                          key={file.id} 
+                          file={file} 
+                          onOpen={() => { setViewingFile(file); fetchComments(file.id); }}
+                          onEdit={(e) => { e.stopPropagation(); setEditItem(file); setNewTitle(file.file_name); }}
+                          onDelete={(e) => handleDeleteFile(e, file.id, file.storage_path)}
+                          formatDate={formatDate}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )
+              })}
+
+              {groupedFiles['미분류'].length > 0 && (
+                <div className="flex-shrink-0 w-[320px] flex flex-col gap-4 opacity-80 hover:opacity-100 transition-opacity">
+                  <h3 className="text-sm font-black text-slate-500 bg-slate-200 px-4 py-2 rounded-xl w-fit shadow-sm">미분류 / 개별 제출</h3>
+                  <div className="space-y-4">
+                    {groupedFiles['미분류'].map(file => (
+                      <ProposalCard 
+                        key={file.id} 
+                        file={file} 
+                        onOpen={() => { setViewingFile(file); fetchComments(file.id); }}
+                        onEdit={(e) => { e.stopPropagation(); setEditItem(file); setNewTitle(file.file_name); }}
+                        onDelete={(e) => handleDeleteFile(e, file.id, file.storage_path)}
+                        formatDate={formatDate}
+                      />
+                    ))}
+                  </div>
+                </div>
               )}
 
-              <div className="flex justify-between items-start mb-6">
-                <span className="bg-slate-100 text-blue-600 text-[10px] px-3 py-1 rounded-full font-black uppercase">{file.file_name.split('.').pop()}</span>
-                <div className="flex gap-3">
-                  <button onClick={(e) => { e.stopPropagation(); setEditItem(file); setNewTitle(file.file_name); }} className="text-[10px] font-black text-slate-300 hover:text-blue-600">수정</button>
-                  <button onClick={(e) => handleDeleteFile(e, file.id, file.storage_path)} className="text-[10px] font-black text-slate-300 hover:text-red-500">삭제</button>
-                </div>
-              </div>
-              <h3 className="text-lg font-black text-slate-800 mb-6 break-all line-clamp-2">{file.file_name}</h3>
-              <div className="flex justify-between items-center pt-6 border-t border-slate-100">
-                <div className="flex flex-col gap-1">
-                  <span className="text-xs font-bold text-slate-400">👤 {file.uploader}</span>
-                  <span className="text-[9px] font-black text-slate-300">{formatDate(file.created_at)}</span>
-                </div>
-                <span className="text-[10px] font-black text-blue-600">리뷰 남기기 →</span>
-              </div>
             </div>
-          ))}
-          {files.filter(f => f.week === selectedWeek).length === 0 && (
-            <div className="col-span-full text-center py-24 text-slate-300 font-bold border-4 border-dashed border-slate-100 rounded-[3rem]">아직 업로드된 기획서가 없어! 첫 번째로 올려볼까? 👀</div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
       {/* 통합 뷰어 모달 (PDF + 댓글) */}
@@ -317,7 +400,7 @@ export default function ProposalRoom() {
 
       {/* 파일 이름 수정 모달 */}
       {editItem && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-6 z-[110]">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-6 z-[110]">
           <div className="bg-white p-10 rounded-[3rem] w-full max-w-sm shadow-2xl">
             <h2 className="font-black mb-6 text-xl text-slate-800">파일명 수정 ✏️</h2>
             <input type="text" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} className="w-full border-2 border-slate-200 p-4 rounded-2xl mb-6 font-bold outline-none focus:border-blue-500" />
@@ -328,6 +411,32 @@ export default function ProposalRoom() {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+function ProposalCard({ file, onOpen, onEdit, onDelete, formatDate }) {
+  return (
+    <div className="bg-white p-6 rounded-3xl border border-slate-200 hover:border-blue-300 hover:shadow-xl transition-all group cursor-pointer relative" onClick={onOpen}>
+      {file.is_late && (
+        <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[9px] font-black px-2 py-1 rounded-lg shadow-sm">LATE</span>
+      )}
+      <div className="flex justify-between items-start mb-4">
+        <span className="bg-slate-100 text-blue-600 text-[9px] px-2 py-1 rounded-full font-black uppercase">
+          {file.file_name.split('.').pop()}
+        </span>
+        <div className="flex gap-2">
+          <button onClick={onEdit} className="text-[10px] font-black text-slate-300 hover:text-blue-600">수정</button>
+          <button onClick={onDelete} className="text-[10px] font-black text-slate-300 hover:text-red-500">삭제</button>
+        </div>
+      </div>
+      <h3 className="text-base font-black text-slate-800 mb-4 break-all line-clamp-2 leading-snug">{file.file_name}</h3>
+      <div className="flex justify-between items-center pt-4 border-t border-slate-100">
+        <div className="flex flex-col gap-0.5">
+          <span className="text-[11px] font-black text-slate-500">👤 {file.uploader}</span>
+          <span className="text-[9px] font-bold text-slate-300">{formatDate(file.created_at)}</span>
+        </div>
+      </div>
     </div>
   )
 }

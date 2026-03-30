@@ -12,16 +12,21 @@ export default function VideoRoom() {
   const [selectedWeek, setSelectedWeek] = useState(1) 
   const [targetWeek, setTargetWeek] = useState(1) 
   
-  // 🌟 영상 주인(활동기수) 목록 상태
+  // 영상 주인(활동기수) 목록 상태
   const [activeMembers, setActiveMembers] = useState([]) 
   const [selectedOwnerName, setSelectedOwnerName] = useState('') 
   const [ytUrl, setYtUrl] = useState('') 
 
+  // 시스템 설정 상태
   const [currentSemester, setCurrentSemester] = useState('2026-1')
   const [totalWeeks, setTotalWeeks] = useState(12) 
   const [deadlines, setDeadlines] = useState({})
   const [weekTopics, setWeekTopics] = useState({}) 
+  
+  // 🌟 관리자가 설정한 주차별 조 편성 데이터 저장용
+  const [weeklySetup, setWeeklySetup] = useState({})
 
+  // 통합 뷰어 상태
   const [viewingFile, setViewingFile] = useState(null)
   const [draftFeedback, setDraftFeedback] = useState(null) 
   
@@ -44,7 +49,6 @@ export default function VideoRoom() {
     checkUser()
   }, [])
 
-  // 🌟 유저 확인되면 바로 멤버(활동기수) 목록 불러오기
   useEffect(() => {
     if (user) fetchMembers();
   }, [user])
@@ -55,10 +59,12 @@ export default function VideoRoom() {
       const sem = configData.find(c => c.key === 'current_semester')?.value
       const topics = configData.find(c => c.key === 'week_topics')?.value
       const wks = configData.find(c => c.key === 'total_weeks')?.value
+      const setupStr = configData.find(c => c.key === 'weekly_setup')?.value // 🌟 조 편성 세팅 불러오기
 
       if (sem) setCurrentSemester(sem)
       if (topics) setWeekTopics(JSON.parse(topics))
       if (wks) setTotalWeeks(Number(wks))
+      if (setupStr) setWeeklySetup(JSON.parse(setupStr))
     }
     
     const { data: dlData } = await supabase.from('pr_deadlines').select('*')
@@ -78,23 +84,14 @@ export default function VideoRoom() {
     return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
   }
 
-  // 🌟 members 테이블에서 활동기수 목록 가져오기 로직 🌟
   const fetchMembers = async () => {
-    // 1. members 테이블에서 가져오기
     const { data: memberData } = await supabase.from('members').select('*').order('name');
-    
     if (memberData && memberData.length > 0) {
-      // 활동기수를 판별하는 컬럼명이 다를 수 있으니 유연하게 필터링
       const active = memberData.filter(m => 
-        m.status === '활동' || 
-        m.status === '활동기수' || 
-        m.role === '활동기수' || 
-        m.is_active === true
+        m.status === '활동' || m.status === '활동기수' || m.role === '활동기수' || m.is_active === true
       );
-      // 필터링 결과가 없으면 전체를 보여줌
       setActiveMembers(active.length > 0 ? active : memberData);
     } else {
-      // 2. 만약 members 테이블이 아예 비어있다면 profiles 테이블에서 전체 회원 가져오기 (안전장치)
       const { data: profData } = await supabase.from('profiles').select('*').order('name');
       if (profData) setActiveMembers(profData);
     }
@@ -112,6 +109,15 @@ export default function VideoRoom() {
     const currentTopic = weekTopics[targetWeek] || (targetWeek === 0 ? 'OT 및 자유 주제' : '자유 주제')
     const autoTitle = `${targetWeek}W (${currentTopic}) ${selectedOwnerName} 발표영상`;
     
+    // 🌟 선택된 영상 주인의 소속 조(Group) 확인
+    let myGroup = null
+    if (weeklySetup[targetWeek] && weeklySetup[targetWeek].members) {
+      const g = weeklySetup[targetWeek].members[selectedOwnerName]
+      if (g && g !== '미정' && g !== '결석') {
+        myGroup = Number(g) 
+      }
+    }
+
     const deadline = deadlines[targetWeek]?.video
     const isLate = deadline ? new Date() > new Date(deadline) : false
 
@@ -121,10 +127,11 @@ export default function VideoRoom() {
       week: targetWeek,
       file_category: 'video', 
       is_archive: false, 
-      uploader: selectedOwnerName, // 🌟 선택한 사람 이름 저장
+      uploader: selectedOwnerName, 
       storage_path: 'youtube',
       semester: currentSemester,
-      is_late: isLate
+      is_late: isLate,
+      group_id: myGroup // 🌟 소속된 조(Group) ID 함께 저장!
     }])
     if (!error) { alert('영상 등록 완료! 🎬'); setYtUrl(''); setSelectedOwnerName(''); fetchFiles(); }
     else { alert("등록 실패: " + error.message); }
@@ -210,9 +217,49 @@ export default function VideoRoom() {
 
   const getQualitativeDeadline = (weekNum) => deadlines[weekNum]?.vote_feedback || deadlines[weekNum]?.feedback;
 
+  // ========================================================
+  // 🌟 실시간 조(Group) 분류 및 칸반 렌더링 로직
+  // ========================================================
+  const filesThisWeek = files.filter(f => f.week === selectedWeek)
+  const groupedFiles = {}
+  
+  let maxGroup = 0
+  if (weeklySetup[selectedWeek] && weeklySetup[selectedWeek].groupCount) {
+    maxGroup = Number(weeklySetup[selectedWeek].groupCount)
+  }
+
+  const getDynamicGroup = (file) => {
+    if (weeklySetup[selectedWeek] && weeklySetup[selectedWeek].members && weeklySetup[selectedWeek].members[file.uploader]) {
+      const g = weeklySetup[selectedWeek].members[file.uploader]
+      if (g !== '미정' && g !== '결석') return Number(g)
+    }
+    if (file.group_id) return file.group_id
+    return null
+  }
+  
+  filesThisWeek.forEach(f => {
+    const dGroup = getDynamicGroup(f)
+    if (dGroup && dGroup > maxGroup) maxGroup = dGroup
+  })
+
+  for (let i = 1; i <= maxGroup; i++) {
+    groupedFiles[i] = []
+  }
+  groupedFiles['미분류'] = [] 
+
+  filesThisWeek.forEach(f => {
+    const dGroup = getDynamicGroup(f)
+    if (dGroup && groupedFiles[dGroup]) {
+      groupedFiles[dGroup].push(f)
+    } else {
+      groupedFiles['미분류'].push(f)
+    }
+  })
+
   return (
     <div className="p-8 bg-slate-50 min-h-screen text-slate-900 font-sans pb-32">
-      <header className="max-w-6xl mx-auto mb-12">
+      {/* 🌟 전체 컨테이너 너비 확장: 1550px */}
+      <header className="max-w-[1550px] mx-auto mb-12">
         <div className="flex justify-between items-end">
           <div>
             <Link href="/dashboard" className="inline-block mb-4 px-4 py-2 bg-slate-200 text-slate-600 rounded-xl text-xs font-black hover:bg-slate-300 transition-all">← 대시보드 메인으로 가기</Link>
@@ -257,8 +304,6 @@ export default function VideoRoom() {
             <div className="flex flex-col gap-2 w-full xl:w-[400px]">
               <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2">YouTube 영상 등록</span>
               <div className="flex flex-col sm:flex-row gap-2">
-                
-                {/* 🌟 수정된 영상 주인 선택 창 */}
                 <select value={selectedOwnerName} onChange={(e) => setSelectedOwnerName(e.target.value)} className="w-full sm:w-1/3 p-3 rounded-xl bg-white text-slate-700 font-bold text-xs outline-none border-2 border-slate-200 cursor-pointer focus:border-red-400 transition-all">
                   <option value="">누구 영상이야?</option>
                   {activeMembers.map((m, idx) => (
@@ -286,42 +331,79 @@ export default function VideoRoom() {
         </div>
       </header>
 
-      <div className="max-w-6xl mx-auto">
+      {/* 🌟 전체 컨테이너 너비 확장: 1550px */}
+      <div className="max-w-[1550px] mx-auto">
         <div className="flex gap-2 mb-12 overflow-x-auto pb-4 no-scrollbar">
-          {weeks.map(w => (<button key={w} onClick={() => setSelectedWeek(w)} className={`px-6 py-3 rounded-2xl text-xs font-black transition-all flex-shrink-0 ${selectedWeek === w ? 'bg-red-900 text-white shadow-xl scale-110' : 'bg-white border border-slate-200 text-slate-400 hover:border-red-300'}`}>W{w}</button>))}
+          {weeks.map(w => (
+            <button 
+              key={w} 
+              onClick={() => setSelectedWeek(w)} 
+              className={`px-6 py-3 rounded-2xl text-xs font-black transition-all flex-shrink-0 ${selectedWeek === w ? 'bg-red-900 text-white shadow-xl scale-110' : 'bg-white border border-slate-200 text-slate-400 hover:border-red-300'}`}
+            >
+              W{w}
+            </button>
+          ))}
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {files.filter(f => f.week === selectedWeek).map(file => (
-            <div key={file.id} className="bg-white p-8 rounded-[3rem] border-2 border-slate-100 hover:border-red-200 hover:shadow-2xl transition-all group cursor-pointer relative" onClick={() => handleOpenVideo(file)}>
+        {/* 🌟 조별 세로 기둥(Kanban) 뷰어 적용 */}
+        {filesThisWeek.length === 0 ? (
+          <div className="text-center py-24 text-slate-300 font-bold border-4 border-dashed border-slate-200 bg-white rounded-[3rem]">
+            아직 등록된 영상이 없어! 첫 번째로 올려볼까? 👀
+          </div>
+        ) : (
+          /* 가운데 정렬을 위해 w-full과 w-max mx-auto 조합 */
+          <div className="w-full overflow-x-auto pb-8 no-scrollbar">
+            <div className="flex gap-6 items-start w-max mx-auto">
               
-              {file.is_late && (
-                <span className="absolute -top-3 -right-3 bg-red-500 text-white text-[10px] font-black px-3 py-1.5 rounded-xl shadow-lg z-10 animate-bounce">
-                  LATE
-                </span>
+              {Array.from({ length: maxGroup }, (_, i) => i + 1).map(gId => {
+                const groupList = groupedFiles[gId]
+                const isGroupSetup = weeklySetup[selectedWeek] && weeklySetup[selectedWeek].groupCount >= gId;
+                if (groupList.length === 0 && !isGroupSetup) return null 
+                
+                return (
+                  <div key={gId} className="flex-shrink-0 w-[320px] flex flex-col gap-4">
+                    <h3 className="text-sm font-black text-red-600 bg-red-100 px-4 py-2 rounded-xl w-fit shadow-sm">Group {gId}</h3>
+                    <div className="space-y-4">
+                      {groupList.length === 0 ? (
+                        <div className="bg-white/50 border border-dashed border-slate-300 p-6 rounded-[2rem] text-center text-xs font-bold text-slate-400">
+                          이 조에 등록된 영상이 없습니다.
+                        </div>
+                      ) : groupList.map(file => (
+                        <VideoCard 
+                          key={file.id} 
+                          file={file} 
+                          onOpen={() => handleOpenVideo(file)}
+                          onDelete={(e) => handleDeleteFile(e, file.id)}
+                          formatDate={formatDate}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )
+              })}
+
+              {groupedFiles['미분류'].length > 0 && (
+                <div className="flex-shrink-0 w-[320px] flex flex-col gap-4 opacity-80 hover:opacity-100 transition-opacity">
+                  <h3 className="text-sm font-black text-slate-500 bg-slate-200 px-4 py-2 rounded-xl w-fit shadow-sm">미분류 / 개별 등록</h3>
+                  <div className="space-y-4">
+                    {groupedFiles['미분류'].map(file => (
+                      <VideoCard 
+                        key={file.id} 
+                        file={file} 
+                        onOpen={() => handleOpenVideo(file)}
+                        onDelete={(e) => handleDeleteFile(e, file.id)}
+                        formatDate={formatDate}
+                      />
+                    ))}
+                  </div>
+                </div>
               )}
 
-              <div className="flex justify-between items-start mb-6">
-                <span className="bg-red-50 text-red-600 text-[10px] px-3 py-1 rounded-full font-black uppercase tracking-wider">YOUTUBE</span>
-                <button onClick={(e) => handleDeleteFile(e, file.id)} className="text-[10px] font-black text-slate-300 hover:text-red-500">삭제</button>
-              </div>
-              <h3 className="text-lg font-black text-slate-800 mb-6 break-all line-clamp-2 leading-tight">{file.file_name}</h3>
-              <div className="flex justify-between items-center pt-6 border-t border-slate-100">
-                <div className="flex flex-col gap-1">
-                  <span className="text-xs font-bold text-slate-400">👤 {file.uploader}</span>
-                  <span className="text-[9px] font-black text-slate-300">{formatDate(file.created_at)}</span>
-                </div>
-                <span className="text-[10px] font-black text-red-600">피드백 남기기 →</span>
-              </div>
             </div>
-          ))}
-          {files.filter(f => f.week === selectedWeek).length === 0 && (
-            <div className="col-span-full text-center py-24 text-slate-300 font-bold border-4 border-dashed border-slate-200 rounded-[3rem]">아직 등록된 영상이 없어! 첫 번째로 올려볼까? 👀</div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
-      {/* 🌟 통합 뷰어 모달 (유튜브 플레이어 + 댓글) */}
       {viewingFile && (
         <div className="fixed inset-0 bg-slate-900/95 backdrop-blur-md flex items-center justify-center p-4 z-[100]">
           <div className="bg-slate-100 w-full max-w-[1800px] h-[95vh] rounded-[3rem] flex flex-col lg:flex-row overflow-hidden relative shadow-2xl border border-slate-200">
@@ -421,6 +503,28 @@ export default function VideoRoom() {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+// 🌟 Video 방을 위한 카드 컴포넌트 (수정버튼 삭제, YOUTUBE 뱃지 유지)
+function VideoCard({ file, onOpen, onDelete, formatDate }) {
+  return (
+    <div className="bg-white p-6 rounded-3xl border border-slate-200 hover:border-red-300 hover:shadow-xl transition-all group cursor-pointer relative" onClick={onOpen}>
+      {file.is_late && (
+        <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[9px] font-black px-2 py-1 rounded-lg shadow-sm">LATE</span>
+      )}
+      <div className="flex justify-between items-start mb-4">
+        <span className="bg-red-50 text-red-600 text-[9px] px-2 py-1 rounded-full font-black uppercase tracking-wider">YOUTUBE</span>
+        <button onClick={onDelete} className="text-[10px] font-black text-slate-300 hover:text-red-500">삭제</button>
+      </div>
+      <h3 className="text-base font-black text-slate-800 mb-4 break-all line-clamp-2 leading-snug">{file.file_name}</h3>
+      <div className="flex justify-between items-center pt-4 border-t border-slate-100">
+        <div className="flex flex-col gap-0.5">
+          <span className="text-[11px] font-black text-slate-500">👤 {file.uploader}</span>
+          <span className="text-[9px] font-bold text-slate-300">{formatDate(file.created_at)}</span>
+        </div>
+      </div>
     </div>
   )
 }

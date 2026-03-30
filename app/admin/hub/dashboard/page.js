@@ -12,17 +12,23 @@ export default function DashboardManager() {
   // 1. 기본 설정 상태
   const [semester, setSemester] = useState('2026-1')
   const [totalWeeks, setTotalWeeks] = useState(12)
-  const [weekTopics, setWeekTopics] = useState({}) // 🌟 주차별 주제 저장용 상태
+  const [weekTopics, setWeekTopics] = useState({}) 
 
   // 2. 마감 시간 & 파일 현황 상태
   const [deadlines, setDeadlines] = useState({})
   const [recentFiles, setRecentFiles] = useState([])
 
-  // 3. 파일 수정 모달 상태 (🌟 관리자 파일 관리용)
+  // 3. 파일 수정 모달 상태 
   const [editFile, setEditFile] = useState(null)
   const [newFileName, setNewFileName] = useState('')
 
+  // 🌟 4. 통합 주차별 세팅 상태
+  const [activeMembers, setActiveMembers] = useState([])
+  const [setupWeek, setSetupWeek] = useState(1) // 현재 선택된 편집 주차 탭
+  const [weeklySetup, setWeeklySetup] = useState({}) 
+
   const deadlineCategories = ['proposal', 'slide', 'video', 'proposal_comment', 'vote_feedback', 'video_comment']
+  const weeks = Array.from({ length: totalWeeks + 1 }, (_, i) => i)
 
   useEffect(() => {
     if (!sessionStorage.getItem('isIGAdmin')) {
@@ -35,19 +41,44 @@ export default function DashboardManager() {
   const fetchDashboardData = async () => {
     setLoading(true)
     
-    // 1. 설정값 불러오기 (주차별 주제 포함)
+    // 🌟 1. 활동 기수 설정 가져오기 (pr_members_config)
+    let currentActiveGens = []
+    const { data: genData } = await supabase.from('pr_members_config').select('active_generations').eq('id', 'main').single()
+    if (genData && genData.active_generations) {
+      currentActiveGens = genData.active_generations
+    }
+
+    // 🌟 2. 학회원 명단 불러오기 (pr_members) - 졸업생 제외 및 활동기수 필터링
+    const { data: memData } = await supabase.from('pr_members').select('*').order('name', { ascending: true })
+    if (memData) {
+      const validMembers = memData.filter(m => {
+        if (!m.is_active) return false; // 🎓 졸업생(알럼나이) 제외
+        if (currentActiveGens.length > 0 && m.generation) {
+          const genNum = String(m.generation).replace(/[^0-9]/g, '');
+          return currentActiveGens.includes(genNum); // 설정된 활동기수만 포함
+        }
+        return true;
+      });
+      setActiveMembers(validMembers)
+    } else {
+      setActiveMembers([])
+    }
+
+    // 3. 글로벌 설정값 불러오기
     const { data: configData } = await supabase.from('pr_config').select('*')
     if (configData) {
       const sem = configData.find(c => c.key === 'current_semester')?.value
       const wks = configData.find(c => c.key === 'total_weeks')?.value
       const topics = configData.find(c => c.key === 'week_topics')?.value
+      const wSetup = configData.find(c => c.key === 'weekly_setup')?.value 
 
       if (sem) setSemester(sem)
       if (wks) setTotalWeeks(Number(wks))
       if (topics) setWeekTopics(JSON.parse(topics))
+      if (wSetup) setWeeklySetup(JSON.parse(wSetup))
     }
 
-    // 2. 마감 시간 불러오기
+    // 4. 마감 시간 불러오기
     const { data: dlData } = await supabase.from('pr_deadlines').select('*')
     const dlState = {}
     if (dlData) {
@@ -64,7 +95,7 @@ export default function DashboardManager() {
     }
     setDeadlines(dlState)
 
-    // 3. 이번 학기 제출 파일 불러오기
+    // 5. 이번 학기 제출 파일 불러오기
     const currentSem = configData?.find(c => c.key === 'current_semester')?.value || '2026-1'
     const { data: filesData } = await supabase
       .from('files_metadata')
@@ -72,33 +103,53 @@ export default function DashboardManager() {
       .eq('semester', currentSem)
       .eq('is_archive', false)
       .order('created_at', { ascending: false })
-      .limit(30) // 넉넉하게 30개 표시
+      .limit(30)
     if (filesData) setRecentFiles(filesData)
 
     setLoading(false)
+  }
+
+  // 조 편성 핸들러 함수들
+  const handleUpdateSetup = (key, val) => {
+    setWeeklySetup(prev => {
+      const current = prev[setupWeek] || { groupCount: 1, clusterCount: 1, groupToCluster: { 1: 1 }, members: {} }
+      return { ...prev, [setupWeek]: { ...current, [key]: val } }
+    })
+  }
+
+  const handleUpdateMapping = (gId, cId) => {
+    setWeeklySetup(prev => {
+      const current = prev[setupWeek] || { groupCount: 1, clusterCount: 1, groupToCluster: { 1: 1 }, members: {} }
+      return { ...prev, [setupWeek]: { ...current, groupToCluster: { ...current.groupToCluster, [gId]: cId } } }
+    })
+  }
+
+  const handleMemberAssign = (name, val) => {
+    setWeeklySetup(prev => {
+      const current = prev[setupWeek] || { groupCount: 1, clusterCount: 1, groupToCluster: { 1: 1 }, members: {} }
+      return { ...prev, [setupWeek]: { ...current, members: { ...current.members, [name]: val } } }
+    })
   }
 
   // 전체 저장 로직
   const handleSaveAll = async () => {
     setSaving(true)
 
-    // 설정 및 주차별 주제(JSON) 저장
     await supabase.from('pr_config').upsert([
       { key: 'current_semester', value: semester },
       { key: 'total_weeks', value: String(totalWeeks) },
-      { key: 'week_topics', value: JSON.stringify(weekTopics) } 
+      { key: 'week_topics', value: JSON.stringify(weekTopics) },
+      { key: 'weekly_setup', value: JSON.stringify(weeklySetup) }
     ])
 
-    // 마감 시간 저장 (🌟 빈 값 처리 보강)
     const deadlineUpserts = []
-    const deadlineDeletes = [] // 빈 값을 저장할 때는 지워야 함
+    const deadlineDeletes = []
 
     for (let w = 0; w <= totalWeeks; w++) {
       deadlineCategories.forEach(cat => {
         if (deadlines[w]?.[cat]) {
           deadlineUpserts.push({ week: w, category: cat, deadline_time: new Date(deadlines[w][cat]).toISOString() })
         } else {
-          // 마감 기한이 비워진 경우 기존 DB에서 삭제 처리
           deadlineDeletes.push({ week: w, category: cat })
         }
       })
@@ -109,7 +160,6 @@ export default function DashboardManager() {
       if (error) alert('마감 시간 저장 오류: ' + error.message)
     }
 
-    // 빈 값으로 설정된 항목들을 실제 DB에서 지우기
     if (deadlineDeletes.length > 0) {
       for (const item of deadlineDeletes) {
         await supabase.from('pr_deadlines').delete().eq('week', item.week).eq('category', item.category)
@@ -120,19 +170,13 @@ export default function DashboardManager() {
     setSaving(false)
   }
 
-  // 🌟 관리자 파일 삭제 기능
   const handleDeleteFile = async (id, filePath) => {
     if (!confirm('이 파일을 완전히 삭제하시겠습니까? (Storage에서도 영구 삭제됩니다)')) return
-    
-    if (filePath && filePath !== 'youtube') {
-      await supabase.storage.from('ig-files').remove([filePath])
-    }
-    
+    if (filePath && filePath !== 'youtube') await supabase.storage.from('ig-files').remove([filePath])
     await supabase.from('files_metadata').delete().eq('id', id)
     fetchDashboardData() 
   }
 
-  // 🌟 관리자 파일 이름 수정 기능
   const handleUpdateFileName = async () => {
     if (!newFileName) return
     await supabase.from('files_metadata').update({ file_name: newFileName }).eq('id', editFile.id)
@@ -146,12 +190,7 @@ export default function DashboardManager() {
     if (!confirm(confirmMsg)) return
 
     setSaving(true)
-    const { error } = await supabase
-      .from('files_metadata')
-      .update({ is_archive: true, category: '과거 자료실' })
-      .eq('semester', semester)
-      .eq('is_archive', false)
-
+    const { error } = await supabase.from('files_metadata').update({ is_archive: true, category: '과거 자료실' }).eq('semester', semester).eq('is_archive', false)
     if (!error) {
       alert('성공적으로 모든 자료가 아카이브로 넘어갔습니다! 📦')
       fetchDashboardData()
@@ -161,18 +200,20 @@ export default function DashboardManager() {
 
   if (loading) return <div className="min-h-screen flex justify-center items-center font-bold text-slate-400">데이터를 불러오는 중입니다... 🔄</div>
 
+  const currentSetup = weeklySetup[setupWeek] || { groupCount: 1, clusterCount: 1, groupToCluster: { 1: 1 }, members: {} }
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans p-6 md:p-12 pb-32">
-      <div className="max-w-[1400px] mx-auto space-y-12">
+      <div className="max-w-[1500px] mx-auto space-y-12">
         
-        {/* 상단 헤더 & 컨트롤 바 */}
+        {/* 상단 헤더 */}
         <header className="flex flex-col md:flex-row md:justify-between md:items-end gap-6 mb-8 border-b border-slate-200 pb-6 sticky top-0 bg-slate-50/90 backdrop-blur-md z-20 pt-4">
           <div>
             <Link href="/admin/hub" className="text-xs font-black text-slate-400 hover:text-blue-600 uppercase tracking-widest mb-2 block transition-colors">← Back to Hub</Link>
             <h1 className="text-4xl font-black uppercase tracking-tighter text-slate-800 flex items-center gap-3">
               <span className="text-4xl">📂</span> Dashboard Manager
             </h1>
-            <p className="text-xs font-bold text-slate-500 mt-2">학기 설정, 주차별 주제 및 마감 시간, 제출 현황을 완벽하게 통제하세요.</p>
+            <p className="text-xs font-bold text-slate-500 mt-2">학기 설정 및 주차별 주제, 마감 시간, 투표 조 편성을 완벽하게 통제하세요.</p>
           </div>
           <button onClick={handleSaveAll} disabled={saving} className="bg-blue-600 text-white px-10 py-3.5 rounded-2xl font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-lg active:scale-95 whitespace-nowrap">
             {saving ? 'Saving...' : 'Save All Settings 💾'}
@@ -181,9 +222,8 @@ export default function DashboardManager() {
 
         <div className="grid grid-cols-1 xl:grid-cols-[1fr_400px] gap-8">
           
-          {/* [좌측] 1. 학기 설정 및 세밀한 마감 시간 셋업 */}
           <div className="space-y-8">
-            
+            {/* 1. 글로벌 학기 설정 */}
             <section className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-200 flex flex-col md:flex-row gap-8 justify-between items-center">
               <div className="flex gap-6 w-full md:flex-1">
                 <div className="space-y-2 flex-1">
@@ -197,63 +237,170 @@ export default function DashboardManager() {
               </div>
               <div className="w-full md:w-auto text-right shrink-0 flex flex-col items-end">
                 <button onClick={handleArchiveTransfer} className="w-full md:w-auto bg-slate-900 text-white px-8 py-4 rounded-xl font-black text-sm hover:bg-red-600 transition-colors shadow-md whitespace-nowrap">
-                  🚨 학기 마감 (아카이브로 전체 이관)
+                  🚨 학기 마감 (아카이브로 이관)
                 </button>
                 <p className="text-[10px] text-slate-400 mt-3 font-bold whitespace-nowrap">이번 학기 대시보드 자료를 모두 과거 자료실로 보냅니다.</p>
               </div>
             </section>
 
+            {/* 🌟 2. 주차별 통합 세팅 보드 (Weekly Setup Dashboard) */}
             <section className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-200">
-              <div className="flex justify-between items-end mb-6 border-b border-slate-100 pb-4">
+              <div className="flex justify-between items-center mb-6 border-b border-slate-100 pb-4">
                 <div>
-                  <h2 className="text-xl font-black text-slate-800">⏰ Topics & Deadlines Setup</h2>
-                  <p className="text-xs font-bold text-slate-400 mt-1">주차별 주제(Topic)와 마감 시간을 지정하세요. (0주차 포함)</p>
+                  <h2 className="text-xl font-black text-slate-800 flex items-center gap-2"><span>📅</span> 주차별 통합 세팅 (Weekly Setup)</h2>
+                  <p className="text-xs font-bold text-slate-400 mt-1">상단에서 주차를 선택하고 주제, 마감 시간, 조 편성을 한 번에 세팅하세요.</p>
                 </div>
               </div>
 
-              <div className="space-y-6 max-h-[700px] overflow-y-auto pr-4 no-scrollbar">
-                {Array.from({ length: totalWeeks + 1 }, (_, i) => i).map(w => (
-                  <div key={w} className="bg-slate-50 p-6 rounded-3xl border border-slate-200 shadow-sm relative overflow-hidden group">
-                    
-                    <div className="flex flex-col md:flex-row md:items-center gap-4 mb-5 border-b border-slate-200/60 pb-4">
-                      <div className="font-black text-slate-800 text-xl flex items-center gap-3 shrink-0">
-                        <span className="bg-blue-600 text-white w-8 h-8 rounded-full flex items-center justify-center text-xs shadow-md">{w}</span>
-                        Week {w}
-                      </div>
-                      <input
-                        type="text"
-                        value={weekTopics[w] || ''}
-                        onChange={(e) => setWeekTopics({...weekTopics, [w]: e.target.value})}
-                        placeholder={w === 0 ? "OT 등 특별 주제를 입력하세요" : "이 주차의 주제를 입력하세요 (예: 웹3.0과 블록체인)"}
-                        className="flex-1 bg-white p-3 rounded-xl text-sm font-bold text-slate-700 outline-none border border-slate-200 focus:border-blue-400 transition-colors"
-                      />
-                    </div>
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div className="space-y-3 bg-white p-4 rounded-2xl border border-slate-100">
-                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">📁 1. 자료 제출 마감</span>
-                        <DeadlineInput w={w} cat="proposal" label="📝 기획서 제출" theme="text-emerald-600 bg-emerald-50 focus:border-emerald-400" deadlines={deadlines} onChange={(w, cat, val) => setDeadlines(prev => ({...prev, [w]: {...prev[w], [cat]: val}}))} />
-                        <DeadlineInput w={w} cat="slide" label="📊 슬라이드 제출" theme="text-purple-600 bg-purple-50 focus:border-purple-400" deadlines={deadlines} onChange={(w, cat, val) => setDeadlines(prev => ({...prev, [w]: {...prev[w], [cat]: val}}))} />
-                        <DeadlineInput w={w} cat="video" label="🎬 발표영상 등록" theme="text-red-600 bg-red-50 focus:border-red-400" deadlines={deadlines} onChange={(w, cat, val) => setDeadlines(prev => ({...prev, [w]: {...prev[w], [cat]: val}}))} />
-                      </div>
+              {/* 주차 선택 탭 (가로 스크롤) */}
+              <div className="flex gap-2 mb-8 overflow-x-auto pb-4 no-scrollbar border-b border-slate-100">
+                {weeks.map(w => (
+                  <button 
+                    key={w} 
+                    onClick={() => setSetupWeek(w)} 
+                    className={`px-5 py-3 rounded-2xl text-xs font-black shrink-0 transition-all border ${setupWeek === w ? 'bg-blue-600 text-white border-blue-600 shadow-md scale-[1.02]' : 'bg-slate-50 text-slate-500 border-slate-200 hover:border-blue-300'}`}
+                  >
+                    W{w} 세팅
+                  </button>
+                ))}
+              </div>
 
-                      <div className="space-y-3 bg-white p-4 rounded-2xl border border-slate-100">
-                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">💬 2. 피드백 작성 마감</span>
-                        <DeadlineInput w={w} cat="proposal_comment" label="📝 기획서 댓글" theme="text-teal-600 bg-teal-50 focus:border-teal-400" deadlines={deadlines} onChange={(w, cat, val) => setDeadlines(prev => ({...prev, [w]: {...prev[w], [cat]: val}}))} />
-                        <DeadlineInput w={w} cat="vote_feedback" label="✅ 정성 피드백 (타인 평가)" theme="text-blue-600 bg-blue-50 focus:border-blue-400" deadlines={deadlines} onChange={(w, cat, val) => setDeadlines(prev => ({...prev, [w]: {...prev[w], [cat]: val}}))} />
-                        <DeadlineInput w={w} cat="video_comment" label="🎬 셀프 피드백 (본인 영상)" theme="text-orange-600 bg-orange-50 focus:border-orange-400" deadlines={deadlines} onChange={(w, cat, val) => setDeadlines(prev => ({...prev, [w]: {...prev[w], [cat]: val}}))} />
+              {/* 🌟 선택된 주차의 설정 영역 */}
+              <div className="space-y-12 animate-in fade-in duration-300">
+                
+                {/* [A] 주제 설정 */}
+                <div className="bg-blue-50/50 p-6 rounded-3xl border border-blue-100">
+                  <div className="flex flex-col md:flex-row md:items-center gap-4">
+                    <div className="font-black text-blue-900 text-xl flex items-center gap-3 shrink-0">
+                      <span className="bg-blue-600 text-white w-8 h-8 rounded-full flex items-center justify-center text-xs shadow-md">{setupWeek}</span>
+                      Week {setupWeek} 주제
+                    </div>
+                    <input
+                      type="text"
+                      value={weekTopics[setupWeek] || ''}
+                      onChange={(e) => setWeekTopics({...weekTopics, [setupWeek]: e.target.value})}
+                      placeholder={setupWeek === 0 ? "OT 등 특별 주제를 입력하세요" : "이 주차의 주제를 입력하세요 (예: 웹3.0과 블록체인)"}
+                      className="flex-1 bg-white p-3 rounded-xl text-sm font-bold text-slate-700 outline-none border border-slate-200 focus:border-blue-400 transition-colors shadow-sm"
+                    />
+                  </div>
+                </div>
+
+                {/* [B] 마감 시간 설정 */}
+                <div className="space-y-4">
+                  <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest flex items-center gap-2 border-b border-slate-100 pb-2"><span>⏰</span> 데드라인 설정</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-3 bg-slate-50 p-5 rounded-2xl border border-slate-100">
+                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">📁 1. 자료 제출 마감</span>
+                      <DeadlineInput w={setupWeek} cat="proposal" label="📝 기획서 제출" theme="text-emerald-600 bg-emerald-50 focus:border-emerald-400" deadlines={deadlines} onChange={(w, cat, val) => setDeadlines(prev => ({...prev, [w]: {...prev[w], [cat]: val}}))} />
+                      <DeadlineInput w={setupWeek} cat="slide" label="📊 슬라이드 제출" theme="text-purple-600 bg-purple-50 focus:border-purple-400" deadlines={deadlines} onChange={(w, cat, val) => setDeadlines(prev => ({...prev, [w]: {...prev[w], [cat]: val}}))} />
+                      <DeadlineInput w={setupWeek} cat="video" label="🎬 발표영상 등록" theme="text-red-600 bg-red-50 focus:border-red-400" deadlines={deadlines} onChange={(w, cat, val) => setDeadlines(prev => ({...prev, [w]: {...prev[w], [cat]: val}}))} />
+                    </div>
+                    <div className="space-y-3 bg-slate-50 p-5 rounded-2xl border border-slate-100">
+                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">💬 2. 피드백 작성 마감</span>
+                      <DeadlineInput w={setupWeek} cat="proposal_comment" label="📝 기획서 댓글" theme="text-teal-600 bg-teal-50 focus:border-teal-400" deadlines={deadlines} onChange={(w, cat, val) => setDeadlines(prev => ({...prev, [w]: {...prev[w], [cat]: val}}))} />
+                      <DeadlineInput w={setupWeek} cat="vote_feedback" label="✅ 정성 피드백 (조원 평가)" theme="text-blue-600 bg-blue-50 focus:border-blue-400" deadlines={deadlines} onChange={(w, cat, val) => setDeadlines(prev => ({...prev, [w]: {...prev[w], [cat]: val}}))} />
+                      <DeadlineInput w={setupWeek} cat="video_comment" label="🎬 셀프 피드백 (본인 평가)" theme="text-orange-600 bg-orange-50 focus:border-orange-400" deadlines={deadlines} onChange={(w, cat, val) => setDeadlines(prev => ({...prev, [w]: {...prev[w], [cat]: val}}))} />
+                    </div>
+                  </div>
+                </div>
+
+                {/* [C] 조 편성 및 멤버 할당 */}
+                <div className="space-y-6">
+                  <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest flex items-center gap-2 border-b border-slate-100 pb-2"><span>👥</span> 조원 및 클러스터 편성</h3>
+                  
+                  {/* C-1. 그룹수 / 클러스터수 */}
+                  <div className="flex flex-col md:flex-row gap-6 bg-slate-50 p-5 rounded-2xl border border-slate-100">
+                    <div className="flex-1 space-y-2">
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">총 조 (Group) 개수</label>
+                      <input type="number" value={currentSetup.groupCount} onChange={e => handleUpdateSetup('groupCount', Number(e.target.value))} className="w-full bg-white p-3 rounded-xl font-black text-lg text-emerald-600 outline-none border border-slate-200 focus:border-emerald-400" />
+                    </div>
+                    <div className="flex-1 space-y-2">
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">평가 클러스터 개수</label>
+                      <input type="number" value={currentSetup.clusterCount} onChange={e => handleUpdateSetup('clusterCount', Number(e.target.value))} className="w-full bg-white p-3 rounded-xl font-black text-lg text-purple-600 outline-none border border-slate-200 focus:border-purple-400" />
+                    </div>
+                  </div>
+
+                  {/* C-2. 조-클러스터 매핑 */}
+                  <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <label className="text-[10px] font-black text-purple-500 uppercase tracking-widest block border-b border-slate-100 pb-2">조 ➡️ 클러스터 매핑</label>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                      {Array.from({length: currentSetup.groupCount}, (_,i)=>i+1).map(gId => (
+                        <div key={gId} className="bg-slate-50 p-2.5 rounded-xl flex justify-between items-center border border-slate-100">
+                          <span className="text-xs font-black text-slate-700">{gId}조 ➡️</span>
+                          <select value={currentSetup.groupToCluster[gId] || 1} onChange={(e) => handleUpdateMapping(gId, Number(e.target.value))} className="bg-purple-100 text-purple-700 text-xs font-black p-1.5 rounded-lg outline-none cursor-pointer border-none">
+                            {Array.from({length: currentSetup.clusterCount}, (_,i)=>i+1).map(c => <option key={c} value={c}>{c}그룹</option>)}
+                          </select>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* C-3. 멤버 개별 할당 (🌟 기수 표시 포함) */}
+                  <div className="space-y-3">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">멤버 소속 설정 (결석 처리 포함)</label>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 max-h-[350px] overflow-y-auto pr-2 no-scrollbar p-2 bg-slate-50 rounded-2xl border border-slate-100">
+                      {activeMembers.map(m => {
+                        const assignedVal = currentSetup.members[m.name] || '미정'
+                        return (
+                          <div key={m.id} className={`p-3 rounded-xl border flex flex-col gap-2 transition-all ${assignedVal === '미정' ? 'bg-white border-slate-200' : assignedVal === '결석' ? 'bg-red-50 border-red-200' : 'bg-emerald-50 border-emerald-200 shadow-sm'}`}>
+                            <span className="font-black text-sm text-slate-800 truncate">
+                              {m.name} <span className="text-[9px] font-bold text-slate-400">({m.generation})</span>
+                            </span>
+                            <select 
+                              value={assignedVal} 
+                              onChange={(e) => handleMemberAssign(m.name, e.target.value)} 
+                              className={`w-full text-xs font-bold p-1.5 rounded-lg outline-none cursor-pointer shadow-sm ${assignedVal === '미정' ? 'bg-slate-100 text-slate-500' : assignedVal === '결석' ? 'bg-red-500 text-white' : 'bg-emerald-500 text-white'}`}
+                            >
+                              <option value="미정">미정</option>
+                              <option value="결석">결석 🚨</option>
+                              {Array.from({length: currentSetup.groupCount}, (_,i)=>i+1).map(g => <option key={g} value={g}>{g}조 배정</option>)}
+                            </select>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+
+                  {/* C-4. 조편성 요약 뷰 (Summary Board) */}
+                  <div className="bg-slate-900 p-6 rounded-3xl space-y-4">
+                    <h3 className="text-xs font-black text-white uppercase tracking-widest border-b border-slate-700 pb-2 flex items-center gap-2"><span>📊</span> 요약: {setupWeek}주차 조 편성 현황판</h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {Array.from({length: currentSetup.groupCount}, (_,i)=>i+1).map(g => {
+                        const clusterNum = currentSetup.groupToCluster[g] || 1;
+                        const gMembers = activeMembers.filter(m => currentSetup.members[m.name] === String(g)).map(m => m.name);
+                        return (
+                          <div key={g} className="bg-slate-800 p-4 rounded-2xl border border-slate-700 hover:border-emerald-500 transition-colors">
+                            <div className="flex justify-between items-center mb-2">
+                              <span className="text-sm font-black text-emerald-400">{g}조</span>
+                              <span className="text-[10px] font-black bg-purple-900 text-purple-300 px-2 py-0.5 rounded">평가 {clusterNum}그룹</span>
+                            </div>
+                            <p className="text-xs font-bold text-slate-300 leading-relaxed">
+                              {gMembers.length > 0 ? gMembers.join(', ') : '배정된 인원 없음'}
+                            </p>
+                          </div>
+                        )
+                      })}
+                      
+                      <div className="bg-red-900/30 p-4 rounded-2xl border border-red-900/50 hover:border-red-500/50 transition-colors">
+                        <span className="text-sm font-black text-red-400 block mb-2">🚨 결석 및 미정 현황</span>
+                        <p className="text-xs font-bold text-red-200 leading-relaxed">
+                          [결석]: {activeMembers.filter(m => currentSetup.members[m.name] === '결석').map(m=>m.name).join(', ') || '없음'}
+                          <br/><span className="text-slate-400 mt-1 block">[미정]: {activeMembers.filter(m => !currentSetup.members[m.name] || currentSetup.members[m.name] === '미정').map(m=>m.name).join(', ') || '없음'}</span>
+                        </p>
                       </div>
                     </div>
                   </div>
-                ))}
+
+                </div>
               </div>
             </section>
+
           </div>
 
-          {/* [우측] 3. 제출 현황판 (Submission Tracker) - 🌟 수정/삭제 기능 추가 */}
+          {/* [우측] 제출 현황판 (Submission Tracker) */}
           <div className="bg-slate-900 p-8 rounded-[2.5rem] text-white shadow-2xl h-fit sticky top-8">
             <h2 className="text-lg font-black uppercase mb-2 text-blue-400">Submission Tracker 👀</h2>
-            <p className="text-[10px] font-bold text-slate-400 mb-6 pb-4 border-b border-slate-800">대시보드 제출 현황 (관리자 권한)</p>
+            <p className="text-[10px] font-bold text-slate-400 mb-6 pb-4 border-b border-slate-800">대시보드 과제 제출 현황</p>
             
             <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-2 no-scrollbar">
               {recentFiles.length > 0 ? recentFiles.map(file => (
@@ -263,7 +410,6 @@ export default function DashboardManager() {
                     <div className="absolute -right-6 top-3 bg-red-600 text-white text-[8px] font-black px-8 py-1 rotate-45 shadow-md">LATE</div>
                   )}
 
-                  {/* 🌟 관리자 전용 호버 메뉴 (수정/삭제) */}
                   <div className="absolute top-3 right-3 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity z-10 bg-slate-800/90 p-1 rounded-lg backdrop-blur-sm">
                     <button onClick={() => { setEditFile(file); setNewFileName(file.file_name); }} className="text-[9px] font-black bg-slate-700 text-white px-2 py-1 rounded hover:bg-blue-600">EDIT</button>
                     <button onClick={() => handleDeleteFile(file.id, file.storage_path)} className="text-[9px] font-black bg-red-900/50 text-red-300 px-2 py-1 rounded hover:bg-red-600 hover:text-white">DEL</button>
@@ -294,7 +440,7 @@ export default function DashboardManager() {
         </div>
       </div>
 
-      {/* 🌟 관리자용 파일명 수정 모달창 */}
+      {/* 파일명 수정 모달창 */}
       {editFile && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-6 z-50">
           <div className="bg-white p-8 rounded-[2rem] w-full max-w-sm shadow-2xl">
@@ -324,7 +470,6 @@ function DeadlineInput({ w, cat, label, theme, deadlines, onChange }) {
         <span className={`text-[10px] font-black w-fit px-2 py-0.5 rounded uppercase tracking-tighter ${theme.split('focus')[0]}`}>
           {label}
         </span>
-        {/* 🌟 엑스(삭제) 버튼 추가 */}
         <button 
           onClick={() => onChange(w, cat, '')} 
           className="text-[9px] font-bold text-slate-400 hover:text-red-500 bg-white px-2 py-0.5 rounded-md border border-slate-200 transition-colors"
