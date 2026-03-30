@@ -45,55 +45,95 @@ export default function AttendancePage() {
   const fetchAttendanceData = async (currentUser) => {
     setLoading(true)
 
-    // 1. 설정 및 주차 데이터 불러오기
-    const { data: configData } = await supabase.from('pr_config').select('*')
-    let week = 1
-    if (configData) {
-      const wStr = configData.find(c => c.key === 'current_week')?.value 
-      if (wStr) {
-        week = Number(wStr)
-        setCurrentWeek(week)
+    // 🌟 1. 전체 마감 시간을 훑어서 '현재 진행 중이거나 가장 가까운 주차' 자동 탐색!
+    const { data: dlData } = await supabase.from('pr_deadlines')
+      .select('*')
+      .in('category', ['attendance_start', 'session_start', 'attendance_end'])
+    
+    let targetWeek = 1;
+    let tConfig = { start: null, session: null, end: null };
+
+    if (dlData && dlData.length > 0) {
+      const weekMap = {}
+      dlData.forEach(d => {
+        if(!weekMap[d.week]) weekMap[d.week] = {}
+        weekMap[d.week][d.category] = d.deadline_time
+      })
+
+      const now = new Date().getTime()
+      const availableWeeks = Object.keys(weekMap).map(Number).sort((a,b)=>a-b)
+      
+      let found = false
+      // 1순위: 현재 진행 중인 주차 (start <= now <= end)
+      for(const w of availableWeeks) {
+        const wData = weekMap[w]
+        if (wData.attendance_start && wData.attendance_end) {
+          const s = new Date(wData.attendance_start).getTime()
+          const e = new Date(wData.attendance_end).getTime()
+          if (now >= s && now <= e) {
+            targetWeek = w
+            tConfig = { start: wData.attendance_start, session: wData.session_start, end: wData.attendance_end }
+            found = true
+            break
+          }
+        }
       }
 
-      // 🌟 주차별 설정(weekly_setup)에서 이번 주 장소 좌표 빼오기
+      // 2순위: 아직 시작 안 한 가장 가까운 미래 주차
+      if (!found) {
+        for(const w of availableWeeks) {
+          const wData = weekMap[w]
+          if (wData.attendance_start) {
+            const s = new Date(wData.attendance_start).getTime()
+            if (now < s) {
+              targetWeek = w
+              tConfig = { start: wData.attendance_start, session: wData.session_start, end: wData.attendance_end }
+              found = true
+              break
+            }
+          }
+        }
+      }
+
+      // 3순위: 다 끝났으면 설정값이 있는 가장 마지막 주차
+      if (!found && availableWeeks.length > 0) {
+        targetWeek = availableWeeks[availableWeeks.length - 1]
+        const wData = weekMap[targetWeek]
+        tConfig = { start: wData.attendance_start, session: wData.session_start, end: wData.attendance_end }
+      }
+    }
+
+    setCurrentWeek(targetWeek)
+    setTimeConfig(tConfig)
+    checkTimeStatus(tConfig)
+
+    // 2. 결정된 주차의 설정(위치) 불러오기
+    const { data: configData } = await supabase.from('pr_config').select('*')
+    if (configData) {
       const wsStr = configData.find(c => c.key === 'weekly_setup')?.value
       if (wsStr) {
         const weeklySetup = JSON.parse(wsStr)
-        if (weeklySetup[week] && weeklySetup[week].location) {
-          setSessionLoc(weeklySetup[week].location)
+        if (weeklySetup[targetWeek] && weeklySetup[targetWeek].location) {
+          setSessionLoc(weeklySetup[targetWeek].location)
         }
       }
     }
 
-    // 2. 이번 주차 마감/오픈 시간 불러오기
-    const { data: dlData } = await supabase.from('pr_deadlines')
-      .select('*')
-      .eq('week', week)
-      .in('category', ['attendance_start', 'session_start', 'attendance_end'])
-    
-    let tConfig = { start: null, session: null, end: null }
-    if (dlData) {
-      dlData.forEach(d => {
-        if (d.category === 'attendance_start') tConfig.start = d.deadline_time
-        if (d.category === 'session_start') tConfig.session = d.deadline_time
-        if (d.category === 'attendance_end') tConfig.end = d.deadline_time
-      })
-    }
-    setTimeConfig(tConfig)
-    checkTimeStatus(tConfig)
-
-    // 3. 이번 주차 내 출석 기록이 있는지 확인
+    // 3. 결정된 주차 내 출석 기록이 있는지 확인
     if (currentUser?.user_metadata?.name) {
       const { data: attData } = await supabase
         .from('pr_attendance')
         .select('*')
         .eq('user_name', currentUser.user_metadata.name)
-        .eq('week', week)
+        .eq('week', targetWeek)
         .maybeSingle() 
 
       if (attData) {
         setHasAttended(true)
         setAttendanceRecord(attData)
+      } else {
+        setHasAttended(false)
+        setAttendanceRecord(null)
       }
     }
 
@@ -220,7 +260,7 @@ export default function AttendancePage() {
             📍
           </div>
           
-          <h1 className="text-2xl font-black text-slate-800 mb-1 tracking-tight">Week {currentWeek} 오프라인 세션</h1>
+          <h1 className="text-2xl font-black text-slate-800 mb-1 tracking-tight">Week {currentWeek} 정규 세션</h1>
           
           {/* 🌟 시간 안내 보드 */}
           <div className="w-full bg-slate-50 rounded-2xl p-4 border border-slate-100 mb-6 flex flex-col gap-2">
