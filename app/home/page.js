@@ -29,7 +29,7 @@ export default function HomeHub() {
       const week = configData ? Number(configData.value) : 1
       setCurrentWeek(week)
 
-      // 🌟 주차 상관없이 전체 마감일을 불러옴
+      // 주차 상관없이 전체 마감일을 불러옴
       const { data: dlData } = await supabase.from('pr_deadlines').select('*')
       if (dlData) {
         const now = new Date()
@@ -53,7 +53,7 @@ export default function HomeHub() {
     router.push('/login')
   }
 
-  // 🌟 시간을 '오전/오후' 형식으로 예쁘게 변경
+  // 시간을 '오전/오후' 형식으로 예쁘게 변경
   const formatTime = (dateStr) => {
     if(!dateStr) return ''
     const d = new Date(dateStr)
@@ -137,21 +137,36 @@ export default function HomeHub() {
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             
-            <div className="bg-gradient-to-br from-teal-600 via-blue-700 to-slate-900 p-8 rounded-[2rem] text-white shadow-xl relative overflow-hidden flex flex-col justify-center border border-teal-800/50">
-              <img src="/logo.png" alt="IG Logo" className="absolute -right-10 -bottom-10 w-64 h-64 object-contain opacity-20 transform -rotate-12" />
+            {/* 🌟 텍스트 중앙 정렬을 위해 flex-1 flex flex-col justify-center 적용! */}
+            <div 
+              onClick={() => router.push('/attendance')}
+              className="bg-gradient-to-br from-teal-600 via-blue-700 to-slate-900 p-8 rounded-[2.5rem] text-white shadow-xl relative overflow-hidden flex flex-col border border-teal-800/50 cursor-pointer group hover:scale-[1.02] hover:shadow-2xl transition-all min-h-[300px]"
+            >
+              <img src="/logo.png" alt="IG Logo" className="absolute -right-10 -bottom-10 w-80 h-80 object-contain opacity-20 transform -rotate-12 group-hover:scale-110 transition-transform duration-500" />
               
-              <div className="relative z-10">
+              {/* 인사말 (세로 중앙) */}
+              <div className="relative z-10 flex-1 flex flex-col justify-center">
                 <p className="text-[10px] font-black uppercase tracking-[0.2em] mb-1 opacity-80 text-teal-100">Welcome back,</p>
-                <h1 className="text-4xl font-black mb-1 drop-shadow-md">{user.user_metadata?.name || '학회원'} 님!</h1>
-                <p className="text-xs font-bold opacity-80 mb-6 text-teal-50">InsightGraphy 멤버십</p>
-                <button onClick={handleLogout} className="bg-white/10 hover:bg-white/20 w-fit px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest backdrop-blur-sm transition-colors border border-white/20 shadow-sm">
+                <h1 className="text-4xl md:text-5xl font-black mb-1 drop-shadow-md">{user.user_metadata?.name || '학회원'} 님!</h1>
+                <p className="text-xs font-bold opacity-80 text-teal-50">InsightGraphy 멤버십</p>
+              </div>
+
+              {/* 하단 버튼들 */}
+              <div className="relative z-10 flex justify-between items-end mt-4 pt-4 border-t border-white/10">
+                <div className="bg-white/20 px-5 py-3 rounded-2xl text-xs font-black flex items-center gap-2 backdrop-blur-md border border-white/30 group-hover:bg-white text-white group-hover:text-blue-900 transition-all shadow-sm">
+                  <span className="text-base">📍</span> 세션 출석체크 하기 →
+                </div>
+                <button 
+                  onClick={(e) => { e.stopPropagation(); handleLogout(); }} 
+                  className="bg-black/20 hover:bg-black/40 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest backdrop-blur-sm transition-colors text-white/70 hover:text-white"
+                >
                   로그아웃 🚪
                 </button>
               </div>
             </div>
 
-            {/* 🌟 마감일 알림 카드 - 최신 로직 반영 */}
-            <div className="bg-white p-8 rounded-[2rem] shadow-lg border border-slate-100 flex flex-col justify-center">
+            {/* 🌟 마감일 알림 카드 */}
+            <div className="bg-white p-8 rounded-[2.5rem] shadow-lg border border-slate-100 flex flex-col justify-center">
               <div className="flex justify-between items-center mb-4 border-b border-slate-100 pb-3">
                 <h2 className="text-sm font-black text-slate-800 flex items-center gap-2"><span>🚨</span> 다가오는 마감 일정</h2>
                 <span className="bg-red-50 text-red-600 px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest">Upcoming</span>
@@ -161,7 +176,6 @@ export default function HomeHub() {
                 {deadlines.length === 0 ? <p className="text-xs font-bold text-slate-400 py-4 text-center">예정된 마감일이 없습니다. 🙌</p> : deadlines.map((d, idx) => (
                   <div key={idx} className="flex justify-between items-center bg-slate-50 p-3 rounded-xl border border-slate-100 hover:border-red-200 transition-colors shadow-sm">
                     <span className="text-xs font-black text-slate-600 flex items-center gap-2">
-                      {/* 🌟 주차 뱃지 추가! */}
                       <span className="text-[9px] bg-slate-200 text-slate-600 px-2 py-0.5 rounded-md">{d.week}주차</span>
                       {getCategoryLabel(d.category)}
                     </span>
@@ -172,7 +186,7 @@ export default function HomeHub() {
             </div>
           </div>
 
-          {/* 🌟 퀵 메뉴 타일 (회칙 열람 -> 발표영상 확인으로 변경!) */}
+          {/* 🌟 퀵 메뉴 타일 */}
           <div className="bg-white p-8 rounded-[2.5rem] shadow-lg border border-slate-100">
             <h2 className="text-lg font-black text-slate-800 mb-6 border-b border-slate-100 pb-4">📌 Quick Services</h2>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -241,7 +255,7 @@ export default function HomeHub() {
 
 function Tile({ href, icon, title, desc, color, text }) {
   return (
-    <Link href={href} className={`${color} p-5 rounded-3xl border border-white/50 hover:border-black/5 shadow-sm hover:shadow-lg transition-all group flex flex-col gap-2`}>
+    <Link href={href} className={`${color} p-5 rounded-[2rem] border border-white/50 hover:border-black/5 shadow-sm hover:shadow-lg transition-all group flex flex-col gap-2`}>
       <span className="text-2xl group-hover:scale-110 transition-transform origin-left">{icon}</span>
       <div>
         <h3 className={`text-sm font-black ${text} tracking-tight`}>{title}</h3>

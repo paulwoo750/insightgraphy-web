@@ -14,20 +14,26 @@ export default function DashboardManager() {
   const [totalWeeks, setTotalWeeks] = useState(12)
   const [weekTopics, setWeekTopics] = useState({}) 
 
-  // 2. 마감 시간 & 파일 현황 상태
+  // 🌟 2. 장소 즐겨찾기 관리 상태 (새로 추가!)
+  const [favoriteLocs, setFavoriteLocs] = useState([]) 
+
+  // 3. 마감 시간 & 파일 현황 상태 (🌟 출석 관련 카테고리 추가!)
   const [deadlines, setDeadlines] = useState({})
   const [recentFiles, setRecentFiles] = useState([])
 
-  // 3. 파일 수정 모달 상태 
+  // 4. 파일 수정 모달 상태 
   const [editFile, setEditFile] = useState(null)
   const [newFileName, setNewFileName] = useState('')
 
-  // 🌟 4. 통합 주차별 세팅 상태
+  // 5. 통합 주차별 세팅 상태
   const [activeMembers, setActiveMembers] = useState([])
-  const [setupWeek, setSetupWeek] = useState(1) // 현재 선택된 편집 주차 탭
+  const [setupWeek, setSetupWeek] = useState(1) 
   const [weeklySetup, setWeeklySetup] = useState({}) 
 
-  const deadlineCategories = ['proposal', 'slide', 'video', 'proposal_comment', 'vote_feedback', 'video_comment']
+  const deadlineCategories = [
+    'proposal', 'slide', 'video', 'proposal_comment', 'vote_feedback', 'video_comment',
+    'attendance_start', 'session_start', 'attendance_end' // 🌟 출석용 3단계 시간 추가!
+  ]
   const weeks = Array.from({ length: totalWeeks + 1 }, (_, i) => i)
 
   useEffect(() => {
@@ -41,21 +47,20 @@ export default function DashboardManager() {
   const fetchDashboardData = async () => {
     setLoading(true)
     
-    // 🌟 1. 활동 기수 설정 가져오기 (pr_members_config)
+    // 멤버 리스트 불러오기
     let currentActiveGens = []
     const { data: genData } = await supabase.from('pr_members_config').select('active_generations').eq('id', 'main').single()
     if (genData && genData.active_generations) {
       currentActiveGens = genData.active_generations
     }
 
-    // 🌟 2. 학회원 명단 불러오기 (pr_members) - 졸업생 제외 및 활동기수 필터링
     const { data: memData } = await supabase.from('pr_members').select('*').order('name', { ascending: true })
     if (memData) {
       const validMembers = memData.filter(m => {
-        if (!m.is_active) return false; // 🎓 졸업생(알럼나이) 제외
+        if (!m.is_active) return false; 
         if (currentActiveGens.length > 0 && m.generation) {
           const genNum = String(m.generation).replace(/[^0-9]/g, '');
-          return currentActiveGens.includes(genNum); // 설정된 활동기수만 포함
+          return currentActiveGens.includes(genNum); 
         }
         return true;
       });
@@ -64,27 +69,32 @@ export default function DashboardManager() {
       setActiveMembers([])
     }
 
-    // 3. 글로벌 설정값 불러오기
+    // 설정값 불러오기
     const { data: configData } = await supabase.from('pr_config').select('*')
     if (configData) {
       const sem = configData.find(c => c.key === 'current_semester')?.value
       const wks = configData.find(c => c.key === 'total_weeks')?.value
       const topics = configData.find(c => c.key === 'week_topics')?.value
       const wSetup = configData.find(c => c.key === 'weekly_setup')?.value 
+      const favLocs = configData.find(c => c.key === 'favorite_locations')?.value // 🌟 즐겨찾기 불러오기
 
       if (sem) setSemester(sem)
       if (wks) setTotalWeeks(Number(wks))
       if (topics) setWeekTopics(JSON.parse(topics))
       if (wSetup) setWeeklySetup(JSON.parse(wSetup))
+      if (favLocs) setFavoriteLocs(JSON.parse(favLocs))
     }
 
-    // 4. 마감 시간 불러오기
+    // 마감 시간 불러오기
     const { data: dlData } = await supabase.from('pr_deadlines').select('*')
     const dlState = {}
     if (dlData) {
       dlData.forEach(d => {
         if (!dlState[d.week]) {
-          dlState[d.week] = { proposal: '', slide: '', video: '', proposal_comment: '', video_comment: '', vote_feedback: '' }
+          dlState[d.week] = { 
+            proposal: '', slide: '', video: '', proposal_comment: '', vote_feedback: '', video_comment: '',
+            attendance_start: '', session_start: '', attendance_end: '' 
+          }
         }
         if (d.deadline_time) {
           const date = new Date(d.deadline_time)
@@ -95,7 +105,7 @@ export default function DashboardManager() {
     }
     setDeadlines(dlState)
 
-    // 5. 이번 학기 제출 파일 불러오기
+    // 이번 학기 제출 파일 불러오기
     const currentSem = configData?.find(c => c.key === 'current_semester')?.value || '2026-1'
     const { data: filesData } = await supabase
       .from('files_metadata')
@@ -109,26 +119,53 @@ export default function DashboardManager() {
     setLoading(false)
   }
 
-  // 조 편성 핸들러 함수들
+  // 주차별 설정 업데이트 핸들러
   const handleUpdateSetup = (key, val) => {
     setWeeklySetup(prev => {
-      const current = prev[setupWeek] || { groupCount: 1, clusterCount: 1, groupToCluster: { 1: 1 }, members: {} }
+      const current = prev[setupWeek] || { groupCount: 1, clusterCount: 1, groupToCluster: { 1: 1 }, members: {}, location: { lat: '', lng: '', radius: 100 } }
       return { ...prev, [setupWeek]: { ...current, [key]: val } }
     })
   }
 
   const handleUpdateMapping = (gId, cId) => {
     setWeeklySetup(prev => {
-      const current = prev[setupWeek] || { groupCount: 1, clusterCount: 1, groupToCluster: { 1: 1 }, members: {} }
+      const current = prev[setupWeek] || { groupCount: 1, clusterCount: 1, groupToCluster: { 1: 1 }, members: {}, location: {} }
       return { ...prev, [setupWeek]: { ...current, groupToCluster: { ...current.groupToCluster, [gId]: cId } } }
     })
   }
 
   const handleMemberAssign = (name, val) => {
     setWeeklySetup(prev => {
-      const current = prev[setupWeek] || { groupCount: 1, clusterCount: 1, groupToCluster: { 1: 1 }, members: {} }
+      const current = prev[setupWeek] || { groupCount: 1, clusterCount: 1, groupToCluster: { 1: 1 }, members: {}, location: {} }
       return { ...prev, [setupWeek]: { ...current, members: { ...current.members, [name]: val } } }
     })
+  }
+
+  // 🌟 즐겨찾기 핸들러
+  const handleSaveFavorite = () => {
+    const loc = weeklySetup[setupWeek]?.location || {};
+    if (!loc.lat || !loc.lng) return alert('좌표를 먼저 올바르게 입력해주세요! 😅');
+    
+    const name = prompt('이 장소의 즐겨찾기 이름을 입력하세요.\n(예: 경영대 58동 101호)');
+    if (!name) return;
+    
+    setFavoriteLocs([...favoriteLocs, { id: Date.now(), name, lat: loc.lat, lng: loc.lng, radius: loc.radius || 100 }]);
+  }
+
+  const handleDeleteFavorite = (id) => {
+    if(!confirm("이 즐겨찾기를 삭제할까요?")) return;
+    setFavoriteLocs(favoriteLocs.filter(f => f.id !== id));
+  }
+
+  const handleSelectFavorite = (e) => {
+    const id = e.target.value;
+    if (id === 'manual') return; 
+    
+    const fav = favoriteLocs.find(f => f.id == id);
+    if (fav) {
+      handleUpdateSetup('location', { lat: fav.lat, lng: fav.lng, radius: fav.radius });
+    }
+    e.target.value = 'manual'; // 선택 후 초기화
   }
 
   // 전체 저장 로직
@@ -139,7 +176,8 @@ export default function DashboardManager() {
       { key: 'current_semester', value: semester },
       { key: 'total_weeks', value: String(totalWeeks) },
       { key: 'week_topics', value: JSON.stringify(weekTopics) },
-      { key: 'weekly_setup', value: JSON.stringify(weeklySetup) }
+      { key: 'weekly_setup', value: JSON.stringify(weeklySetup) },
+      { key: 'favorite_locations', value: JSON.stringify(favoriteLocs) } // 🌟 즐겨찾기 저장
     ])
 
     const deadlineUpserts = []
@@ -200,20 +238,19 @@ export default function DashboardManager() {
 
   if (loading) return <div className="min-h-screen flex justify-center items-center font-bold text-slate-400">데이터를 불러오는 중입니다... 🔄</div>
 
-  const currentSetup = weeklySetup[setupWeek] || { groupCount: 1, clusterCount: 1, groupToCluster: { 1: 1 }, members: {} }
+  const currentSetup = weeklySetup[setupWeek] || { groupCount: 1, clusterCount: 1, groupToCluster: { 1: 1 }, members: {}, location: { lat: '', lng: '', radius: 100 } }
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans p-6 md:p-12 pb-32">
       <div className="max-w-[1500px] mx-auto space-y-12">
         
-        {/* 상단 헤더 */}
         <header className="flex flex-col md:flex-row md:justify-between md:items-end gap-6 mb-8 border-b border-slate-200 pb-6 sticky top-0 bg-slate-50/90 backdrop-blur-md z-20 pt-4">
           <div>
             <Link href="/admin/hub" className="text-xs font-black text-slate-400 hover:text-blue-600 uppercase tracking-widest mb-2 block transition-colors">← Back to Hub</Link>
             <h1 className="text-4xl font-black uppercase tracking-tighter text-slate-800 flex items-center gap-3">
               <span className="text-4xl">📂</span> Dashboard Manager
             </h1>
-            <p className="text-xs font-bold text-slate-500 mt-2">학기 설정 및 주차별 주제, 마감 시간, 투표 조 편성을 완벽하게 통제하세요.</p>
+            <p className="text-xs font-bold text-slate-500 mt-2">학기 설정 및 주차별 출석, 주제, 마감 시간, 투표 조 편성을 통제하세요.</p>
           </div>
           <button onClick={handleSaveAll} disabled={saving} className="bg-blue-600 text-white px-10 py-3.5 rounded-2xl font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-lg active:scale-95 whitespace-nowrap">
             {saving ? 'Saving...' : 'Save All Settings 💾'}
@@ -223,7 +260,6 @@ export default function DashboardManager() {
         <div className="grid grid-cols-1 xl:grid-cols-[1fr_400px] gap-8">
           
           <div className="space-y-8">
-            {/* 1. 글로벌 학기 설정 */}
             <section className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-200 flex flex-col md:flex-row gap-8 justify-between items-center">
               <div className="flex gap-6 w-full md:flex-1">
                 <div className="space-y-2 flex-1">
@@ -243,16 +279,15 @@ export default function DashboardManager() {
               </div>
             </section>
 
-            {/* 🌟 2. 주차별 통합 세팅 보드 (Weekly Setup Dashboard) */}
+            {/* 주차별 통합 세팅 보드 (Weekly Setup Dashboard) */}
             <section className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-200">
               <div className="flex justify-between items-center mb-6 border-b border-slate-100 pb-4">
                 <div>
                   <h2 className="text-xl font-black text-slate-800 flex items-center gap-2"><span>📅</span> 주차별 통합 세팅 (Weekly Setup)</h2>
-                  <p className="text-xs font-bold text-slate-400 mt-1">상단에서 주차를 선택하고 주제, 마감 시간, 조 편성을 한 번에 세팅하세요.</p>
+                  <p className="text-xs font-bold text-slate-400 mt-1">상단에서 주차를 선택하고 장소, 시간, 조 편성을 한 번에 세팅하세요.</p>
                 </div>
               </div>
 
-              {/* 주차 선택 탭 (가로 스크롤) */}
               <div className="flex gap-2 mb-8 overflow-x-auto pb-4 no-scrollbar border-b border-slate-100">
                 {weeks.map(w => (
                   <button 
@@ -265,7 +300,6 @@ export default function DashboardManager() {
                 ))}
               </div>
 
-              {/* 🌟 선택된 주차의 설정 영역 */}
               <div className="space-y-12 animate-in fade-in duration-300">
                 
                 {/* [A] 주제 설정 */}
@@ -285,30 +319,86 @@ export default function DashboardManager() {
                   </div>
                 </div>
 
-                {/* [B] 마감 시간 설정 */}
+                {/* 🌟 [B] 오프라인 출석 및 장소 세팅 (새로 추가/개편됨!) */}
                 <div className="space-y-4">
-                  <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest flex items-center gap-2 border-b border-slate-100 pb-2"><span>⏰</span> 데드라인 설정</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="space-y-3 bg-slate-50 p-5 rounded-2xl border border-slate-100">
-                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">📁 1. 자료 제출 마감</span>
-                      <DeadlineInput w={setupWeek} cat="proposal" label="📝 기획서 제출" theme="text-emerald-600 bg-emerald-50 focus:border-emerald-400" deadlines={deadlines} onChange={(w, cat, val) => setDeadlines(prev => ({...prev, [w]: {...prev[w], [cat]: val}}))} />
-                      <DeadlineInput w={setupWeek} cat="slide" label="📊 슬라이드 제출" theme="text-purple-600 bg-purple-50 focus:border-purple-400" deadlines={deadlines} onChange={(w, cat, val) => setDeadlines(prev => ({...prev, [w]: {...prev[w], [cat]: val}}))} />
-                      <DeadlineInput w={setupWeek} cat="video" label="🎬 발표영상 등록" theme="text-red-600 bg-red-50 focus:border-red-400" deadlines={deadlines} onChange={(w, cat, val) => setDeadlines(prev => ({...prev, [w]: {...prev[w], [cat]: val}}))} />
+                  <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest flex items-center gap-2 border-b border-slate-100 pb-2"><span>📍</span> 출석 장소 및 시간 세팅</h3>
+                  
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    {/* 장소 & 즐겨찾기 설정 */}
+                    <div className="space-y-4 bg-slate-50 p-5 rounded-2xl border border-slate-100">
+                      <div className="flex justify-between items-end border-b border-slate-200 pb-2">
+                        <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest block">장소 좌표 설정</span>
+                        <div className="flex items-center gap-2">
+                          <select onChange={handleSelectFavorite} className="text-[9px] font-bold text-slate-500 p-1.5 rounded-lg border border-slate-200 outline-none cursor-pointer bg-white">
+                            <option value="manual">자주 쓰는 장소 불러오기...</option>
+                            {favoriteLocs.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                          </select>
+                          <button onClick={handleSaveFavorite} className="text-[9px] bg-yellow-100 text-yellow-700 px-2 py-1.5 rounded-lg font-black hover:bg-yellow-200 transition-colors">
+                            + 즐겨찾기 추가
+                          </button>
+                        </div>
+                      </div>
+                      
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1.5">
+                          <label className="text-[9px] font-black text-slate-400">위도 (Lat)</label>
+                          <input type="number" value={currentSetup.location?.lat || ''} onChange={e => handleUpdateSetup('location', {...currentSetup.location, lat: e.target.value})} className="w-full p-2.5 rounded-xl text-xs font-bold outline-none border border-slate-200 focus:border-blue-400" placeholder="예: 37.456" />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-[9px] font-black text-slate-400">경도 (Lng)</label>
+                          <input type="number" value={currentSetup.location?.lng || ''} onChange={e => handleUpdateSetup('location', {...currentSetup.location, lng: e.target.value})} className="w-full p-2.5 rounded-xl text-xs font-bold outline-none border border-slate-200 focus:border-blue-400" placeholder="예: 126.953" />
+                        </div>
+                        <div className="space-y-1.5 col-span-2">
+                          <label className="text-[9px] font-black text-slate-400">허용 반경 (m)</label>
+                          <input type="number" value={currentSetup.location?.radius || 100} onChange={e => handleUpdateSetup('location', {...currentSetup.location, radius: Number(e.target.value)})} className="w-full p-2.5 rounded-xl text-xs font-bold outline-none border border-slate-200 focus:border-blue-400" />
+                        </div>
+                      </div>
+
+                      {/* 즐겨찾기 목록 보여주기 (삭제 기능 포함) */}
+                      {favoriteLocs.length > 0 && (
+                        <div className="mt-3 pt-3 border-t border-slate-200 flex flex-wrap gap-1.5">
+                          {favoriteLocs.map(f => (
+                            <span key={f.id} className="text-[9px] bg-white border border-slate-200 text-slate-600 px-2 py-1 rounded-md flex items-center gap-1 font-bold shadow-sm">
+                              {f.name} <button onClick={() => handleDeleteFavorite(f.id)} className="text-slate-300 hover:text-red-500 font-black ml-1 transition-colors">✕</button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </div>
+
+                    {/* 출석 시간 3단계 설정 */}
                     <div className="space-y-3 bg-slate-50 p-5 rounded-2xl border border-slate-100">
-                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">💬 2. 피드백 작성 마감</span>
-                      <DeadlineInput w={setupWeek} cat="proposal_comment" label="📝 기획서 댓글" theme="text-teal-600 bg-teal-50 focus:border-teal-400" deadlines={deadlines} onChange={(w, cat, val) => setDeadlines(prev => ({...prev, [w]: {...prev[w], [cat]: val}}))} />
-                      <DeadlineInput w={setupWeek} cat="vote_feedback" label="✅ 정성 피드백 (조원 평가)" theme="text-blue-600 bg-blue-50 focus:border-blue-400" deadlines={deadlines} onChange={(w, cat, val) => setDeadlines(prev => ({...prev, [w]: {...prev[w], [cat]: val}}))} />
-                      <DeadlineInput w={setupWeek} cat="video_comment" label="🎬 셀프 피드백 (본인 평가)" theme="text-orange-600 bg-orange-50 focus:border-orange-400" deadlines={deadlines} onChange={(w, cat, val) => setDeadlines(prev => ({...prev, [w]: {...prev[w], [cat]: val}}))} />
+                      <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest block mb-2 border-b border-slate-200 pb-2">출석 시간 세팅</span>
+                      <DeadlineInput w={setupWeek} cat="attendance_start" label="🟢 출석체크 오픈" theme="text-emerald-600 bg-emerald-50 focus:border-emerald-400" deadlines={deadlines} onChange={(w, cat, val) => setDeadlines(prev => ({...prev, [w]: {...prev[w], [cat]: val}}))} />
+                      <DeadlineInput w={setupWeek} cat="session_start" label="⚠️ 세션 시작 (지각 기준)" theme="text-orange-600 bg-orange-50 focus:border-orange-400" deadlines={deadlines} onChange={(w, cat, val) => setDeadlines(prev => ({...prev, [w]: {...prev[w], [cat]: val}}))} />
+                      <DeadlineInput w={setupWeek} cat="attendance_end" label="🔴 출석체크 종료 (결석)" theme="text-red-600 bg-red-50 focus:border-red-400" deadlines={deadlines} onChange={(w, cat, val) => setDeadlines(prev => ({...prev, [w]: {...prev[w], [cat]: val}}))} />
                     </div>
                   </div>
                 </div>
 
-                {/* [C] 조 편성 및 멤버 할당 */}
+                {/* [C] 과제 마감 시간 설정 */}
+                <div className="space-y-4">
+                  <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest flex items-center gap-2 border-b border-slate-100 pb-2"><span>⏰</span> 과제 데드라인 설정</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-3 bg-slate-50 p-5 rounded-2xl border border-slate-100">
+                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">📁 1. 자료 제출 마감</span>
+                      <DeadlineInput w={setupWeek} cat="proposal" label="📝 기획서 제출" theme="text-blue-600 bg-blue-50 focus:border-blue-400" deadlines={deadlines} onChange={(w, cat, val) => setDeadlines(prev => ({...prev, [w]: {...prev[w], [cat]: val}}))} />
+                      <DeadlineInput w={setupWeek} cat="slide" label="📊 슬라이드 제출" theme="text-indigo-600 bg-indigo-50 focus:border-indigo-400" deadlines={deadlines} onChange={(w, cat, val) => setDeadlines(prev => ({...prev, [w]: {...prev[w], [cat]: val}}))} />
+                      <DeadlineInput w={setupWeek} cat="video" label="🎬 발표영상 등록" theme="text-purple-600 bg-purple-50 focus:border-purple-400" deadlines={deadlines} onChange={(w, cat, val) => setDeadlines(prev => ({...prev, [w]: {...prev[w], [cat]: val}}))} />
+                    </div>
+                    <div className="space-y-3 bg-slate-50 p-5 rounded-2xl border border-slate-100">
+                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">💬 2. 피드백 작성 마감</span>
+                      <DeadlineInput w={setupWeek} cat="proposal_comment" label="📝 기획서 댓글" theme="text-teal-600 bg-teal-50 focus:border-teal-400" deadlines={deadlines} onChange={(w, cat, val) => setDeadlines(prev => ({...prev, [w]: {...prev[w], [cat]: val}}))} />
+                      <DeadlineInput w={setupWeek} cat="vote_feedback" label="✅ 정성 피드백 (조원 평가)" theme="text-sky-600 bg-sky-50 focus:border-sky-400" deadlines={deadlines} onChange={(w, cat, val) => setDeadlines(prev => ({...prev, [w]: {...prev[w], [cat]: val}}))} />
+                      <DeadlineInput w={setupWeek} cat="video_comment" label="🎬 셀프 피드백 (본인 평가)" theme="text-slate-600 bg-slate-200 focus:border-slate-400" deadlines={deadlines} onChange={(w, cat, val) => setDeadlines(prev => ({...prev, [w]: {...prev[w], [cat]: val}}))} />
+                    </div>
+                  </div>
+                </div>
+
+                {/* [D] 조 편성 및 멤버 할당 */}
                 <div className="space-y-6">
                   <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest flex items-center gap-2 border-b border-slate-100 pb-2"><span>👥</span> 조원 및 클러스터 편성</h3>
                   
-                  {/* C-1. 그룹수 / 클러스터수 */}
                   <div className="flex flex-col md:flex-row gap-6 bg-slate-50 p-5 rounded-2xl border border-slate-100">
                     <div className="flex-1 space-y-2">
                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">총 조 (Group) 개수</label>
@@ -320,7 +410,6 @@ export default function DashboardManager() {
                     </div>
                   </div>
 
-                  {/* C-2. 조-클러스터 매핑 */}
                   <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
                     <label className="text-[10px] font-black text-purple-500 uppercase tracking-widest block border-b border-slate-100 pb-2">조 ➡️ 클러스터 매핑</label>
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -335,7 +424,6 @@ export default function DashboardManager() {
                     </div>
                   </div>
 
-                  {/* C-3. 멤버 개별 할당 (🌟 기수 표시 포함) */}
                   <div className="space-y-3">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">멤버 소속 설정 (결석 처리 포함)</label>
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 max-h-[350px] overflow-y-auto pr-2 no-scrollbar p-2 bg-slate-50 rounded-2xl border border-slate-100">
@@ -361,7 +449,6 @@ export default function DashboardManager() {
                     </div>
                   </div>
 
-                  {/* C-4. 조편성 요약 뷰 (Summary Board) */}
                   <div className="bg-slate-900 p-6 rounded-3xl space-y-4">
                     <h3 className="text-xs font-black text-white uppercase tracking-widest border-b border-slate-700 pb-2 flex items-center gap-2"><span>📊</span> 요약: {setupWeek}주차 조 편성 현황판</h3>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">

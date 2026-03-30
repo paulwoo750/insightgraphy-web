@@ -1,18 +1,19 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 
 export default function FineAdmin() {
   const [loading, setLoading] = useState(true)
   const [isScanning, setIsScanning] = useState(false)
+  const scanLock = useRef(false) // 🌟 중복 실행 방지를 위한 자물쇠 (Lock)
   
   // 데이터 상태
   const [members, setMembers] = useState([])
   const [fines, setFines] = useState([])
   const [penalties, setPenalties] = useState({})
   
-  // 🌟 수동 벌금 입력 상태
+  // 수동 벌금 입력 상태
   const [manualFine, setManualFine] = useState({
     user_name: '', week: 1, category: '세션 지각', amount: '', reason: ''
   })
@@ -25,222 +26,286 @@ export default function FineAdmin() {
   // 🧮 핵심: 데이터 로드 및 100% 동기화 자동 스캐너
   // ==========================================
   const fetchAndScanData = async () => {
+    // 🌟 스캐너가 이미 돌고 있다면 중단! (React Strict Mode 더블 렌더링 방어)
+    if (scanLock.current) return
+    scanLock.current = true
     setLoading(true)
     setIsScanning(true)
 
-    // 1. 기초 데이터 (학회원, 설정, 마감일) 불러오기
-    const { data: memData } = await supabase.from('pr_members').select('*').eq('is_active', true).order('name')
-    const activeMembers = memData || []
-    setMembers(activeMembers)
+    try {
+      // 1. 기초 데이터 불러오기
+      const { data: memData } = await supabase.from('pr_members').select('*').eq('is_active', true).order('name')
+      const activeMembers = memData || []
+      setMembers(activeMembers)
 
-    const { data: configData } = await supabase.from('pr_config').select('*')
-    let currentPenalties = {}
-    let weeklySetup = {}
-    let totalWeeks = 12
-    if (configData) {
-      const penVal = configData.find(c => c.key === 'penalty_rules')?.value
-      const wsVal = configData.find(c => c.key === 'weekly_setup')?.value
-      const tWks = configData.find(c => c.key === 'total_weeks')?.value
-      if (penVal) currentPenalties = JSON.parse(penVal)
-      if (wsVal) weeklySetup = JSON.parse(wsVal)
-      if (tWks) totalWeeks = Number(tWks)
-      setPenalties(currentPenalties)
-    }
+      const { data: configData } = await supabase.from('pr_config').select('*')
+      let currentPenalties = {}
+      let weeklySetup = {}
+      let totalWeeks = 12
+      if (configData) {
+        const penVal = configData.find(c => c.key === 'penalty_rules')?.value
+        const wsVal = configData.find(c => c.key === 'weekly_setup')?.value
+        const tWks = configData.find(c => c.key === 'total_weeks')?.value
+        if (penVal) currentPenalties = JSON.parse(penVal)
+        if (wsVal) weeklySetup = JSON.parse(wsVal)
+        if (tWks) totalWeeks = Number(tWks)
+        setPenalties(currentPenalties)
+      }
 
-    const { data: dlData } = await supabase.from('pr_deadlines').select('*')
-    const deadlines = dlData || []
+      const { data: dlData } = await supabase.from('pr_deadlines').select('*')
+      const deadlines = dlData || []
 
-    const { data: filesData } = await supabase.from('files_metadata').select('*').eq('is_archive', false)
-    const files = filesData || []
-    
-    const { data: commentsData } = await supabase.from('file_comments').select('*')
-    const comments = commentsData || []
-
-    const { data: existingFinesData } = await supabase.from('pr_fines').select('*')
-    const existingFines = existingFinesData || []
-
-    // 🌟 2. 조 편성에 따른 벌금 '동기화' 배열 준비 (Insert, Update, Delete)
-    const finesToInsert = []
-    const finesToUpdate = []
-    const finesToDelete = []
-    const now = new Date().getTime()
-
-    // 벌금 검증 헬퍼 함수 (DB에 있는 기존 벌금과 비교하여 갱신/삭제 결정)
-    const processFine = (userName, w, category, expectedFine, expectedReason) => {
-      const existing = existingFines.find(f => f.user_name === userName && f.week === w && f.category === category)
+      const { data: filesData } = await supabase.from('files_metadata').select('*').eq('is_archive', false)
+      const files = filesData || []
       
-      if (expectedFine > 0) {
-        if (!existing) {
-          finesToInsert.push({ user_name: userName, week: w, category, amount: expectedFine, reason: expectedReason, is_paid: false })
-        } else if (!existing.is_paid && (existing.amount !== expectedFine || existing.reason !== expectedReason)) {
-          finesToUpdate.push({ id: existing.id, amount: expectedFine, reason: expectedReason })
+      const { data: commentsData } = await supabase.from('file_comments').select('*')
+      const comments = commentsData || []
+
+      // 🌟 [복구 완료!] 출석 데이터 불러오기
+      const { data: attData } = await supabase.from('pr_attendance').select('*')
+      const attendances = attData || []
+
+      // 🌟 기존 벌금 데이터 불러오기 및 중복 데이터(버그) 자동 청소
+      const { data: existingFinesDataRaw } = await supabase.from('pr_fines').select('*')
+      const existingFinesData = existingFinesDataRaw || []
+      
+      const uniqueFines = []
+      const duplicateIdsToDelete = []
+      const seenMap = new Set()
+
+      existingFinesData.forEach(f => {
+        // 이름 + 주차 + 카테고리 조합으로 고유 키 생성
+        const key = `${f.user_name}-${f.week}-${f.category}`
+        if (seenMap.has(key) && !f.is_paid) {
+          // 이미 같은 건이 있는데 또 미납 상태로 존재하면 중복(에러)이므로 삭제 명단에 추가
+          duplicateIdsToDelete.push(f.id)
+        } else {
+          seenMap.add(key)
+          uniqueFines.push(f)
         }
-      } else {
-        // 기대 벌금이 0원인데 기존에 미납 벌금이 있다면 삭제 (조 변경으로 면제된 경우)
-        if (existing && !existing.is_paid) {
-          finesToDelete.push(existing.id)
-        }
-      }
-    }
+      })
+      
+      const existingFines = uniqueFines // 중복이 제거된 깨끗한 데이터만 스캐너에 사용
 
-    for (let w = 1; w <= totalWeeks; w++) {
-      const weekDl = deadlines.filter(d => d.week === w)
-      if (weekDl.length === 0) continue
+      // 2. 조 편성에 따른 벌금 '동기화' 배열 준비 (Insert, Update, Delete)
+      const finesToInsert = []
+      const finesToUpdate = []
+      const finesToDelete = []
+      const now = new Date().getTime()
 
-      const wSetup = weeklySetup[w] || { members: {} }
-
-      activeMembers.forEach(m => {
-        const userName = m.name
-        const myGroup = wSetup.members[userName]
+      // 벌금 검증 헬퍼 함수
+      const processFine = (userName, w, category, expectedFine, expectedReason) => {
+        const existing = existingFines.find(f => f.user_name === userName && f.week === w && f.category === category)
         
-        const autoCategories = [
-          '기획서 지각/미제출', '슬라이드 지각/미제출', '영상 지각/미제출', 
-          '기획서 피드백 페널티', '영상 조원평가 페널티', '영상 셀프평가 페널티'
-        ]
-
-        // 🌟 조 편성이 안 되어있거나 결석인 경우: 이번 주차 모든 과제 벌금을 0으로 처리(기존 미납액 지움)
-        if (!myGroup || myGroup === '미정' || myGroup === '결석') {
-          autoCategories.forEach(cat => processFine(userName, w, cat, 0, ''))
-          return
-        }
-
-        const groupMembers = Object.keys(wSetup.members).filter(name => wSetup.members[name] === myGroup && name !== userName)
-
-        // [A] 기획서 (proposal)
-        const pDl = weekDl.find(d => d.category === 'proposal')
-        let pFine = 0, pReason = ''
-        if (pDl && pDl.deadline_time && new Date(pDl.deadline_time).getTime() < now) {
-          const myFile = files.find(f => f.week === w && f.file_category === 'proposal' && f.uploader === userName)
-          if (!myFile) {
-            pFine = currentPenalties.proposalMiss || 10000; pReason = '기획서 미제출'
-          } else if (new Date(myFile.created_at).getTime() > new Date(pDl.deadline_time).getTime()) {
-            const diffMin = Math.floor((new Date(myFile.created_at).getTime() - new Date(pDl.deadline_time).getTime()) / 60000)
-            pFine = Math.min(currentPenalties.proposalMax || 3000, (currentPenalties.proposalInitial || 1000) + Math.floor(diffMin/60) * (currentPenalties.proposalHourly || 500))
-            pReason = `기획서 ${diffMin}분 지각`
+        if (expectedFine > 0) {
+          if (!existing) {
+            finesToInsert.push({ user_name: userName, week: w, category, amount: expectedFine, reason: expectedReason, is_paid: false })
+          } else if (!existing.is_paid && (existing.amount !== expectedFine || existing.reason !== expectedReason)) {
+            finesToUpdate.push({ id: existing.id, amount: expectedFine, reason: expectedReason })
+          }
+        } else {
+          if (existing && !existing.is_paid) {
+            finesToDelete.push(existing.id)
           }
         }
-        processFine(userName, w, '기획서 지각/미제출', pFine, pReason)
-
-        // [B] 슬라이드 (slide)
-        const sDl = weekDl.find(d => d.category === 'slide')
-        let sFine = 0, sReason = ''
-        if (sDl && sDl.deadline_time && new Date(sDl.deadline_time).getTime() < now) {
-          const myFile = files.find(f => f.week === w && f.file_category === 'slide' && f.uploader === userName)
-          if (!myFile) {
-            sFine = currentPenalties.slideMiss || 10000; sReason = '슬라이드 미제출'
-          } else if (new Date(myFile.created_at).getTime() > new Date(sDl.deadline_time).getTime()) {
-            const diffMin = Math.floor((new Date(myFile.created_at).getTime() - new Date(sDl.deadline_time).getTime()) / 60000)
-            sFine = Math.min(currentPenalties.slideMax || 3000, (currentPenalties.slideInitial || 1000) + Math.floor(diffMin/60) * (currentPenalties.slideHourly || 500))
-            sReason = `슬라이드 ${diffMin}분 지각`
-          }
-        }
-        processFine(userName, w, '슬라이드 지각/미제출', sFine, sReason)
-
-        // [C] 영상 (video)
-        const vDl = weekDl.find(d => d.category === 'video')
-        let vFine = 0, vReason = ''
-        if (vDl && vDl.deadline_time && new Date(vDl.deadline_time).getTime() < now) {
-          const myFile = files.find(f => f.week === w && f.file_category === 'video' && f.uploader === userName)
-          if (!myFile) {
-            vFine = currentPenalties.slideMiss || 10000; vReason = '발표영상 미제출'
-          } else if (new Date(myFile.created_at).getTime() > new Date(vDl.deadline_time).getTime()) {
-            const diffMin = Math.floor((new Date(myFile.created_at).getTime() - new Date(vDl.deadline_time).getTime()) / 60000)
-            vFine = Math.min(currentPenalties.slideMax || 3000, (currentPenalties.slideInitial || 1000) + Math.floor(diffMin/60) * (currentPenalties.slideHourly || 500))
-            vReason = `발표영상 ${diffMin}분 지각`
-          }
-        }
-        processFine(userName, w, '영상 지각/미제출', vFine, vReason)
-
-        // [D] 기획서 피드백 (조원들 것만 확인)
-        const pcDl = weekDl.find(d => d.category === 'proposal_comment')
-        let pcFine = 0, pcReason = ''
-        if (pcDl && pcDl.deadline_time && new Date(pcDl.deadline_time).getTime() < now) {
-          const groupProps = files.filter(f => f.week === w && f.file_category === 'proposal' && groupMembers.includes(f.uploader))
-          let missed = 0, maxLateMin = 0
-          
-          groupProps.forEach(gp => {
-            const myComm = comments.find(c => c.file_id === gp.id && c.user_name === userName)
-            if (!myComm) missed++
-            else if (new Date(myComm.created_at).getTime() > new Date(pcDl.deadline_time).getTime()) {
-              const diffMin = Math.floor((new Date(myComm.created_at).getTime() - new Date(pcDl.deadline_time).getTime()) / 60000)
-              if (diffMin > maxLateMin) maxLateMin = diffMin
-            }
-          })
-
-          if (groupProps.length > 0 && missed > 0) {
-            pcFine = currentPenalties.fbMiss || 3000; pcReason = `기획서 조원 피드백 누락 (${missed}건 미제출)`
-          } else if (maxLateMin > 0) {
-            if (maxLateMin >= 60) { pcFine = currentPenalties.fbMiss || 3000; pcReason = '기획서 피드백 1시간 이상 지각' }
-            else { pcFine = (currentPenalties.fbInitial || 1000) + Math.floor(maxLateMin/10) * (currentPenalties.fbPer10Min || 300); pcReason = `기획서 피드백 최대 ${maxLateMin}분 지각` }
-          }
-        }
-        processFine(userName, w, '기획서 피드백 페널티', pcFine, pcReason)
-
-        // [E] 영상 정성 피드백 (조원 평가)
-        const vfDl = weekDl.find(d => d.category === 'vote_feedback')
-        let vfFine = 0, vfReason = ''
-        if (vfDl && vfDl.deadline_time && new Date(vfDl.deadline_time).getTime() < now) {
-          const groupVids = files.filter(f => f.week === w && f.file_category === 'video' && groupMembers.includes(f.uploader))
-          let missed = 0, maxLateMin = 0
-          
-          groupVids.forEach(gv => {
-            const myComm = comments.find(c => c.file_id === gv.id && c.user_name === userName)
-            if (!myComm) missed++
-            else if (new Date(myComm.created_at).getTime() > new Date(vfDl.deadline_time).getTime()) {
-              const diffMin = Math.floor((new Date(myComm.created_at).getTime() - new Date(vfDl.deadline_time).getTime()) / 60000)
-              if (diffMin > maxLateMin) maxLateMin = diffMin
-            }
-          })
-
-          if (groupVids.length > 0 && missed > 0) {
-            vfFine = currentPenalties.fbMiss || 3000; vfReason = `영상 조원평가 누락 (${missed}건 미제출)`
-          } else if (maxLateMin > 0) {
-            if (maxLateMin >= 60) { vfFine = currentPenalties.fbMiss || 3000; vfReason = '영상 조원평가 1시간 이상 지각' }
-            else { vfFine = (currentPenalties.fbInitial || 1000) + Math.floor(maxLateMin/10) * (currentPenalties.fbPer10Min || 300); vfReason = `영상 조원평가 최대 ${maxLateMin}분 지각` }
-          }
-        }
-        processFine(userName, w, '영상 조원평가 페널티', vfFine, vfReason)
-
-        // [F] 영상 셀프 피드백 (본인 평가)
-        const vcDl = weekDl.find(d => d.category === 'video_comment')
-        let vcFine = 0, vcReason = ''
-        if (vcDl && vcDl.deadline_time && new Date(vcDl.deadline_time).getTime() < now) {
-          const myVid = files.find(f => f.week === w && f.file_category === 'video' && f.uploader === userName)
-          if (myVid) {
-            const myComm = comments.find(c => c.file_id === myVid.id && c.user_name === userName)
-            if (!myComm) {
-              vcFine = currentPenalties.fbMiss || 3000; vcReason = '영상 셀프평가 미제출'
-            } else if (new Date(myComm.created_at).getTime() > new Date(vcDl.deadline_time).getTime()) {
-              const diffMin = Math.floor((new Date(myComm.created_at).getTime() - new Date(vcDl.deadline_time).getTime()) / 60000)
-              if (diffMin >= 60) { vcFine = currentPenalties.fbMiss || 3000; vcReason = '영상 셀프평가 1시간 이상 지각' }
-              else { vcFine = (currentPenalties.fbInitial || 1000) + Math.floor(diffMin/10) * (currentPenalties.fbPer10Min || 300); vcReason = `영상 셀프평가 ${diffMin}분 지각` }
-            }
-          }
-        }
-        processFine(userName, w, '영상 셀프평가 페널티', vcFine, vcReason)
-
-      }) // members loop end
-    } // weeks loop end
-
-    // 3. 변경 사항 DB 실행 (삭제 -> 수정 -> 추가 순으로 안전하게 처리)
-    if (finesToDelete.length > 0) {
-      await supabase.from('pr_fines').delete().in('id', finesToDelete)
-    }
-    if (finesToUpdate.length > 0) {
-      for (const f of finesToUpdate) {
-        await supabase.from('pr_fines').update({ amount: f.amount, reason: f.reason }).eq('id', f.id)
       }
-    }
-    if (finesToInsert.length > 0) {
-      await supabase.from('pr_fines').insert(finesToInsert)
-    }
 
-    // 4. 모든(납부/미납 포함) 벌금 내역 가져오기 (동기화 완료 후)
-    const { data: finalFinesData } = await supabase.from('pr_fines').select('*').order('week', { ascending: false }).order('created_at', { ascending: false })
-    setFines(finalFinesData || [])
+      for (let w = 1; w <= totalWeeks; w++) {
+        const weekDl = deadlines.filter(d => d.week === w)
+        if (weekDl.length === 0) continue
 
-    setIsScanning(false)
-    setLoading(false)
+        const wSetup = weeklySetup[w] || { members: {} }
+
+        activeMembers.forEach(m => {
+          const userName = m.name
+          const myGroup = wSetup.members[userName]
+          
+          const autoCategories = [
+            '기획서 지각/미제출', '슬라이드 지각/미제출', '영상 지각/미제출', 
+            '기획서 피드백 페널티', '영상 조원평가 페널티', '영상 셀프평가 페널티',
+            '오프라인 세션 페널티'
+          ]
+
+          // 결석/미정인 경우 자동 벌금 0으로 덮어씀 (기존 미납액 지움)
+          if (!myGroup || myGroup === '미정' || myGroup === '결석') {
+            autoCategories.forEach(cat => processFine(userName, w, cat, 0, ''))
+            return
+          }
+
+          const groupMembers = Object.keys(wSetup.members).filter(name => wSetup.members[name] === myGroup && name !== userName)
+
+          // [A] 기획서 (proposal)
+          const pDl = weekDl.find(d => d.category === 'proposal')
+          let pFine = 0, pReason = ''
+          if (pDl && pDl.deadline_time && new Date(pDl.deadline_time).getTime() < now) {
+            const myFile = files.find(f => f.week === w && f.file_category === 'proposal' && f.uploader === userName)
+            if (!myFile) {
+              pFine = currentPenalties.proposalMiss || 10000; pReason = '기획서 미제출'
+            } else if (new Date(myFile.created_at).getTime() > new Date(pDl.deadline_time).getTime()) {
+              const diffMin = Math.floor((new Date(myFile.created_at).getTime() - new Date(pDl.deadline_time).getTime()) / 60000)
+              pFine = Math.min(currentPenalties.proposalMax || 3000, (currentPenalties.proposalInitial || 1000) + Math.floor(diffMin/60) * (currentPenalties.proposalHourly || 500))
+              pReason = `기획서 ${diffMin}분 지각`
+            }
+          }
+          processFine(userName, w, '기획서 지각/미제출', pFine, pReason)
+
+          // [B] 슬라이드 (slide)
+          const sDl = weekDl.find(d => d.category === 'slide')
+          let sFine = 0, sReason = ''
+          if (sDl && sDl.deadline_time && new Date(sDl.deadline_time).getTime() < now) {
+            const myFile = files.find(f => f.week === w && f.file_category === 'slide' && f.uploader === userName)
+            if (!myFile) {
+              sFine = currentPenalties.slideMiss || 10000; sReason = '슬라이드 미제출'
+            } else if (new Date(myFile.created_at).getTime() > new Date(sDl.deadline_time).getTime()) {
+              const diffMin = Math.floor((new Date(myFile.created_at).getTime() - new Date(sDl.deadline_time).getTime()) / 60000)
+              sFine = Math.min(currentPenalties.slideMax || 3000, (currentPenalties.slideInitial || 1000) + Math.floor(diffMin/60) * (currentPenalties.slideHourly || 500))
+              sReason = `슬라이드 ${diffMin}분 지각`
+            }
+          }
+          processFine(userName, w, '슬라이드 지각/미제출', sFine, sReason)
+
+          // [C] 영상 (video)
+          const vDl = weekDl.find(d => d.category === 'video')
+          let vFine = 0, vReason = ''
+          if (vDl && vDl.deadline_time && new Date(vDl.deadline_time).getTime() < now) {
+            const myFile = files.find(f => f.week === w && f.file_category === 'video' && f.uploader === userName)
+            if (!myFile) {
+              vFine = currentPenalties.slideMiss || 10000; vReason = '발표영상 미제출'
+            } else if (new Date(myFile.created_at).getTime() > new Date(vDl.deadline_time).getTime()) {
+              const diffMin = Math.floor((new Date(myFile.created_at).getTime() - new Date(vDl.deadline_time).getTime()) / 60000)
+              vFine = Math.min(currentPenalties.slideMax || 3000, (currentPenalties.slideInitial || 1000) + Math.floor(diffMin/60) * (currentPenalties.slideHourly || 500))
+              vReason = `발표영상 ${diffMin}분 지각`
+            }
+          }
+          processFine(userName, w, '영상 지각/미제출', vFine, vReason)
+
+          // [D] 기획서 피드백
+          const pcDl = weekDl.find(d => d.category === 'proposal_comment')
+          let pcFine = 0, pcReason = ''
+          if (pcDl && pcDl.deadline_time && new Date(pcDl.deadline_time).getTime() < now) {
+            const groupProps = files.filter(f => f.week === w && f.file_category === 'proposal' && groupMembers.includes(f.uploader))
+            let missed = 0, maxLateMin = 0
+            
+            groupProps.forEach(gp => {
+              const myComm = comments.find(c => c.file_id === gp.id && c.user_name === userName)
+              if (!myComm) missed++
+              else if (new Date(myComm.created_at).getTime() > new Date(pcDl.deadline_time).getTime()) {
+                const diffMin = Math.floor((new Date(myComm.created_at).getTime() - new Date(pcDl.deadline_time).getTime()) / 60000)
+                if (diffMin > maxLateMin) maxLateMin = diffMin
+              }
+            })
+
+            if (groupProps.length > 0 && missed > 0) {
+              pcFine = currentPenalties.fbMiss || 3000; pcReason = `기획서 조원 피드백 누락 (${missed}건 미제출)`
+            } else if (maxLateMin > 0) {
+              if (maxLateMin >= 60) { pcFine = currentPenalties.fbMiss || 3000; pcReason = '기획서 피드백 1시간 이상 지각' }
+              else { pcFine = (currentPenalties.fbInitial || 1000) + Math.floor(maxLateMin/10) * (currentPenalties.fbPer10Min || 300); pcReason = `기획서 피드백 최대 ${maxLateMin}분 지각` }
+            }
+          }
+          processFine(userName, w, '기획서 피드백 페널티', pcFine, pcReason)
+
+          // [E] 영상 정성 피드백 (조원 평가)
+          const vfDl = weekDl.find(d => d.category === 'vote_feedback')
+          let vfFine = 0, vfReason = ''
+          if (vfDl && vfDl.deadline_time && new Date(vfDl.deadline_time).getTime() < now) {
+            const groupVids = files.filter(f => f.week === w && f.file_category === 'video' && groupMembers.includes(f.uploader))
+            let missed = 0, maxLateMin = 0
+            
+            groupVids.forEach(gv => {
+              const myComm = comments.find(c => c.file_id === gv.id && c.user_name === userName)
+              if (!myComm) missed++
+              else if (new Date(myComm.created_at).getTime() > new Date(vfDl.deadline_time).getTime()) {
+                const diffMin = Math.floor((new Date(myComm.created_at).getTime() - new Date(vfDl.deadline_time).getTime()) / 60000)
+                if (diffMin > maxLateMin) maxLateMin = diffMin
+              }
+            })
+
+            if (groupVids.length > 0 && missed > 0) {
+              vfFine = currentPenalties.fbMiss || 3000; vfReason = `영상 조원평가 누락 (${missed}건 미제출)`
+            } else if (maxLateMin > 0) {
+              if (maxLateMin >= 60) { vfFine = currentPenalties.fbMiss || 3000; vfReason = '영상 조원평가 1시간 이상 지각' }
+              else { vfFine = (currentPenalties.fbInitial || 1000) + Math.floor(maxLateMin/10) * (currentPenalties.fbPer10Min || 300); vfReason = `영상 조원평가 최대 ${maxLateMin}분 지각` }
+            }
+          }
+          processFine(userName, w, '영상 조원평가 페널티', vfFine, vfReason)
+
+          // [F] 영상 셀프 피드백
+          const vcDl = weekDl.find(d => d.category === 'video_comment')
+          let vcFine = 0, vcReason = ''
+          if (vcDl && vcDl.deadline_time && new Date(vcDl.deadline_time).getTime() < now) {
+            const myVid = files.find(f => f.week === w && f.file_category === 'video' && f.uploader === userName)
+            if (myVid) {
+              const myComm = comments.find(c => c.file_id === myVid.id && c.user_name === userName)
+              if (!myComm) {
+                vcFine = currentPenalties.fbMiss || 3000; vcReason = '영상 셀프평가 미제출'
+              } else if (new Date(myComm.created_at).getTime() > new Date(vcDl.deadline_time).getTime()) {
+                const diffMin = Math.floor((new Date(myComm.created_at).getTime() - new Date(vcDl.deadline_time).getTime()) / 60000)
+                if (diffMin >= 60) { vcFine = currentPenalties.fbMiss || 3000; vcReason = '영상 셀프평가 1시간 이상 지각' }
+                else { vcFine = (currentPenalties.fbInitial || 1000) + Math.floor(diffMin/10) * (currentPenalties.fbPer10Min || 300); vcReason = `영상 셀프평가 ${diffMin}분 지각` }
+              }
+            }
+          }
+          processFine(userName, w, '영상 셀프평가 페널티', vcFine, vcReason)
+
+          // 🌟 [G] 오프라인 세션 출석 (attendances 변수 정상 작동!)
+          const sessionStartDl = weekDl.find(d => d.category === 'session_start')
+          const attEndDl = weekDl.find(d => d.category === 'attendance_end')
+          let attFine = 0, attReason = ''
+          
+          if (attEndDl && attEndDl.deadline_time && new Date(attEndDl.deadline_time).getTime() < now) {
+            const myAtt = attendances.find(a => a.week === w && a.user_name === userName)
+            
+            const maxFine = Number(currentPenalties.sessionMax) || Number(currentPenalties.sessionMiss) || 20000;
+            const perMinFine = Number(currentPenalties.sessionPerMin) || Number(currentPenalties.sessionLatePerMin) || 200;
+            const per10MinFine = Number(currentPenalties.sessionPer10Min) || Number(currentPenalties.sessionLatePer10Min) || 2000;
+
+            if (!myAtt) {
+              attFine = maxFine; 
+              attReason = '오프라인 세션 무단 결석 (미인증)'
+            } else if (sessionStartDl && sessionStartDl.deadline_time && new Date(myAtt.created_at).getTime() > new Date(sessionStartDl.deadline_time).getTime()) {
+              const diffMin = Math.floor((new Date(myAtt.created_at).getTime() - new Date(sessionStartDl.deadline_time).getTime()) / 60000)
+              
+              if (diffMin <= 20) {
+                attFine = diffMin * perMinFine;
+              } else {
+                attFine = (20 * perMinFine) + Math.ceil((diffMin - 20) / 10) * per10MinFine;
+              }
+
+              if (attFine > maxFine) attFine = maxFine; 
+              
+              attReason = `오프라인 세션 ${diffMin}분 지각`
+            }
+          }
+          processFine(userName, w, '오프라인 세션 페널티', attFine, attReason)
+
+        }) // members loop end
+      } // weeks loop end
+
+      // 3. 변경 사항 DB 실행 (중복삭제 -> 삭제 -> 수정 -> 추가 순)
+      const finalDeletes = [...new Set([...finesToDelete, ...duplicateIdsToDelete])]
+      
+      if (finalDeletes.length > 0) {
+        await supabase.from('pr_fines').delete().in('id', finalDeletes)
+      }
+      if (finesToUpdate.length > 0) {
+        for (const f of finesToUpdate) {
+          await supabase.from('pr_fines').update({ amount: f.amount, reason: f.reason }).eq('id', f.id)
+        }
+      }
+      if (finesToInsert.length > 0) {
+        await supabase.from('pr_fines').insert(finesToInsert)
+      }
+
+      // 4. 모든(납부/미납 포함) 벌금 내역 가져오기
+      const { data: finalFinesData } = await supabase.from('pr_fines').select('*').order('week', { ascending: false }).order('created_at', { ascending: false })
+      setFines(finalFinesData || [])
+
+    } finally {
+      // 로직이 다 끝나거나 에러가 나도 자물쇠는 무조건 푼다!
+      scanLock.current = false
+      setIsScanning(false)
+      setLoading(false)
+    }
   }
 
   // ==========================================
@@ -264,7 +329,7 @@ export default function FineAdmin() {
   const handleDeleteFine = async (id) => {
     if (!confirm("이 벌금 내역을 완전히 삭제할까?\n(조 편성이 바뀌어 억울하게 들어간 벌금을 지울 때 사용해!)")) return
     await supabase.from('pr_fines').delete().eq('id', id)
-    fetchAndScanData() // 삭제 후 자동 재스캔
+    fetchAndScanData() 
   }
 
   const handleMarkAsPaid = async (id) => {
@@ -317,7 +382,6 @@ export default function FineAdmin() {
             <p className="text-xs font-bold text-slate-500 mt-2">과제 지각/미제출 자동 스캔 및 통합 엑셀 대장입니다.</p>
           </div>
           
-          {/* 🌟 계산 새로고침(재스캔) 버튼 추가 */}
           <div className="flex items-center gap-3">
             {isScanning && <div className="bg-blue-100 text-blue-600 px-4 py-2 rounded-xl text-xs font-black animate-pulse">자동 스캔 동기화 중... 🔍</div>}
             <button 
