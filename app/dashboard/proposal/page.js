@@ -9,6 +9,8 @@ export default function ProposalRoom() {
   const [user, setUser] = useState(null)
   const [files, setFiles] = useState([])
   const [uploading, setUploading] = useState(false)
+  
+  // 🌟 두 상태가 항상 같이 움직이도록 동기화 처리!
   const [selectedWeek, setSelectedWeek] = useState(1) 
   const [targetWeek, setTargetWeek] = useState(1) 
   
@@ -58,14 +60,44 @@ export default function ProposalRoom() {
     }
     
     const { data: dlData } = await supabase.from('pr_deadlines').select('*').in('category', ['proposal', 'proposal_comment'])
+    
+    // 🌟 자동 주차 선택 로직 (가장 최근/임박한 마감일 찾기)
     const dlMap = {}
+    let initialWeek = 1
+    let minDiff = Infinity
+    let maxPastWeek = 1
+    const now = new Date()
+
     if (dlData) {
       dlData.forEach(d => {
         if (!dlMap[d.week]) dlMap[d.week] = {}
         dlMap[d.week][d.category] = d.deadline_time
+
+        // 기획서 제출 마감일을 기준으로 판단
+        if (d.category === 'proposal' && d.deadline_time) {
+          const dlTime = new Date(d.deadline_time)
+          if (dlTime > now) {
+            // 미래 일정 중 가장 가까운 것
+            const diff = dlTime - now
+            if (diff < minDiff) {
+              minDiff = diff
+              initialWeek = d.week
+            }
+          } else {
+            // 이미 지난 일정 중 가장 최근 것
+            if (d.week > maxPastWeek) maxPastWeek = d.week
+          }
+        }
       })
+      // 다가올 마감일이 없으면 가장 최근에 마감된 주차로 설정
+      if (minDiff === Infinity) initialWeek = maxPastWeek
     }
+    
     setDeadlines(dlMap)
+    
+    // 🌟 알아낸 주차로 화면 및 업로드 타겟 즉시 세팅!
+    setSelectedWeek(initialWeek)
+    setTargetWeek(initialWeek)
   }
 
   const formatDate = (dateStr) => {
@@ -153,7 +185,6 @@ export default function ProposalRoom() {
     const deadline = deadlines[targetWeek]?.proposal
     const isLate = deadline ? new Date() > new Date(deadline) : false
 
-    // 🌟 DB 저장 실패 에러 캐치 추가
     const { error: dbError } = await supabase.from('files_metadata').insert([{ 
       file_name: autoFileName, 
       file_url: publicUrl, 
@@ -174,9 +205,14 @@ export default function ProposalRoom() {
     }
     
     alert('기획서 제출 완료! 🎉'); 
-    setSelectedWeek(targetWeek); // 🌟 업로드 즉시 해당 주차로 화면 이동!
     setUploading(false); 
     fetchFiles();
+  }
+
+  // 🌟 드롭다운이나 탭을 눌렀을 때 두 상태를 동시에 변경해주는 헬퍼 함수
+  const handleWeekChange = (w) => {
+    setSelectedWeek(w);
+    setTargetWeek(w);
   }
 
   if (!user) return <div className="p-8 text-center font-bold italic">데이터 불러오는 중... 🔄</div>
@@ -230,14 +266,9 @@ export default function ProposalRoom() {
         <div className="bg-white p-8 rounded-[2rem] shadow-xl border border-blue-100 flex flex-col md:flex-row justify-between items-center gap-6 mt-8">
           <div className="flex flex-col gap-3 w-full md:w-auto">
             <div className="flex items-center gap-4">
-              {/* 🌟 여기서 주차를 고르면 selectedWeek도 같이 변경되도록 연동! */}
               <select 
                 value={targetWeek} 
-                onChange={(e) => {
-                  const w = Number(e.target.value);
-                  setTargetWeek(w);
-                  setSelectedWeek(w); 
-                }} 
+                onChange={(e) => handleWeekChange(Number(e.target.value))} 
                 className="p-2 px-4 rounded-xl bg-blue-50 text-blue-900 font-black text-lg outline-none cursor-pointer border border-blue-100 shadow-sm"
               >
                 {weeks.map(w => <option key={w} value={w}>{w}주차</option>)}
@@ -274,7 +305,7 @@ export default function ProposalRoom() {
           {weeks.map(w => (
             <button 
               key={w} 
-              onClick={() => setSelectedWeek(w)} 
+              onClick={() => handleWeekChange(w)} 
               className={`px-6 py-3 rounded-2xl text-xs font-black transition-all flex-shrink-0 ${selectedWeek === w ? 'bg-blue-900 text-white shadow-xl scale-110' : 'bg-white border border-slate-200 text-slate-400 hover:border-blue-300'}`}
             >
               W{w}
@@ -287,7 +318,6 @@ export default function ProposalRoom() {
             아직 업로드된 기획서가 없어! 첫 번째로 올려볼까? 👀
           </div>
         ) : (
-          /* 🌟 가운데 정렬(w-max mx-auto) 복구 완료 */
           <div className="w-full overflow-x-auto pb-8 no-scrollbar">
             <div className="flex gap-6 items-start w-max mx-auto">
               
@@ -319,7 +349,6 @@ export default function ProposalRoom() {
                 )
               })}
 
-              {/* 🌟 조 편성 전 전용 UI 분기 처리 */}
               {groupedFiles['미분류'].length > 0 && (
                 <div className={`flex-shrink-0 w-[320px] flex flex-col gap-4 transition-opacity ${maxGroup === 0 ? '' : 'opacity-80 hover:opacity-100'}`}>
                   <h3 className={`text-sm font-black px-4 py-2 rounded-xl w-fit shadow-sm ${maxGroup === 0 ? 'text-blue-600 bg-blue-100' : 'text-slate-500 bg-slate-200'}`}>

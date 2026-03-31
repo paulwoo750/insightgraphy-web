@@ -8,26 +8,30 @@ export default function SlideRoom() {
   const router = useRouter()
   const [user, setUser] = useState(null)
   const [files, setFiles] = useState([])
+  
+  // 🌟 두 상태가 항상 같이 움직이도록 동기화 처리!
   const [selectedWeek, setSelectedWeek] = useState(1) 
   const [targetWeek, setTargetWeek] = useState(1) 
   
-  // 🌟 링크 입력 칸 상태 
+  // 링크 입력 칸 상태 
   const [driveLink, setDriveLink] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
-  // 🌟 [중요] 여기에 학회 공용 구글 드라이브 폴더 주소를 넣어줘!
+  // [중요] 여기에 학회 공용 구글 드라이브 폴더 주소를 넣어줘!
   const GOOGLE_DRIVE_FOLDER_URL = "https://drive.google.com/drive/folders/1F-YFI422wyYQxd0lBeJ9boaNDlr0iwFJ"
   
-  // 🌟 시스템 설정 상태 추가 (totalWeeks 동기화)
+  // 시스템 설정 상태
   const [currentSemester, setCurrentSemester] = useState('2026-1')
   const [totalWeeks, setTotalWeeks] = useState(12) 
   const [deadlines, setDeadlines] = useState({})
   const [weekTopics, setWeekTopics] = useState({}) 
+  
+  // 🌟 조 편성 데이터 상태 (추가됨)
+  const [weeklySetup, setWeeklySetup] = useState({})
 
   const [editItem, setEditItem] = useState(null)
   const [newTitle, setNewTitle] = useState('')
 
-  // 🌟 하드코딩된 length 제거, 관리자 설정(totalWeeks) 기반으로 0부터 생성
   const weeks = Array.from({ length: totalWeeks + 1 }, (_, i) => i)
 
   useEffect(() => {
@@ -44,22 +48,48 @@ export default function SlideRoom() {
     if (configData) {
       const sem = configData.find(c => c.key === 'current_semester')?.value
       const topics = configData.find(c => c.key === 'week_topics')?.value
-      const wks = configData.find(c => c.key === 'total_weeks')?.value // 🌟 총 주차 수 불러오기
+      const wks = configData.find(c => c.key === 'total_weeks')?.value
+      const setupStr = configData.find(c => c.key === 'weekly_setup')?.value // 🌟 조 편성 세팅 불러오기
 
       if (sem) setCurrentSemester(sem)
       if (topics) setWeekTopics(JSON.parse(topics))
       if (wks) setTotalWeeks(Number(wks))
+      if (setupStr) setWeeklySetup(JSON.parse(setupStr))
     }
     
     const { data: dlData } = await supabase.from('pr_deadlines').select('*').eq('category', 'slide')
+    
+    // 🌟 자동 주차 선택 로직 (가장 최근/임박한 슬라이드 마감일 찾기)
     const dlMap = {}
+    let initialWeek = 1
+    let minDiff = Infinity
+    let maxPastWeek = 1
+    const now = new Date()
+
     if (dlData) {
       dlData.forEach(d => {
         if (!dlMap[d.week]) dlMap[d.week] = {}
         dlMap[d.week][d.category] = d.deadline_time
+
+        if (d.category === 'slide' && d.deadline_time) {
+          const dlTime = new Date(d.deadline_time)
+          if (dlTime > now) {
+            const diff = dlTime - now
+            if (diff < minDiff) {
+              minDiff = diff
+              initialWeek = d.week
+            }
+          } else {
+            if (d.week > maxPastWeek) maxPastWeek = d.week
+          }
+        }
       })
+      if (minDiff === Infinity) initialWeek = maxPastWeek
     }
+    
     setDeadlines(dlMap)
+    setSelectedWeek(initialWeek)
+    setTargetWeek(initialWeek)
   }
 
   const formatDate = (dateStr) => {
@@ -95,7 +125,6 @@ export default function SlideRoom() {
     if (!error) fetchFiles()
   }
 
-  // 🌟 링크 복붙 제출 마법 🌟
   const handleSubmitLink = async () => {
     if (!driveLink.trim()) {
       alert("구글 드라이브 공유 링크를 입력해 줘! 🔗");
@@ -108,40 +137,97 @@ export default function SlideRoom() {
 
     setSubmitting(true)
     
-    // 🌟 0주차 OT/자유주제 처리 방어
     const currentTopic = weekTopics[targetWeek] || (targetWeek === 0 ? 'OT 및 자유 주제' : '자유 주제')
-    const autoFileName = `${targetWeek}W (${currentTopic}) ${user.user_metadata.name || '익명'} 발표자료`
+    const uploaderName = user.user_metadata.name || '익명'
+    const autoFileName = `${targetWeek}W (${currentTopic}) ${uploaderName} 발표자료`
     
+    // 🌟 선택된 유저의 소속 조(Group) 확인
+    let myGroup = null
+    if (weeklySetup[targetWeek] && weeklySetup[targetWeek].members) {
+      const g = weeklySetup[targetWeek].members[uploaderName]
+      if (g && g !== '미정' && g !== '결석') {
+        myGroup = Number(g) 
+      }
+    }
+
     const deadline = deadlines[targetWeek]?.slide
     const isLate = deadline ? new Date() > new Date(deadline) : false
 
     const { error } = await supabase.from('files_metadata').insert([{ 
       file_name: autoFileName, 
-      file_url: driveLink,  // 🌟 유저가 입력한 링크 저장
+      file_url: driveLink, 
       week: targetWeek,
       file_category: 'slide', 
       is_archive: false,
-      uploader: user.user_metadata.name || '익명', 
+      uploader: uploaderName, 
       storage_path: 'google_drive_link', 
       semester: currentSemester,
-      is_late: isLate
+      is_late: isLate,
+      group_id: myGroup // 🌟 소속된 조 저장
     }])
     
     if (error) {
       alert('제출 실패: ' + error.message);
     } else {
       alert('슬라이드 링크 제출 완료! 🎉'); 
-      setDriveLink(''); // 입력칸 비우기
+      setDriveLink(''); 
+      setSelectedWeek(targetWeek); // 🌟 업로드 후 화면 주차 동기화
       fetchFiles();
     }
     setSubmitting(false); 
   }
 
+  // 🌟 드롭다운이나 탭을 눌렀을 때 두 상태를 동시에 변경해주는 헬퍼 함수
+  const handleWeekChange = (w) => {
+    setSelectedWeek(w);
+    setTargetWeek(w);
+  }
+
   if (!user) return <div className="p-8 text-center font-bold italic">데이터 불러오는 중... 🔄</div>
+
+  // ========================================================
+  // 🌟 실시간 조(Group) 분류 및 칸반 렌더링 로직 (기획서 페이지와 동일)
+  // ========================================================
+  const filesThisWeek = files.filter(f => f.week === selectedWeek)
+  const groupedFiles = {}
+  
+  let maxGroup = 0
+  if (weeklySetup[selectedWeek] && weeklySetup[selectedWeek].groupCount) {
+    maxGroup = Number(weeklySetup[selectedWeek].groupCount)
+  }
+
+  const getDynamicGroup = (file) => {
+    if (weeklySetup[selectedWeek] && weeklySetup[selectedWeek].members && weeklySetup[selectedWeek].members[file.uploader]) {
+      const g = weeklySetup[selectedWeek].members[file.uploader]
+      if (g !== '미정' && g !== '결석') return Number(g)
+    }
+    if (file.group_id) return file.group_id
+    return null
+  }
+  
+  filesThisWeek.forEach(f => {
+    const dGroup = getDynamicGroup(f)
+    if (dGroup && dGroup > maxGroup) maxGroup = dGroup
+  })
+
+  for (let i = 1; i <= maxGroup; i++) {
+    groupedFiles[i] = []
+  }
+  groupedFiles['미분류'] = [] 
+
+  filesThisWeek.forEach(f => {
+    const dGroup = getDynamicGroup(f)
+    if (dGroup && groupedFiles[dGroup]) {
+      groupedFiles[dGroup].push(f)
+    } else {
+      groupedFiles['미분류'].push(f)
+    }
+  })
 
   return (
     <div className="p-8 bg-slate-50 min-h-screen text-slate-900 font-sans pb-32">
-      <header className="max-w-6xl mx-auto mb-12">
+      {/* 🌟 와이드 뷰를 위해 max-w-[1550px] 적용 */}
+      <header className="max-w-[1550px] mx-auto mb-12">
         <div className="flex justify-between items-end">
           <div>
             <Link href="/dashboard" className="inline-block mb-4 px-4 py-2 bg-slate-200 text-slate-600 rounded-xl text-xs font-black hover:bg-slate-300 transition-all">← 대시보드 메인으로 가기</Link>
@@ -149,12 +235,15 @@ export default function SlideRoom() {
           </div>
         </div>
 
-        {/* 🌟 2-Step 업로드 패널 */}
         <div className="bg-white p-8 rounded-[2.5rem] shadow-xl border border-purple-100 flex flex-col xl:flex-row justify-between items-center gap-8 mt-8">
           
           <div className="flex flex-col gap-3 w-full xl:w-auto">
             <div className="flex items-center gap-4">
-              <select value={targetWeek} onChange={(e) => setTargetWeek(Number(e.target.value))} className="p-2 px-4 rounded-xl bg-purple-50 text-purple-900 font-black text-lg outline-none cursor-pointer">
+              <select 
+                value={targetWeek} 
+                onChange={(e) => handleWeekChange(Number(e.target.value))} 
+                className="p-2 px-4 rounded-xl bg-purple-50 text-purple-900 font-black text-lg outline-none cursor-pointer"
+              >
                 {weeks.map(w => <option key={w} value={w}>{w}주차</option>)}
               </select>
               <h2 className="text-2xl font-black text-slate-800 tracking-tight">
@@ -170,16 +259,12 @@ export default function SlideRoom() {
             </div>
           </div>
 
-          {/* 링크 복붙 제출 영역 */}
           <div className="flex flex-col md:flex-row gap-4 w-full xl:w-auto bg-slate-50 p-4 rounded-3xl border border-slate-100">
-            
-            {/* Step 1: 드라이브 열기 버튼 */}
             <a href={GOOGLE_DRIVE_FOLDER_URL} target="_blank" rel="noopener noreferrer" className="flex-shrink-0 bg-white border-2 border-slate-200 hover:border-purple-300 text-slate-700 px-6 py-4 rounded-2xl font-black text-xs transition-all shadow-sm flex flex-col items-center justify-center gap-1 group">
               <span className="text-xl group-hover:scale-110 transition-transform">📁</span>
               Step 1. 드라이브에 파일 올리기
             </a>
 
-            {/* Step 2: 링크 제출 창 */}
             <div className="flex flex-col gap-2 w-full max-w-sm">
               <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2">Step 2. 공유 링크 제출</span>
               <div className="flex gap-2">
@@ -199,50 +284,83 @@ export default function SlideRoom() {
                 </button>
               </div>
             </div>
-
           </div>
 
         </div>
       </header>
 
-      <div className="max-w-6xl mx-auto">
+      <div className="max-w-[1550px] mx-auto">
         <div className="flex gap-2 mb-12 overflow-x-auto pb-4 no-scrollbar">
-          {weeks.map(w => (<button key={w} onClick={() => setSelectedWeek(w)} className={`px-6 py-3 rounded-2xl text-xs font-black transition-all flex-shrink-0 ${selectedWeek === w ? 'bg-purple-900 text-white shadow-xl scale-110' : 'bg-white border border-slate-200 text-slate-400 hover:border-purple-300'}`}>W{w}</button>))}
+          {weeks.map(w => (
+            <button 
+              key={w} 
+              onClick={() => handleWeekChange(w)} 
+              className={`px-6 py-3 rounded-2xl text-xs font-black transition-all flex-shrink-0 ${selectedWeek === w ? 'bg-purple-900 text-white shadow-xl scale-110' : 'bg-white border border-slate-200 text-slate-400 hover:border-purple-300'}`}
+            >
+              W{w}
+            </button>
+          ))}
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {files.filter(f => f.week === selectedWeek).map(file => (
-            <div key={file.id} className="bg-white p-8 rounded-[3rem] border-2 border-slate-100 hover:border-purple-200 hover:shadow-2xl transition-all group cursor-pointer relative" onClick={() => window.open(file.file_url, '_blank')}>
+        {filesThisWeek.length === 0 ? (
+          <div className="text-center py-24 text-slate-300 font-bold border-4 border-dashed border-slate-200 bg-white rounded-[3rem]">
+            아직 제출된 슬라이드가 없어! 첫 번째로 올려볼까? 👀
+          </div>
+        ) : (
+          /* 🌟 조별 세로 기둥(Kanban) 뷰어 적용 (가운데 정렬) */
+          <div className="w-full overflow-x-auto pb-8 no-scrollbar">
+            <div className="flex gap-6 items-start w-max mx-auto">
               
-              {file.is_late && (
-                <span className="absolute -top-3 -right-3 bg-red-500 text-white text-[10px] font-black px-3 py-1.5 rounded-xl shadow-lg z-10 animate-bounce">
-                  LATE
-                </span>
+              {Array.from({ length: maxGroup }, (_, i) => i + 1).map(gId => {
+                const groupList = groupedFiles[gId]
+                const isGroupSetup = weeklySetup[selectedWeek] && weeklySetup[selectedWeek].groupCount >= gId;
+                if (groupList.length === 0 && !isGroupSetup) return null 
+                
+                return (
+                  <div key={gId} className="flex-shrink-0 w-[320px] flex flex-col gap-4">
+                    <h3 className="text-sm font-black text-purple-600 bg-purple-100 px-4 py-2 rounded-xl w-fit shadow-sm">Group {gId}</h3>
+                    <div className="space-y-4">
+                      {groupList.length === 0 ? (
+                        <div className="bg-white/50 border border-dashed border-slate-300 p-6 rounded-[2rem] text-center text-xs font-bold text-slate-400">
+                          이 조에 제출된 슬라이드가 없습니다.
+                        </div>
+                      ) : groupList.map(file => (
+                        <SlideCard 
+                          key={file.id} 
+                          file={file} 
+                          onEdit={(e) => { e.stopPropagation(); setEditItem(file); setNewTitle(file.file_name); }}
+                          onDelete={(e) => handleDeleteFile(e, file.id)}
+                          formatDate={formatDate}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )
+              })}
+
+              {/* 🌟 조 편성 전 전용 UI 분기 처리 */}
+              {groupedFiles['미분류'].length > 0 && (
+                <div className={`flex-shrink-0 w-[320px] flex flex-col gap-4 transition-opacity ${maxGroup === 0 ? '' : 'opacity-80 hover:opacity-100'}`}>
+                  <h3 className={`text-sm font-black px-4 py-2 rounded-xl w-fit shadow-sm ${maxGroup === 0 ? 'text-purple-600 bg-purple-100' : 'text-slate-500 bg-slate-200'}`}>
+                    {maxGroup === 0 ? '제출된 슬라이드 (조 편성 전)' : '미분류 / 개별 제출'}
+                  </h3>
+                  <div className="space-y-4">
+                    {groupedFiles['미분류'].map(file => (
+                      <SlideCard 
+                        key={file.id} 
+                        file={file} 
+                        onEdit={(e) => { e.stopPropagation(); setEditItem(file); setNewTitle(file.file_name); }}
+                        onDelete={(e) => handleDeleteFile(e, file.id)}
+                        formatDate={formatDate}
+                      />
+                    ))}
+                  </div>
+                </div>
               )}
 
-              <div className="flex justify-between items-start mb-6">
-                <span className="bg-slate-100 text-purple-600 text-[10px] px-3 py-1 rounded-full font-black uppercase">LINK</span>
-                <div className="flex gap-3">
-                  <button onClick={(e) => { e.stopPropagation(); setEditItem(file); setNewTitle(file.file_name); }} className="text-[10px] font-black text-slate-300 hover:text-purple-600">수정</button>
-                  <button onClick={(e) => handleDeleteFile(e, file.id)} className="text-[10px] font-black text-slate-300 hover:text-red-500">삭제</button>
-                </div>
-              </div>
-              <h3 className="text-lg font-black text-slate-800 mb-6 break-all line-clamp-2">{file.file_name}</h3>
-              <div className="flex justify-between items-center pt-6 border-t border-slate-100">
-                <div className="flex flex-col gap-1">
-                  <span className="text-xs font-bold text-slate-400">👤 {file.uploader}</span>
-                  <span className="text-[9px] font-black text-slate-300">{formatDate(file.created_at)}</span>
-                </div>
-                <span className="text-[10px] font-black text-purple-600 flex items-center gap-1">
-                  드라이브에서 보기 <span className="text-sm">↗</span>
-                </span>
-              </div>
             </div>
-          ))}
-          {files.filter(f => f.week === selectedWeek).length === 0 && (
-            <div className="col-span-full text-center py-24 text-slate-300 font-bold border-4 border-dashed border-slate-100 rounded-[3rem]">아직 제출된 슬라이드가 없어! 첫 번째로 올려볼까? 👀</div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
       {/* 파일 이름 수정 모달 */}
@@ -258,6 +376,34 @@ export default function SlideRoom() {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+// 🌟 슬라이드 전용 카드 컴포넌트
+function SlideCard({ file, onEdit, onDelete, formatDate }) {
+  return (
+    <div className="bg-white p-6 rounded-3xl border border-slate-200 hover:border-purple-300 hover:shadow-xl transition-all group cursor-pointer relative" onClick={() => window.open(file.file_url, '_blank')}>
+      {file.is_late && (
+        <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[9px] font-black px-2 py-1 rounded-lg shadow-sm">LATE</span>
+      )}
+      <div className="flex justify-between items-start mb-4">
+        <span className="bg-slate-100 text-purple-600 text-[10px] px-2 py-1 rounded-full font-black uppercase">LINK</span>
+        <div className="flex gap-3">
+          <button onClick={onEdit} className="text-[10px] font-black text-slate-300 hover:text-purple-600">수정</button>
+          <button onClick={onDelete} className="text-[10px] font-black text-slate-300 hover:text-red-500">삭제</button>
+        </div>
+      </div>
+      <h3 className="text-lg font-black text-slate-800 mb-6 break-all line-clamp-2 leading-tight">{file.file_name}</h3>
+      <div className="flex justify-between items-center pt-4 border-t border-slate-100">
+        <div className="flex flex-col gap-1">
+          <span className="text-xs font-bold text-slate-400">👤 {file.uploader}</span>
+          <span className="text-[9px] font-black text-slate-300">{formatDate(file.created_at)}</span>
+        </div>
+        <span className="text-[10px] font-black text-purple-600 flex items-center gap-1">
+          드라이브에서 보기 <span className="text-sm">↗</span>
+        </span>
+      </div>
     </div>
   )
 }

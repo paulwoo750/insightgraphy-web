@@ -9,6 +9,8 @@ export default function VideoRoom() {
   const [user, setUser] = useState(null)
   const [files, setFiles] = useState([])
   const [uploading, setUploading] = useState(false)
+  
+  // 🌟 두 상태가 항상 같이 움직이도록 동기화 처리!
   const [selectedWeek, setSelectedWeek] = useState(1) 
   const [targetWeek, setTargetWeek] = useState(1) 
   
@@ -23,7 +25,7 @@ export default function VideoRoom() {
   const [deadlines, setDeadlines] = useState({})
   const [weekTopics, setWeekTopics] = useState({}) 
   
-  // 🌟 관리자가 설정한 주차별 조 편성 데이터 저장용
+  // 관리자가 설정한 주차별 조 편성 데이터 저장용
   const [weeklySetup, setWeeklySetup] = useState({})
 
   // 통합 뷰어 상태
@@ -59,7 +61,7 @@ export default function VideoRoom() {
       const sem = configData.find(c => c.key === 'current_semester')?.value
       const topics = configData.find(c => c.key === 'week_topics')?.value
       const wks = configData.find(c => c.key === 'total_weeks')?.value
-      const setupStr = configData.find(c => c.key === 'weekly_setup')?.value // 🌟 조 편성 세팅 불러오기
+      const setupStr = configData.find(c => c.key === 'weekly_setup')?.value
 
       if (sem) setCurrentSemester(sem)
       if (topics) setWeekTopics(JSON.parse(topics))
@@ -68,14 +70,39 @@ export default function VideoRoom() {
     }
     
     const { data: dlData } = await supabase.from('pr_deadlines').select('*')
+    
+    // 🌟 자동 주차 선택 로직 (가장 최근/임박한 영상 마감일 찾기)
     const dlMap = {}
+    let initialWeek = 1
+    let minDiff = Infinity
+    let maxPastWeek = 1
+    const now = new Date()
+
     if (dlData) {
       dlData.forEach(d => {
         if (!dlMap[d.week]) dlMap[d.week] = {}
         dlMap[d.week][d.category] = d.deadline_time
+
+        // 영상 등록 마감일을 기준으로 판단
+        if (d.category === 'video' && d.deadline_time) {
+          const dlTime = new Date(d.deadline_time)
+          if (dlTime > now) {
+            const diff = dlTime - now
+            if (diff < minDiff) {
+              minDiff = diff
+              initialWeek = d.week
+            }
+          } else {
+            if (d.week > maxPastWeek) maxPastWeek = d.week
+          }
+        }
       })
+      if (minDiff === Infinity) initialWeek = maxPastWeek
     }
+    
     setDeadlines(dlMap)
+    setSelectedWeek(initialWeek)
+    setTargetWeek(initialWeek)
   }
 
   const formatDate = (dateStr) => {
@@ -109,7 +136,6 @@ export default function VideoRoom() {
     const currentTopic = weekTopics[targetWeek] || (targetWeek === 0 ? 'OT 및 자유 주제' : '자유 주제')
     const autoTitle = `${targetWeek}W (${currentTopic}) ${selectedOwnerName} 발표영상`;
     
-    // 🌟 선택된 영상 주인의 소속 조(Group) 확인
     let myGroup = null
     if (weeklySetup[targetWeek] && weeklySetup[targetWeek].members) {
       const g = weeklySetup[targetWeek].members[selectedOwnerName]
@@ -131,9 +157,15 @@ export default function VideoRoom() {
       storage_path: 'youtube',
       semester: currentSemester,
       is_late: isLate,
-      group_id: myGroup // 🌟 소속된 조(Group) ID 함께 저장!
+      group_id: myGroup 
     }])
-    if (!error) { alert('영상 등록 완료! 🎬'); setYtUrl(''); setSelectedOwnerName(''); fetchFiles(); }
+    if (!error) { 
+      alert('영상 등록 완료! 🎬'); 
+      setYtUrl(''); 
+      setSelectedOwnerName(''); 
+      setSelectedWeek(targetWeek); // 🌟 업로드 후 화면 동기화
+      fetchFiles(); 
+    }
     else { alert("등록 실패: " + error.message); }
     setUploading(false)
   }
@@ -208,6 +240,12 @@ export default function VideoRoom() {
     await supabase.from('files_metadata').delete().eq('id', id); fetchFiles();
   }
 
+  // 🌟 드롭다운이나 탭을 눌렀을 때 두 상태를 동시에 변경해주는 헬퍼 함수
+  const handleWeekChange = (w) => {
+    setSelectedWeek(w);
+    setTargetWeek(w);
+  }
+
   if (!user) return <div className="p-8 text-center font-bold">데이터 불러오는 중... 🔄</div>
 
   const selfFeedbacks = comments.filter(c => c.user_name === viewingFile?.uploader);
@@ -258,7 +296,6 @@ export default function VideoRoom() {
 
   return (
     <div className="p-8 bg-slate-50 min-h-screen text-slate-900 font-sans pb-32">
-      {/* 🌟 전체 컨테이너 너비 확장: 1550px */}
       <header className="max-w-[1550px] mx-auto mb-12">
         <div className="flex justify-between items-end">
           <div>
@@ -270,7 +307,11 @@ export default function VideoRoom() {
         <div className="bg-white p-8 rounded-[2.5rem] shadow-xl border border-red-100 flex flex-col xl:flex-row justify-between items-center gap-8 mt-8">
           <div className="flex flex-col gap-3 w-full xl:w-auto flex-1">
             <div className="flex items-center gap-4">
-              <select value={targetWeek} onChange={(e) => setTargetWeek(Number(e.target.value))} className="p-2 px-4 rounded-xl bg-red-50 text-red-900 font-black text-lg outline-none cursor-pointer">
+              <select 
+                value={targetWeek} 
+                onChange={(e) => handleWeekChange(Number(e.target.value))} 
+                className="p-2 px-4 rounded-xl bg-red-50 text-red-900 font-black text-lg outline-none cursor-pointer"
+              >
                 {weeks.map(w => <option key={w} value={w}>{w}주차</option>)}
               </select>
               <h2 className="text-2xl font-black text-slate-800 tracking-tight">
@@ -331,13 +372,12 @@ export default function VideoRoom() {
         </div>
       </header>
 
-      {/* 🌟 전체 컨테이너 너비 확장: 1550px */}
       <div className="max-w-[1550px] mx-auto">
         <div className="flex gap-2 mb-12 overflow-x-auto pb-4 no-scrollbar">
           {weeks.map(w => (
             <button 
               key={w} 
-              onClick={() => setSelectedWeek(w)} 
+              onClick={() => handleWeekChange(w)} 
               className={`px-6 py-3 rounded-2xl text-xs font-black transition-all flex-shrink-0 ${selectedWeek === w ? 'bg-red-900 text-white shadow-xl scale-110' : 'bg-white border border-slate-200 text-slate-400 hover:border-red-300'}`}
             >
               W{w}
@@ -345,13 +385,11 @@ export default function VideoRoom() {
           ))}
         </div>
 
-        {/* 🌟 조별 세로 기둥(Kanban) 뷰어 적용 */}
         {filesThisWeek.length === 0 ? (
           <div className="text-center py-24 text-slate-300 font-bold border-4 border-dashed border-slate-200 bg-white rounded-[3rem]">
             아직 등록된 영상이 없어! 첫 번째로 올려볼까? 👀
           </div>
         ) : (
-          /* 가운데 정렬을 위해 w-full과 w-max mx-auto 조합 */
           <div className="w-full overflow-x-auto pb-8 no-scrollbar">
             <div className="flex gap-6 items-start w-max mx-auto">
               
@@ -382,9 +420,12 @@ export default function VideoRoom() {
                 )
               })}
 
+              {/* 🌟 조 편성 전 전용 UI 분기 처리 */}
               {groupedFiles['미분류'].length > 0 && (
-                <div className="flex-shrink-0 w-[320px] flex flex-col gap-4 opacity-80 hover:opacity-100 transition-opacity">
-                  <h3 className="text-sm font-black text-slate-500 bg-slate-200 px-4 py-2 rounded-xl w-fit shadow-sm">미분류 / 개별 등록</h3>
+                <div className={`flex-shrink-0 w-[320px] flex flex-col gap-4 transition-opacity ${maxGroup === 0 ? '' : 'opacity-80 hover:opacity-100'}`}>
+                  <h3 className={`text-sm font-black px-4 py-2 rounded-xl w-fit shadow-sm ${maxGroup === 0 ? 'text-red-600 bg-red-100' : 'text-slate-500 bg-slate-200'}`}>
+                    {maxGroup === 0 ? '등록된 영상 (조 편성 전)' : '미분류 / 개별 등록'}
+                  </h3>
                   <div className="space-y-4">
                     {groupedFiles['미분류'].map(file => (
                       <VideoCard 
@@ -507,7 +548,6 @@ export default function VideoRoom() {
   )
 }
 
-// 🌟 Video 방을 위한 카드 컴포넌트 (수정버튼 삭제, YOUTUBE 뱃지 유지)
 function VideoCard({ file, onOpen, onDelete, formatDate }) {
   return (
     <div className="bg-white p-6 rounded-3xl border border-slate-200 hover:border-red-300 hover:shadow-xl transition-all group cursor-pointer relative" onClick={onOpen}>
