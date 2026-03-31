@@ -34,8 +34,13 @@ export default function HomeHub() {
       if (dlData) {
         const now = new Date()
         
-        // 1. 현재 시간보다 미래인 마감일만 필터링
-        const upcomingDl = dlData.filter(d => d.deadline_time && new Date(d.deadline_time) > now)
+        // 🌟 1. 현재 시간보다 미래인 마감일 필터링 (출석 관련 카테고리 제외!)
+        const excludeCategories = ['attendance_start', 'session_start', 'attendance_end']
+        const upcomingDl = dlData.filter(d => 
+          d.deadline_time && 
+          new Date(d.deadline_time) > now && 
+          !excludeCategories.includes(d.category)
+        )
         
         // 2. 가장 임박한 시간 순으로 오름차순 정렬
         upcomingDl.sort((a, b) => new Date(a.deadline_time) - new Date(b.deadline_time))
