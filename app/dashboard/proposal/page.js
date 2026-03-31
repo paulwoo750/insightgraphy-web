@@ -153,7 +153,8 @@ export default function ProposalRoom() {
     const deadline = deadlines[targetWeek]?.proposal
     const isLate = deadline ? new Date() > new Date(deadline) : false
 
-    await supabase.from('files_metadata').insert([{ 
+    // 🌟 DB 저장 실패 에러 캐치 추가
+    const { error: dbError } = await supabase.from('files_metadata').insert([{ 
       file_name: autoFileName, 
       file_url: publicUrl, 
       week: targetWeek,
@@ -165,8 +166,15 @@ export default function ProposalRoom() {
       is_late: isLate,
       group_id: myGroup 
     }])
+
+    if (dbError) {
+      alert('DB 저장 실패: ' + dbError.message);
+      setUploading(false);
+      return;
+    }
     
     alert('기획서 제출 완료! 🎉'); 
+    setSelectedWeek(targetWeek); // 🌟 업로드 즉시 해당 주차로 화면 이동!
     setUploading(false); 
     fetchFiles();
   }
@@ -222,7 +230,16 @@ export default function ProposalRoom() {
         <div className="bg-white p-8 rounded-[2rem] shadow-xl border border-blue-100 flex flex-col md:flex-row justify-between items-center gap-6 mt-8">
           <div className="flex flex-col gap-3 w-full md:w-auto">
             <div className="flex items-center gap-4">
-              <select value={targetWeek} onChange={(e) => setTargetWeek(Number(e.target.value))} className="p-2 px-4 rounded-xl bg-blue-50 text-blue-900 font-black text-lg outline-none cursor-pointer border border-blue-100 shadow-sm">
+              {/* 🌟 여기서 주차를 고르면 selectedWeek도 같이 변경되도록 연동! */}
+              <select 
+                value={targetWeek} 
+                onChange={(e) => {
+                  const w = Number(e.target.value);
+                  setTargetWeek(w);
+                  setSelectedWeek(w); 
+                }} 
+                className="p-2 px-4 rounded-xl bg-blue-50 text-blue-900 font-black text-lg outline-none cursor-pointer border border-blue-100 shadow-sm"
+              >
                 {weeks.map(w => <option key={w} value={w}>{w}주차</option>)}
               </select>
               <h2 className="text-2xl font-black text-slate-800 tracking-tight">
@@ -270,7 +287,7 @@ export default function ProposalRoom() {
             아직 업로드된 기획서가 없어! 첫 번째로 올려볼까? 👀
           </div>
         ) : (
-          /* 🌟 가운데 정렬을 위해 w-full과 w-max mx-auto를 조합한 컨테이너 도입 */
+          /* 🌟 가운데 정렬(w-max mx-auto) 복구 완료 */
           <div className="w-full overflow-x-auto pb-8 no-scrollbar">
             <div className="flex gap-6 items-start w-max mx-auto">
               
@@ -302,9 +319,12 @@ export default function ProposalRoom() {
                 )
               })}
 
+              {/* 🌟 조 편성 전 전용 UI 분기 처리 */}
               {groupedFiles['미분류'].length > 0 && (
-                <div className="flex-shrink-0 w-[320px] flex flex-col gap-4 opacity-80 hover:opacity-100 transition-opacity">
-                  <h3 className="text-sm font-black text-slate-500 bg-slate-200 px-4 py-2 rounded-xl w-fit shadow-sm">미분류 / 개별 제출</h3>
+                <div className={`flex-shrink-0 w-[320px] flex flex-col gap-4 transition-opacity ${maxGroup === 0 ? '' : 'opacity-80 hover:opacity-100'}`}>
+                  <h3 className={`text-sm font-black px-4 py-2 rounded-xl w-fit shadow-sm ${maxGroup === 0 ? 'text-blue-600 bg-blue-100' : 'text-slate-500 bg-slate-200'}`}>
+                    {maxGroup === 0 ? '제출된 기획서 (조 편성 전)' : '미분류 / 개별 제출'}
+                  </h3>
                   <div className="space-y-4">
                     {groupedFiles['미분류'].map(file => (
                       <ProposalCard 
