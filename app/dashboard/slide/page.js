@@ -9,24 +9,18 @@ export default function SlideRoom() {
   const [user, setUser] = useState(null)
   const [files, setFiles] = useState([])
   
-  // 🌟 두 상태가 항상 같이 움직이도록 동기화 처리!
   const [selectedWeek, setSelectedWeek] = useState(1) 
   const [targetWeek, setTargetWeek] = useState(1) 
   
-  // 링크 입력 칸 상태 
   const [driveLink, setDriveLink] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
-  // [중요] 여기에 학회 공용 구글 드라이브 폴더 주소를 넣어줘!
   const GOOGLE_DRIVE_FOLDER_URL = "https://drive.google.com/drive/folders/1F-YFI422wyYQxd0lBeJ9boaNDlr0iwFJ"
   
-  // 시스템 설정 상태
   const [currentSemester, setCurrentSemester] = useState('2026-1')
   const [totalWeeks, setTotalWeeks] = useState(12) 
   const [deadlines, setDeadlines] = useState({})
   const [weekTopics, setWeekTopics] = useState({}) 
-  
-  // 🌟 조 편성 데이터 상태 (추가됨)
   const [weeklySetup, setWeeklySetup] = useState({})
 
   const [editItem, setEditItem] = useState(null)
@@ -49,7 +43,7 @@ export default function SlideRoom() {
       const sem = configData.find(c => c.key === 'current_semester')?.value
       const topics = configData.find(c => c.key === 'week_topics')?.value
       const wks = configData.find(c => c.key === 'total_weeks')?.value
-      const setupStr = configData.find(c => c.key === 'weekly_setup')?.value // 🌟 조 편성 세팅 불러오기
+      const setupStr = configData.find(c => c.key === 'weekly_setup')?.value 
 
       if (sem) setCurrentSemester(sem)
       if (topics) setWeekTopics(JSON.parse(topics))
@@ -59,7 +53,6 @@ export default function SlideRoom() {
     
     const { data: dlData } = await supabase.from('pr_deadlines').select('*').eq('category', 'slide')
     
-    // 🌟 자동 주차 선택 로직 (가장 최근/임박한 슬라이드 마감일 찾기)
     const dlMap = {}
     let initialWeek = 1
     let minDiff = Infinity
@@ -95,7 +88,7 @@ export default function SlideRoom() {
   const formatDate = (dateStr) => {
     if (!dateStr) return '';
     const d = new Date(dateStr);
-    return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+    return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
   }
 
   const fetchFiles = async () => {
@@ -112,7 +105,7 @@ export default function SlideRoom() {
     if (!newTitle) return
     const { error } = await supabase.from('files_metadata').update({ file_name: newTitle }).eq('id', editItem.id)
     if (!error) { 
-      alert("파일 이름 수정이 완료되었어! ✨"); 
+      alert("파일 이름 수정 완료!"); 
       setEditItem(null); 
       fetchFiles(); 
     }
@@ -120,18 +113,18 @@ export default function SlideRoom() {
 
   const handleDeleteFile = async (e, id) => {
     e.stopPropagation(); 
-    if (!confirm("이 슬라이드 제출 기록을 삭제할 거야?\n(구글 드라이브에 올린 원본 파일은 지워지지 않아!)")) return
+    if (!confirm("해당 슬라이드 제출 기록을 삭제하시겠습니까?\n(원본 링크는 지워지지 않습니다.)")) return
     const { error } = await supabase.from('files_metadata').delete().eq('id', id)
     if (!error) fetchFiles()
   }
 
   const handleSubmitLink = async () => {
     if (!driveLink.trim()) {
-      alert("구글 드라이브 공유 링크를 입력해 줘! 🔗");
+      alert("구글 드라이브 공유 링크를 입력해 주세요!");
       return;
     }
     if (!driveLink.includes("drive.google.com") && !driveLink.includes("docs.google.com")) {
-      alert("올바른 구글 드라이브/프레젠테이션 링크가 아닌 것 같아! 다시 확인해 봐! 🤔");
+      alert("올바른 구글 드라이브 링크가 아닙니다.");
       return;
     }
 
@@ -141,7 +134,6 @@ export default function SlideRoom() {
     const uploaderName = user.user_metadata.name || '익명'
     const autoFileName = `${targetWeek}W (${currentTopic}) ${uploaderName} 발표자료`
     
-    // 🌟 선택된 유저의 소속 조(Group) 확인
     let myGroup = null
     if (weeklySetup[targetWeek] && weeklySetup[targetWeek].members) {
       const g = weeklySetup[targetWeek].members[uploaderName]
@@ -163,31 +155,27 @@ export default function SlideRoom() {
       storage_path: 'google_drive_link', 
       semester: currentSemester,
       is_late: isLate,
-      group_id: myGroup // 🌟 소속된 조 저장
+      group_id: myGroup 
     }])
     
     if (error) {
       alert('제출 실패: ' + error.message);
     } else {
-      alert('슬라이드 링크 제출 완료! 🎉'); 
+      alert('슬라이드 링크 제출 완료!'); 
       setDriveLink(''); 
-      setSelectedWeek(targetWeek); // 🌟 업로드 후 화면 주차 동기화
+      setSelectedWeek(targetWeek); 
       fetchFiles();
     }
     setSubmitting(false); 
   }
 
-  // 🌟 드롭다운이나 탭을 눌렀을 때 두 상태를 동시에 변경해주는 헬퍼 함수
   const handleWeekChange = (w) => {
     setSelectedWeek(w);
     setTargetWeek(w);
   }
 
-  if (!user) return <div className="p-8 text-center font-bold italic">데이터 불러오는 중... 🔄</div>
+  if (!user) return <div className="p-8 text-center font-bold text-slate-500">데이터 로딩 중...</div>
 
-  // ========================================================
-  // 🌟 실시간 조(Group) 분류 및 칸반 렌더링 로직 (기획서 페이지와 동일)
-  // ========================================================
   const filesThisWeek = files.filter(f => f.week === selectedWeek)
   const groupedFiles = {}
   
@@ -225,111 +213,143 @@ export default function SlideRoom() {
   })
 
   return (
-    <div className="p-8 bg-slate-50 min-h-screen text-slate-900 font-sans pb-32">
-      {/* 🌟 와이드 뷰를 위해 max-w-[1550px] 적용 */}
-      <header className="max-w-[1550px] mx-auto mb-12">
-        <div className="flex justify-between items-end">
-          <div>
-            <Link href="/dashboard" className="inline-block mb-4 px-4 py-2 bg-slate-200 text-slate-600 rounded-xl text-xs font-black hover:bg-slate-300 transition-all">← 대시보드 메인으로 가기</Link>
-            <h1 className="text-5xl font-black text-purple-900 tracking-tighter">Slide Room 📊</h1>
-          </div>
+    <div className="bg-white min-h-screen text-slate-900 font-sans pb-32">
+      {/* 🌟 최상단 GNB 스타일의 탭 네비게이션 */}
+      <div className="border-b border-slate-200 bg-white sticky top-0 z-20">
+        <div className="max-w-[1200px] mx-auto flex items-end px-6 md:px-8 pt-4 overflow-x-auto no-scrollbar">
+          <Link href="/home" className="pb-4 pr-6 text-sm font-extrabold text-slate-400 hover:text-purple-800 transition-colors flex items-center shrink-0">
+            HOME
+          </Link>
+          <div className="w-px h-4 bg-slate-300 mx-2 mb-4 shrink-0"></div>
+          <Link href="/dashboard/proposal" className="pb-4 px-6 text-sm font-semibold text-slate-400 hover:text-slate-800 transition-colors shrink-0">
+            기획서 📝
+          </Link>
+          <Link href="/dashboard/slide" className="pb-4 px-6 text-sm font-extrabold text-purple-800 border-b-2 border-purple-800 transition-colors shrink-0">
+            슬라이드 🖼️
+          </Link>
+          <Link href="/dashboard/video" className="pb-4 px-6 text-sm font-semibold text-slate-400 hover:text-slate-800 transition-colors shrink-0">
+            발표영상 🎬
+          </Link>
+        </div>
+      </div>
+
+      <header className="max-w-[1200px] mx-auto px-6 md:px-8 mt-12 mb-10">
+        <div className="mb-8">
+          <h1 className="text-3xl font-extrabold text-purple-800 tracking-tight">Slide Board</h1>
+          <p className="text-sm font-medium text-slate-500 mt-2">주차별 발표 슬라이드를 제출하고 확인합니다.</p>
         </div>
 
-        <div className="bg-white p-8 rounded-[2.5rem] shadow-xl border border-purple-100 flex flex-col xl:flex-row justify-between items-center gap-8 mt-8">
-          
-          <div className="flex flex-col gap-3 w-full xl:w-auto">
+        {/* 🌟 컨트롤 패널 (선과 면 분할로만 이루어진 미니멀 디자인 - 기획서 완벽 동기화) */}
+        <div className="border-y border-slate-200 py-6 flex flex-col md:flex-row justify-between items-center gap-6">
+          <div className="flex flex-col gap-2 w-full md:w-auto">
             <div className="flex items-center gap-4">
               <select 
                 value={targetWeek} 
                 onChange={(e) => handleWeekChange(Number(e.target.value))} 
-                className="p-2 px-4 rounded-xl bg-purple-50 text-purple-900 font-black text-lg outline-none cursor-pointer"
+                className="py-1.5 pr-8 pl-2 bg-transparent text-slate-800 font-extrabold text-lg outline-none cursor-pointer border-b border-slate-300 hover:border-purple-600 transition-all appearance-none"
               >
-                {weeks.map(w => <option key={w} value={w}>{w}주차</option>)}
+                {weeks.map(w => <option key={w} value={w}>Week {w}</option>)}
               </select>
-              <h2 className="text-2xl font-black text-slate-800 tracking-tight">
+              <h2 className="text-lg font-bold text-slate-700 tracking-tight">
                 {weekTopics[targetWeek] || (targetWeek === 0 ? 'OT 및 자유 주제' : '자유 주제')}
               </h2>
             </div>
             
-            <div className="flex flex-col gap-1.5 mt-2 bg-slate-50 p-4 rounded-xl border border-slate-100 w-fit">
-              <p className="text-xs font-bold text-slate-600 flex items-center gap-2">
-                <span className="text-[10px] bg-purple-100 text-purple-600 px-2 py-0.5 rounded font-black uppercase tracking-wider">슬라이드 제출 마감</span>
-                {deadlines[targetWeek]?.slide ? formatDate(deadlines[targetWeek].slide) : '미설정'}
+            <div className="flex flex-col sm:flex-row gap-4 mt-2">
+              <p className="text-xs font-medium text-slate-500 flex items-center gap-2">
+                <span className="text-slate-400 font-bold uppercase tracking-wider">제출 마감 |</span>
+                <span className="text-slate-800">{deadlines[targetWeek]?.slide ? formatDate(deadlines[targetWeek].slide) : '미설정'}</span>
               </p>
             </div>
           </div>
 
-          <div className="flex flex-col md:flex-row gap-4 w-full xl:w-auto bg-slate-50 p-4 rounded-3xl border border-slate-100">
-            <a href={GOOGLE_DRIVE_FOLDER_URL} target="_blank" rel="noopener noreferrer" className="flex-shrink-0 bg-white border-2 border-slate-200 hover:border-purple-300 text-slate-700 px-6 py-4 rounded-2xl font-black text-xs transition-all shadow-sm flex flex-col items-center justify-center gap-1 group">
-              <span className="text-xl group-hover:scale-110 transition-transform">📁</span>
-              Step 1. 드라이브에 파일 올리기
+          {/* 슬라이드 전용: 링크 제출 폼 (상자 제거, 선 기반) */}
+          <div className="flex flex-col sm:flex-row gap-4 w-full md:w-auto shrink-0 items-center">
+            <a href={GOOGLE_DRIVE_FOLDER_URL} target="_blank" rel="noopener noreferrer" className="text-sm font-bold text-slate-600 hover:text-purple-600 transition-colors underline underline-offset-4">
+              드라이브 열기 ↗
             </a>
-
-            <div className="flex flex-col gap-2 w-full max-w-sm">
-              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2">Step 2. 공유 링크 제출</span>
-              <div className="flex gap-2">
-                <input 
-                  type="text" 
-                  value={driveLink}
-                  onChange={(e) => setDriveLink(e.target.value)}
-                  placeholder="복사한 링크를 여기에 붙여넣어!" 
-                  className="w-full border-2 border-slate-200 p-3 rounded-xl font-bold text-sm outline-none focus:border-purple-500 bg-white" 
-                />
-                <button 
-                  onClick={handleSubmitLink} 
-                  disabled={submitting} 
-                  className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-xl font-black text-sm transition-all shadow-md active:scale-95 whitespace-nowrap"
-                >
-                  {submitting ? '제출 중...' : '제출'}
-                </button>
-              </div>
+            <div className="flex w-full sm:w-auto items-center ml-0 sm:ml-4">
+              <input 
+                type="text" 
+                value={driveLink}
+                onChange={(e) => setDriveLink(e.target.value)}
+                placeholder="공유 링크 붙여넣기" 
+                className="border-b border-slate-300 px-2 py-2 text-sm font-medium outline-none focus:border-purple-800 w-full sm:w-[220px] bg-transparent transition-colors" 
+              />
+              <button 
+                onClick={handleSubmitLink} 
+                disabled={submitting} 
+                className="bg-slate-900 hover:bg-purple-600 text-white px-6 py-2.5 font-bold text-sm transition-colors whitespace-nowrap ml-4"
+              >
+                {submitting ? '제출 중...' : '+ 신규 등록'}
+              </button>
             </div>
           </div>
-
         </div>
       </header>
 
-      <div className="max-w-[1550px] mx-auto">
-        <div className="flex gap-2 mb-12 overflow-x-auto pb-4 no-scrollbar">
+      {/* 🌟 메인 레이아웃: 사이드바 + 리스트 보드 */}
+      <div className="max-w-[1200px] mx-auto px-6 md:px-8 flex flex-col lg:flex-row gap-10 items-start">
+        
+        {/* 좌측: 텍스트 기반 사이드바 */}
+        <aside className="w-full lg:w-[200px] shrink-0 sticky top-24 hidden lg:flex flex-col">
+          <h3 className="text-xs font-extrabold text-slate-400 uppercase tracking-widest mb-4 border-b border-slate-200 pb-2">Select Week</h3>
+          <div className="flex flex-col gap-2 max-h-[60vh] overflow-y-auto no-scrollbar py-2">
+            {weeks.map(w => (
+              <button 
+                key={w} 
+                onClick={() => handleWeekChange(w)} 
+                className={`text-left text-sm font-semibold transition-colors py-1 ${selectedWeek === w ? 'text-purple-800 underline underline-offset-4 decoration-2' : 'text-slate-500 hover:text-slate-800'}`}
+              >
+                {w === 0 ? 'OT / 자유 주제' : `Week ${String(w).padStart(2, '0')}`}
+              </button>
+            ))}
+          </div>
+        </aside>
+
+        {/* 모바일용 주차 선택 */}
+        <div className="lg:hidden w-full flex gap-4 overflow-x-auto pb-2 mb-6 border-b border-slate-200 no-scrollbar">
           {weeks.map(w => (
             <button 
               key={w} 
               onClick={() => handleWeekChange(w)} 
-              className={`px-6 py-3 rounded-2xl text-xs font-black transition-all flex-shrink-0 ${selectedWeek === w ? 'bg-purple-900 text-white shadow-xl scale-110' : 'bg-white border border-slate-200 text-slate-400 hover:border-purple-300'}`}
+              className={`pb-3 text-sm font-semibold transition-colors shrink-0 ${selectedWeek === w ? 'text-purple-800 border-b-2 border-purple-800' : 'text-slate-500'}`}
             >
               W{w}
             </button>
           ))}
         </div>
 
-        {filesThisWeek.length === 0 ? (
-          <div className="text-center py-24 text-slate-300 font-bold border-4 border-dashed border-slate-200 bg-white rounded-[3rem]">
-            아직 제출된 슬라이드가 없어! 첫 번째로 올려볼까? 👀
-          </div>
-        ) : (
-          /* 🌟 조별 세로 기둥(Kanban) 뷰어 적용 (가운데 정렬) */
-          <div className="w-full overflow-x-auto pb-8 no-scrollbar">
-            <div className="flex gap-6 items-start w-max mx-auto">
-              
+        {/* 우측: 리스트형 메인 보드 */}
+        <main className="flex-1 w-full min-w-0 space-y-12">
+          {filesThisWeek.length === 0 ? (
+            <div className="text-center py-20 text-slate-400 font-medium">
+              해당 주차에 등록된 내역이 없습니다.
+            </div>
+          ) : (
+            <div className="space-y-10">
               {Array.from({ length: maxGroup }, (_, i) => i + 1).map(gId => {
                 const groupList = groupedFiles[gId]
                 const isGroupSetup = weeklySetup[selectedWeek] && weeklySetup[selectedWeek].groupCount >= gId;
                 if (groupList.length === 0 && !isGroupSetup) return null 
                 
                 return (
-                  <div key={gId} className="flex-shrink-0 w-[320px] flex flex-col gap-4">
-                    <h3 className="text-sm font-black text-purple-600 bg-purple-100 px-4 py-2 rounded-xl w-fit shadow-sm">Group {gId}</h3>
-                    <div className="space-y-4">
+                  <div key={gId} className="border-t-2 border-purple-800 pt-4">
+                    <div className="flex justify-between items-end mb-4">
+                      <h3 className="text-lg font-extrabold text-purple-800">Group {String(gId).padStart(2, '0')}</h3>
+                      <span className="text-xs font-bold text-slate-400">Total {groupList.length}</span>
+                    </div>
+                    <div className="border-t border-slate-200">
                       {groupList.length === 0 ? (
-                        <div className="bg-white/50 border border-dashed border-slate-300 p-6 rounded-[2rem] text-center text-xs font-bold text-slate-400">
-                          이 조에 제출된 슬라이드가 없습니다.
+                        <div className="py-6 text-center text-xs font-medium text-slate-400 border-b border-slate-200">
+                          제출 내역이 없습니다.
                         </div>
                       ) : groupList.map(file => (
-                        <SlideCard 
+                        <SlideListItem 
                           key={file.id} 
                           file={file} 
                           onEdit={(e) => { e.stopPropagation(); setEditItem(file); setNewTitle(file.file_name); }}
-                          onDelete={(e) => handleDeleteFile(e, file.id)}
+                          onDelete={(e) => { e.stopPropagation(); handleDeleteFile(e, file.id); }}
                           formatDate={formatDate}
                         />
                       ))}
@@ -338,40 +358,43 @@ export default function SlideRoom() {
                 )
               })}
 
-              {/* 🌟 조 편성 전 전용 UI 분기 처리 */}
+              {/* 미분류 리스트 */}
               {groupedFiles['미분류'].length > 0 && (
-                <div className={`flex-shrink-0 w-[320px] flex flex-col gap-4 transition-opacity ${maxGroup === 0 ? '' : 'opacity-80 hover:opacity-100'}`}>
-                  <h3 className={`text-sm font-black px-4 py-2 rounded-xl w-fit shadow-sm ${maxGroup === 0 ? 'text-purple-600 bg-purple-100' : 'text-slate-500 bg-slate-200'}`}>
-                    {maxGroup === 0 ? '제출된 슬라이드 (조 편성 전)' : '미분류 / 개별 제출'}
-                  </h3>
-                  <div className="space-y-4">
+                <div className={`border-t-2 border-slate-300 pt-4 transition-opacity ${maxGroup === 0 ? '' : 'opacity-70 hover:opacity-100'}`}>
+                  <div className="flex justify-between items-end mb-4">
+                    <h3 className="text-lg font-extrabold text-slate-600">
+                      {maxGroup === 0 ? '제출 목록 (조 미편성)' : '개별 / 미분류 제출'}
+                    </h3>
+                    <span className="text-xs font-bold text-slate-400">Total {groupedFiles['미분류'].length}</span>
+                  </div>
+                  <div className="border-t border-slate-200">
                     {groupedFiles['미분류'].map(file => (
-                      <SlideCard 
+                      <SlideListItem 
                         key={file.id} 
                         file={file} 
                         onEdit={(e) => { e.stopPropagation(); setEditItem(file); setNewTitle(file.file_name); }}
-                        onDelete={(e) => handleDeleteFile(e, file.id)}
+                        onDelete={(e) => { e.stopPropagation(); handleDeleteFile(e, file.id); }}
                         formatDate={formatDate}
                       />
                     ))}
                   </div>
                 </div>
               )}
-
             </div>
-          </div>
-        )}
+          )}
+        </main>
+
       </div>
 
-      {/* 파일 이름 수정 모달 */}
+      {/* 파일 이름 수정 모달 (기획서 100% 동일) */}
       {editItem && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-6 z-[110]">
-          <div className="bg-white p-10 rounded-[3rem] w-full max-w-sm shadow-2xl">
-            <h2 className="font-black mb-6 text-xl text-slate-800">파일명 수정 ✏️</h2>
-            <input type="text" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} className="w-full border-2 border-slate-200 p-4 rounded-2xl mb-6 font-bold outline-none focus:border-purple-500" />
-            <div className="flex gap-3">
-              <button onClick={handleUpdateFile} className="flex-1 py-4 bg-purple-600 text-white rounded-2xl font-black hover:bg-purple-700 shadow-md">저장</button>
-              <button onClick={() => setEditItem(null)} className="flex-1 py-4 bg-slate-100 text-slate-500 rounded-2xl font-black hover:bg-slate-200">취소</button>
+        <div className="fixed inset-0 bg-slate-900/60 flex items-center justify-center p-4 z-[110]">
+          <div className="bg-white p-8 w-full max-w-sm shadow-xl border border-slate-200">
+            <h2 className="font-extrabold mb-6 text-lg text-slate-900 border-l-4 border-purple-800 pl-2">파일명 수정</h2>
+            <input type="text" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} className="w-full border-b border-slate-300 py-2 mb-8 font-medium text-sm outline-none focus:border-purple-800 bg-transparent" />
+            <div className="flex gap-2">
+              <button onClick={handleUpdateFile} className="flex-1 py-2.5 bg-purple-800 text-white font-bold text-xs hover:bg-purple-900">저장</button>
+              <button onClick={() => setEditItem(null)} className="flex-1 py-2.5 bg-slate-100 text-slate-600 font-bold text-xs hover:bg-slate-200">취소</button>
             </div>
           </div>
         </div>
@@ -380,29 +403,32 @@ export default function SlideRoom() {
   )
 }
 
-// 🌟 슬라이드 전용 카드 컴포넌트
-function SlideCard({ file, onEdit, onDelete, formatDate }) {
+// 🌟 가로형 슬라이드 리스트 아이템 (기획서 UI 100% 동기화)
+function SlideListItem({ file, onEdit, onDelete, formatDate }) {
   return (
-    <div className="bg-white p-6 rounded-3xl border border-slate-200 hover:border-purple-300 hover:shadow-xl transition-all group cursor-pointer relative" onClick={() => window.open(file.file_url, '_blank')}>
-      {file.is_late && (
-        <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[9px] font-black px-2 py-1 rounded-lg shadow-sm">LATE</span>
-      )}
-      <div className="flex justify-between items-start mb-4">
-        <span className="bg-slate-100 text-purple-600 text-[10px] px-2 py-1 rounded-full font-black uppercase">LINK</span>
-        <div className="flex gap-3">
-          <button onClick={onEdit} className="text-[10px] font-black text-slate-300 hover:text-purple-600">수정</button>
-          <button onClick={onDelete} className="text-[10px] font-black text-slate-300 hover:text-red-500">삭제</button>
+    <div 
+      className="flex flex-col sm:flex-row sm:items-center justify-between py-4 border-b border-slate-200 hover:bg-slate-50/50 transition-colors cursor-pointer group gap-4 px-2" 
+      onClick={() => window.open(file.file_url, '_blank')}
+    >
+      <div className="flex items-center gap-4 flex-1 min-w-0">
+        <span className="shrink-0 font-black text-[10px] text-purple-600 uppercase w-8 text-center">
+          LINK
+        </span>
+        <div className="flex flex-col min-w-0 gap-0.5">
+          <div className="flex items-center gap-2">
+            <h4 className="text-sm font-semibold text-slate-800 truncate group-hover:text-purple-600 transition-colors">{file.file_name}</h4>
+            {file.is_late && <span className="border border-red-400 text-red-600 text-[9px] font-black px-1 py-0.5 rounded-sm shrink-0">LATE</span>}
+          </div>
+          <span className="text-xs font-medium text-slate-400">{file.uploader}</span>
         </div>
       </div>
-      <h3 className="text-lg font-black text-slate-800 mb-6 break-all line-clamp-2 leading-tight">{file.file_name}</h3>
-      <div className="flex justify-between items-center pt-4 border-t border-slate-100">
-        <div className="flex flex-col gap-1">
-          <span className="text-xs font-bold text-slate-400">👤 {file.uploader}</span>
-          <span className="text-[9px] font-black text-slate-300">{formatDate(file.created_at)}</span>
+
+      <div className="flex items-center justify-between sm:justify-end gap-6 shrink-0 w-full sm:w-auto pl-12 sm:pl-0">
+        <span className="text-xs font-medium text-slate-400">{formatDate(file.created_at)}</span>
+        <div className="flex items-center gap-3 sm:opacity-0 group-hover:opacity-100 transition-opacity">
+          <button onClick={(e) => { e.stopPropagation(); onEdit(e); }} className="text-[11px] font-bold text-slate-400 hover:text-purple-600 transition-colors">수정</button>
+          <button onClick={(e) => { e.stopPropagation(); onDelete(e); }} className="text-[11px] font-bold text-slate-400 hover:text-red-600 transition-colors">삭제</button>
         </div>
-        <span className="text-[10px] font-black text-purple-600 flex items-center gap-1">
-          드라이브에서 보기 <span className="text-sm">↗</span>
-        </span>
       </div>
     </div>
   )

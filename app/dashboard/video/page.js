@@ -10,25 +10,22 @@ export default function VideoRoom() {
   const [files, setFiles] = useState([])
   const [uploading, setUploading] = useState(false)
   
-  // 🌟 두 상태가 항상 같이 움직이도록 동기화 처리!
   const [selectedWeek, setSelectedWeek] = useState(1) 
   const [targetWeek, setTargetWeek] = useState(1) 
   
-  // 영상 주인(활동기수) 목록 상태
   const [activeMembers, setActiveMembers] = useState([]) 
   const [selectedOwnerName, setSelectedOwnerName] = useState('') 
   const [ytUrl, setYtUrl] = useState('') 
 
-  // 시스템 설정 상태
   const [currentSemester, setCurrentSemester] = useState('2026-1')
   const [totalWeeks, setTotalWeeks] = useState(12) 
   const [deadlines, setDeadlines] = useState({})
   const [weekTopics, setWeekTopics] = useState({}) 
-  
-  // 관리자가 설정한 주차별 조 편성 데이터 저장용
   const [weeklySetup, setWeeklySetup] = useState({})
 
-  // 통합 뷰어 상태
+  const [editItem, setEditItem] = useState(null)
+  const [newTitle, setNewTitle] = useState('')
+
   const [viewingFile, setViewingFile] = useState(null)
   const [draftFeedback, setDraftFeedback] = useState(null) 
   
@@ -71,7 +68,6 @@ export default function VideoRoom() {
     
     const { data: dlData } = await supabase.from('pr_deadlines').select('*')
     
-    // 🌟 자동 주차 선택 로직 (가장 최근/임박한 영상 마감일 찾기)
     const dlMap = {}
     let initialWeek = 1
     let minDiff = Infinity
@@ -83,7 +79,6 @@ export default function VideoRoom() {
         if (!dlMap[d.week]) dlMap[d.week] = {}
         dlMap[d.week][d.category] = d.deadline_time
 
-        // 영상 등록 마감일을 기준으로 판단
         if (d.category === 'video' && d.deadline_time) {
           const dlTime = new Date(d.deadline_time)
           if (dlTime > now) {
@@ -108,15 +103,13 @@ export default function VideoRoom() {
   const formatDate = (dateStr) => {
     if (!dateStr) return '';
     const d = new Date(dateStr);
-    return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+    return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
   }
 
   const fetchMembers = async () => {
     const { data: memberData } = await supabase.from('members').select('*').order('name');
     if (memberData && memberData.length > 0) {
-      const active = memberData.filter(m => 
-        m.status === '활동' || m.status === '활동기수' || m.role === '활동기수' || m.is_active === true
-      );
+      const active = memberData.filter(m => m.status === '활동' || m.status === '활동기수' || m.role === '활동기수' || m.is_active === true);
       setActiveMembers(active.length > 0 ? active : memberData);
     } else {
       const { data: profData } = await supabase.from('profiles').select('*').order('name');
@@ -127,6 +120,16 @@ export default function VideoRoom() {
   const fetchFiles = async () => {
     const { data } = await supabase.from('files_metadata').select('*').eq('file_category', 'video').order('created_at', { ascending: false })
     if (data) setFiles(data)
+  }
+
+  const handleUpdateFile = async () => {
+    if (!newTitle) return
+    const { error } = await supabase.from('files_metadata').update({ file_name: newTitle }).eq('id', editItem.id)
+    if (!error) { 
+      alert("파일 이름 수정 완료!"); 
+      setEditItem(null); 
+      fetchFiles(); 
+    }
   }
 
   const handleRegisterYoutube = async () => {
@@ -160,10 +163,10 @@ export default function VideoRoom() {
       group_id: myGroup 
     }])
     if (!error) { 
-      alert('영상 등록 완료! 🎬'); 
+      alert('영상 등록 완료!'); 
       setYtUrl(''); 
       setSelectedOwnerName(''); 
-      setSelectedWeek(targetWeek); // 🌟 업로드 후 화면 동기화
+      setSelectedWeek(targetWeek);
       fetchFiles(); 
     }
     else { alert("등록 실패: " + error.message); }
@@ -191,10 +194,9 @@ export default function VideoRoom() {
   }
 
   const handleAddComment = async () => {
-    if (!newCommentData.originalMessage.trim()) return alert("원메세지는 필수 입력이야! ✍️");
+    if (!newCommentData.originalMessage.trim()) return alert("Original Message는 필수 입력입니다.");
     
     const realName = user.user_metadata.name || '알 수 없는 유저';
-    
     const { error } = await supabase.from('file_comments').insert([{
       file_id: viewingFile.id,
       user_id: user.id,
@@ -205,7 +207,7 @@ export default function VideoRoom() {
     if (!error) {
       setNewCommentData({ originalMessage: '', insightPlus: '', insightMinus: '', graphicPlus: '', graphicMinus: '', deliveryPlus: '', deliveryMinus: '' });
       fetchComments(viewingFile.id);
-      alert("정성 피드백 댓글 등록 완료! ✨");
+      alert("피드백 등록 완료!");
     } else { alert("오류: " + error.message); }
   }
 
@@ -213,11 +215,7 @@ export default function VideoRoom() {
     const isCurrentlyRead = currentDetails?.is_read || false;
     const now = new Date().toISOString();
     
-    const updatedDetails = { 
-      ...currentDetails, 
-      is_read: !isCurrentlyRead,
-      read_at: !isCurrentlyRead ? now : null 
-    };
+    const updatedDetails = { ...currentDetails, is_read: !isCurrentlyRead, read_at: !isCurrentlyRead ? now : null };
 
     const { error } = await supabase.from('file_comments').update({ details: updatedDetails }).eq('id', commentId);
     if (!error) {
@@ -225,6 +223,19 @@ export default function VideoRoom() {
     } else {
       alert("상태 변경 실패: " + error.message);
     }
+  }
+
+  const handleDeleteComment = async (commentId) => {
+    if (!confirm("해당 피드백을 삭제하시겠습니까?")) return
+    const { error } = await supabase.from('file_comments').delete().eq('id', commentId)
+    if (!error) fetchComments(viewingFile.id)
+  }
+
+  const handleUpdateComment = async (commentId, editText) => {
+    const { error } = await supabase.from('file_comments').update({ 
+      details: { ...comments.find(c => c.id === commentId).details, originalMessage: editText } 
+    }).eq('id', commentId)
+    if (!error) { setEditingCommentId(null); fetchComments(viewingFile.id); }
   }
 
   const getYoutubeId = (url) => {
@@ -236,17 +247,16 @@ export default function VideoRoom() {
 
   const handleDeleteFile = async (e, id) => {
     e.stopPropagation();
-    if (!confirm("삭제할 거야?")) return
+    if (!confirm("해당 영상을 삭제하시겠습니까?")) return
     await supabase.from('files_metadata').delete().eq('id', id); fetchFiles();
   }
 
-  // 🌟 드롭다운이나 탭을 눌렀을 때 두 상태를 동시에 변경해주는 헬퍼 함수
   const handleWeekChange = (w) => {
     setSelectedWeek(w);
     setTargetWeek(w);
   }
 
-  if (!user) return <div className="p-8 text-center font-bold">데이터 불러오는 중... 🔄</div>
+  if (!user) return <div className="p-8 text-center font-bold text-slate-500">데이터 로딩 중...</div>
 
   const selfFeedbacks = comments.filter(c => c.user_name === viewingFile?.uploader);
   const peerFeedbacks = comments.filter(c => c.user_name !== viewingFile?.uploader);
@@ -255,9 +265,6 @@ export default function VideoRoom() {
 
   const getQualitativeDeadline = (weekNum) => deadlines[weekNum]?.vote_feedback || deadlines[weekNum]?.feedback;
 
-  // ========================================================
-  // 🌟 실시간 조(Group) 분류 및 칸반 렌더링 로직
-  // ========================================================
   const filesThisWeek = files.filter(f => f.week === selectedWeek)
   const groupedFiles = {}
   
@@ -295,123 +302,155 @@ export default function VideoRoom() {
   })
 
   return (
-    <div className="p-8 bg-slate-50 min-h-screen text-slate-900 font-sans pb-32">
-      <header className="max-w-[1550px] mx-auto mb-12">
-        <div className="flex justify-between items-end">
-          <div>
-            <Link href="/dashboard" className="inline-block mb-4 px-4 py-2 bg-slate-200 text-slate-600 rounded-xl text-xs font-black hover:bg-slate-300 transition-all">← 대시보드 메인으로 가기</Link>
-            <h1 className="text-5xl font-black text-red-900 tracking-tighter">Video Room 🎬</h1>
-          </div>
+    <div className="bg-white min-h-screen text-slate-900 font-sans pb-32">
+      {/* 최상단 GNB 스타일의 탭 네비게이션 */}
+      <div className="border-b border-slate-200 bg-white sticky top-0 z-20">
+        <div className="max-w-[1200px] mx-auto flex items-end px-6 md:px-8 pt-4 overflow-x-auto no-scrollbar">
+          <Link href="/home" className="pb-4 pr-6 text-sm font-extrabold text-slate-400 hover:text-red-800 transition-colors flex items-center shrink-0">
+            HOME
+          </Link>
+          <div className="w-px h-4 bg-slate-300 mx-2 mb-4 shrink-0"></div>
+          <Link href="/dashboard/proposal" className="pb-4 px-6 text-sm font-semibold text-slate-400 hover:text-slate-800 transition-colors shrink-0">
+            기획서 📝
+          </Link>
+          <Link href="/dashboard/slide" className="pb-4 px-6 text-sm font-semibold text-slate-400 hover:text-slate-800 transition-colors shrink-0">
+            슬라이드 🖼️
+          </Link>
+          <Link href="/dashboard/video" className="pb-4 px-6 text-sm font-extrabold text-red-800 border-b-2 border-red-800 transition-colors shrink-0">
+            발표영상 🎬
+          </Link>
+        </div>
+      </div>
+
+      <header className="max-w-[1200px] mx-auto px-6 md:px-8 mt-12 mb-10">
+        <div className="mb-8">
+          <h1 className="text-3xl font-extrabold text-red-800 tracking-tight">Video Board</h1>
+          <p className="text-sm font-medium text-slate-500 mt-2">주차별 발표 영상을 확인하고 피드백을 진행합니다.</p>
         </div>
 
-        <div className="bg-white p-8 rounded-[2.5rem] shadow-xl border border-red-100 flex flex-col xl:flex-row justify-between items-center gap-8 mt-8">
-          <div className="flex flex-col gap-3 w-full xl:w-auto flex-1">
+        {/* 컨트롤 패널 */}
+        <div className="border-y border-slate-200 py-6 flex flex-col xl:flex-row justify-between items-center gap-6">
+          <div className="flex flex-col gap-2 w-full xl:w-auto">
             <div className="flex items-center gap-4">
               <select 
                 value={targetWeek} 
                 onChange={(e) => handleWeekChange(Number(e.target.value))} 
-                className="p-2 px-4 rounded-xl bg-red-50 text-red-900 font-black text-lg outline-none cursor-pointer"
+                className="font-extrabold text-2xl text-slate-900 bg-transparent outline-none cursor-pointer appearance-none hover:text-red-800 transition-colors pl-1"
               >
-                {weeks.map(w => <option key={w} value={w}>{w}주차</option>)}
+                {weeks.map(w => <option key={w} value={w}>Week {w}</option>)}
               </select>
-              <h2 className="text-2xl font-black text-slate-800 tracking-tight">
+              <h2 className="text-xl font-bold text-slate-700 tracking-tight">
                 {weekTopics[targetWeek] || (targetWeek === 0 ? 'OT 및 자유 주제' : '자유 주제')}
               </h2>
             </div>
             
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-2 w-full">
-              <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 flex flex-col gap-1.5">
-                <span className="text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded font-black uppercase tracking-wider w-fit">1. 영상 등록 마감</span>
-                <p className="text-xs font-bold text-slate-600">
-                  {deadlines[targetWeek]?.video ? formatDate(deadlines[targetWeek].video) : '미설정'}
-                </p>
-              </div>
-              <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 flex flex-col gap-1.5">
-                <span className="text-[10px] bg-blue-100 text-blue-600 px-2 py-0.5 rounded font-black uppercase tracking-wider w-fit">2. 정성 피드백 마감 (조원 평가)</span>
-                <p className="text-xs font-bold text-slate-600">
-                  {getQualitativeDeadline(targetWeek) ? formatDate(getQualitativeDeadline(targetWeek)) : '미설정'}
-                </p>
-              </div>
-              <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 flex flex-col gap-1.5">
-                <span className="text-[10px] bg-orange-100 text-orange-600 px-2 py-0.5 rounded font-black uppercase tracking-wider w-fit">3. 셀프 피드백 마감 (본인 평가)</span>
-                <p className="text-xs font-bold text-slate-600">
-                  {deadlines[targetWeek]?.video_comment ? formatDate(deadlines[targetWeek].video_comment) : '미설정'}
-                </p>
-              </div>
+            <div className="flex flex-wrap gap-x-4 gap-y-2 mt-2">
+              <p className="text-xs font-medium text-slate-500 flex items-center gap-1.5">
+                <span className="font-bold text-slate-400">등록 마감 |</span>
+                <span className="text-slate-800">{deadlines[targetWeek]?.video ? formatDate(deadlines[targetWeek].video) : '미설정'}</span>
+              </p>
+              <p className="text-xs font-medium text-slate-500 flex items-center gap-1.5">
+                <span className="font-bold text-slate-400">조원 평가 |</span>
+                <span className="text-slate-800">{getQualitativeDeadline(targetWeek) ? formatDate(getQualitativeDeadline(targetWeek)) : '미설정'}</span>
+              </p>
+              <p className="text-xs font-medium text-slate-500 flex items-center gap-1.5">
+                <span className="font-bold text-slate-400">본인 평가 |</span>
+                <span className="text-slate-800">{deadlines[targetWeek]?.video_comment ? formatDate(deadlines[targetWeek].video_comment) : '미설정'}</span>
+              </p>
             </div>
           </div>
 
-          <div className="flex flex-col md:flex-row gap-4 w-full xl:w-auto bg-slate-50 p-4 rounded-3xl border border-slate-100 h-fit shrink-0">
-            <div className="flex flex-col gap-2 w-full xl:w-[400px]">
-              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2">YouTube 영상 등록</span>
-              <div className="flex flex-col sm:flex-row gap-2">
-                <select value={selectedOwnerName} onChange={(e) => setSelectedOwnerName(e.target.value)} className="w-full sm:w-1/3 p-3 rounded-xl bg-white text-slate-700 font-bold text-xs outline-none border-2 border-slate-200 cursor-pointer focus:border-red-400 transition-all">
-                  <option value="">누구 영상이야?</option>
-                  {activeMembers.map((m, idx) => (
-                    <option key={m.id || idx} value={m.name}>{m.name}</option>
-                  ))}
-                </select>
-                
-                <input 
-                  type="text" 
-                  value={ytUrl}
-                  onChange={(e) => setYtUrl(e.target.value)}
-                  placeholder="유튜브 링크 붙여넣기" 
-                  className="w-full sm:w-2/3 border-2 border-slate-200 p-3 rounded-xl font-bold text-xs outline-none focus:border-red-400 bg-white transition-all" 
-                />
-              </div>
+          <div className="flex flex-col sm:flex-row gap-3 w-full xl:w-auto shrink-0">
+            <select 
+              value={selectedOwnerName} 
+              onChange={(e) => setSelectedOwnerName(e.target.value)} 
+              className="border border-slate-300 px-4 py-2.5 text-sm font-bold text-slate-700 outline-none focus:border-slate-500 bg-white cursor-pointer rounded-none"
+            >
+              <option value="">발표자 선택</option>
+              {activeMembers.map((m, idx) => (
+                <option key={m.id || idx} value={m.name}>{m.name}</option>
+              ))}
+            </select>
+            <div className="flex w-full sm:w-auto">
+              <input 
+                type="text" 
+                value={ytUrl}
+                onChange={(e) => setYtUrl(e.target.value)}
+                placeholder="유튜브 링크 붙여넣기" 
+                className="border-y border-l border-slate-300 px-4 py-2.5 text-sm font-medium outline-none focus:border-slate-500 w-full sm:w-[250px] bg-white transition-colors rounded-none" 
+              />
               <button 
                 onClick={handleRegisterYoutube} 
                 disabled={uploading} 
-                className="w-full mt-1 bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-xl font-black text-sm transition-all shadow-md active:scale-95"
+                className="bg-[#0f172a] hover:bg-slate-800 text-white px-6 py-2.5 font-bold text-sm transition-colors whitespace-nowrap rounded-none"
               >
-                {uploading ? '등록 중...' : '영상 등록하기'}
+                {uploading ? '등록 중...' : '+ 신규 등록'}
               </button>
             </div>
           </div>
         </div>
       </header>
 
-      <div className="max-w-[1550px] mx-auto">
-        <div className="flex gap-2 mb-12 overflow-x-auto pb-4 no-scrollbar">
+      {/* 레이아웃: 사이드바 + 리스트 보드 */}
+      <div className="max-w-[1200px] mx-auto px-6 md:px-8 flex flex-col lg:flex-row gap-10 items-start">
+        
+        <aside className="w-full lg:w-[200px] shrink-0 sticky top-24 hidden lg:flex flex-col">
+          <h3 className="text-xs font-extrabold text-slate-400 uppercase tracking-widest mb-4 border-b border-slate-200 pb-2">Select Week</h3>
+          <div className="flex flex-col gap-2 max-h-[60vh] overflow-y-auto no-scrollbar py-2">
+            {weeks.map(w => (
+              <button 
+                key={w} 
+                onClick={() => handleWeekChange(w)} 
+                className={`text-left text-sm font-semibold transition-colors py-1 ${selectedWeek === w ? 'text-red-700 underline underline-offset-4 decoration-2' : 'text-slate-500 hover:text-slate-800'}`}
+              >
+                {w === 0 ? 'OT / 자유 주제' : `Week ${String(w).padStart(2, '0')}`}
+              </button>
+            ))}
+          </div>
+        </aside>
+
+        <div className="lg:hidden w-full flex gap-4 overflow-x-auto pb-2 mb-6 border-b border-slate-200 no-scrollbar">
           {weeks.map(w => (
             <button 
               key={w} 
               onClick={() => handleWeekChange(w)} 
-              className={`px-6 py-3 rounded-2xl text-xs font-black transition-all flex-shrink-0 ${selectedWeek === w ? 'bg-red-900 text-white shadow-xl scale-110' : 'bg-white border border-slate-200 text-slate-400 hover:border-red-300'}`}
+              className={`pb-3 text-sm font-semibold transition-colors shrink-0 ${selectedWeek === w ? 'text-red-700 border-b-2 border-red-700' : 'text-slate-500'}`}
             >
               W{w}
             </button>
           ))}
         </div>
 
-        {filesThisWeek.length === 0 ? (
-          <div className="text-center py-24 text-slate-300 font-bold border-4 border-dashed border-slate-200 bg-white rounded-[3rem]">
-            아직 등록된 영상이 없어! 첫 번째로 올려볼까? 👀
-          </div>
-        ) : (
-          <div className="w-full overflow-x-auto pb-8 no-scrollbar">
-            <div className="flex gap-6 items-start w-max mx-auto">
-              
+        <main className="flex-1 w-full min-w-0 space-y-12">
+          {filesThisWeek.length === 0 ? (
+            <div className="text-center py-20 text-slate-400 font-medium">
+              해당 주차에 등록된 영상이 없습니다.
+            </div>
+          ) : (
+            <div className="space-y-10">
               {Array.from({ length: maxGroup }, (_, i) => i + 1).map(gId => {
                 const groupList = groupedFiles[gId]
                 const isGroupSetup = weeklySetup[selectedWeek] && weeklySetup[selectedWeek].groupCount >= gId;
                 if (groupList.length === 0 && !isGroupSetup) return null 
                 
                 return (
-                  <div key={gId} className="flex-shrink-0 w-[320px] flex flex-col gap-4">
-                    <h3 className="text-sm font-black text-red-600 bg-red-100 px-4 py-2 rounded-xl w-fit shadow-sm">Group {gId}</h3>
-                    <div className="space-y-4">
+                  <div key={gId} className="border-t-2 border-red-800 pt-4">
+                    <div className="flex justify-between items-end mb-4">
+                      <h3 className="text-lg font-extrabold text-red-800">Group {String(gId).padStart(2, '0')}</h3>
+                      <span className="text-xs font-bold text-slate-400">Total {groupList.length}</span>
+                    </div>
+                    <div className="border-t border-slate-200">
                       {groupList.length === 0 ? (
-                        <div className="bg-white/50 border border-dashed border-slate-300 p-6 rounded-[2rem] text-center text-xs font-bold text-slate-400">
-                          이 조에 등록된 영상이 없습니다.
+                        <div className="py-6 text-center text-xs font-medium text-slate-400 border-b border-slate-200">
+                          등록된 영상이 없습니다.
                         </div>
                       ) : groupList.map(file => (
-                        <VideoCard 
+                        <VideoListItem 
                           key={file.id} 
                           file={file} 
                           onOpen={() => handleOpenVideo(file)}
-                          onDelete={(e) => handleDeleteFile(e, file.id)}
+                          onEdit={(e) => { e.stopPropagation(); setEditItem(file); setNewTitle(file.file_name); }}
+                          onDelete={(e) => { e.stopPropagation(); handleDeleteFile(e, file.id); }}
                           formatDate={formatDate}
                         />
                       ))}
@@ -420,86 +459,108 @@ export default function VideoRoom() {
                 )
               })}
 
-              {/* 🌟 조 편성 전 전용 UI 분기 처리 */}
               {groupedFiles['미분류'].length > 0 && (
-                <div className={`flex-shrink-0 w-[320px] flex flex-col gap-4 transition-opacity ${maxGroup === 0 ? '' : 'opacity-80 hover:opacity-100'}`}>
-                  <h3 className={`text-sm font-black px-4 py-2 rounded-xl w-fit shadow-sm ${maxGroup === 0 ? 'text-red-600 bg-red-100' : 'text-slate-500 bg-slate-200'}`}>
-                    {maxGroup === 0 ? '등록된 영상 (조 편성 전)' : '미분류 / 개별 등록'}
-                  </h3>
-                  <div className="space-y-4">
+                <div className={`border-t-2 border-slate-300 pt-4 transition-opacity ${maxGroup === 0 ? '' : 'opacity-70 hover:opacity-100'}`}>
+                  <div className="flex justify-between items-end mb-4">
+                    <h3 className={`text-lg font-extrabold ${maxGroup === 0 ? 'text-red-800' : 'text-slate-600'}`}>
+                      {maxGroup === 0 ? '영상 목록 (조 미편성)' : '개별 / 미분류 영상'}
+                    </h3>
+                    <span className="text-xs font-bold text-slate-400">Total {groupedFiles['미분류'].length}</span>
+                  </div>
+                  <div className="border-t border-slate-200">
                     {groupedFiles['미분류'].map(file => (
-                      <VideoCard 
+                      <VideoListItem 
                         key={file.id} 
                         file={file} 
                         onOpen={() => handleOpenVideo(file)}
-                        onDelete={(e) => handleDeleteFile(e, file.id)}
+                        onEdit={(e) => { e.stopPropagation(); setEditItem(file); setNewTitle(file.file_name); }}
+                        onDelete={(e) => { e.stopPropagation(); handleDeleteFile(e, file.id); }}
                         formatDate={formatDate}
                       />
                     ))}
                   </div>
                 </div>
               )}
-
             </div>
-          </div>
-        )}
+          )}
+        </main>
       </div>
 
-      {viewingFile && (
-        <div className="fixed inset-0 bg-slate-900/95 backdrop-blur-md flex items-center justify-center p-4 z-[100]">
-          <div className="bg-slate-100 w-full max-w-[1800px] h-[95vh] rounded-[3rem] flex flex-col lg:flex-row overflow-hidden relative shadow-2xl border border-slate-200">
-            <button onClick={() => setViewingFile(null)} className="absolute top-6 right-6 z-50 w-10 h-10 bg-white shadow-sm text-slate-800 hover:bg-red-500 hover:text-white rounded-full font-black transition-all">X</button>
-            
-            <div className="flex-[1.5] bg-black flex flex-col border-r border-slate-200 overflow-hidden">
-                <div className={`w-full ${draftFeedback ? 'aspect-video shrink-0 border-b border-slate-800' : 'flex-1'} bg-black transition-all`}>
-                  <iframe className="w-full h-full" src={`https://www.youtube.com/embed/${getYoutubeId(viewingFile.file_url)}?autoplay=1`} frameBorder="0" allowFullScreen></iframe>
-                </div>
+      {/* 파일 이름 수정 모달 */}
+      {editItem && (
+        <div className="fixed inset-0 bg-slate-900/60 flex items-center justify-center p-4 z-[110]">
+          <div className="bg-white p-8 w-full max-w-sm shadow-xl border border-slate-300 rounded-sm">
+            <h2 className="font-extrabold mb-6 text-lg text-slate-900 border-l-4 border-red-700 pl-2">파일명 수정</h2>
+            <input type="text" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} className="w-full border-b border-slate-300 py-2 mb-8 font-medium text-sm outline-none focus:border-red-700 bg-transparent" />
+            <div className="flex gap-2">
+              <button onClick={handleUpdateFile} className="flex-1 py-2.5 bg-red-700 text-white rounded-sm font-bold text-xs border border-red-800 hover:bg-red-800">저장</button>
+              <button onClick={() => setEditItem(null)} className="flex-1 py-2.5 bg-slate-100 text-slate-600 rounded-sm font-bold text-xs border border-slate-300 hover:bg-slate-200">취소</button>
+            </div>
+          </div>
+        </div>
+      )}
 
-                {draftFeedback && (
-                  <div className="flex-1 overflow-y-auto p-8 bg-slate-900">
-                    <h3 className="text-xs font-black text-emerald-400 uppercase tracking-widest mb-6 flex items-center gap-2">
-                      <span>📝</span> 내 임시저장 피드백 노트
-                    </h3>
-                    <div className="space-y-4 max-w-4xl mx-auto">
-                      <div className="bg-slate-800 p-5 rounded-2xl border border-slate-700">
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">● Original Message</p>
-                        <p className="text-sm font-bold text-slate-200 leading-relaxed">"{draftFeedback.originalMessage || '작성된 내용이 없습니다.'}"</p>
-                      </div>
-                      <DraftBox title="1. Insight" plus={draftFeedback.insightPlus} minus={draftFeedback.insightMinus} />
-                      <DraftBox title="2. Graphic" plus={draftFeedback.graphicPlus} minus={draftFeedback.graphicMinus} />
-                      <DraftBox title="3. Delivery" plus={draftFeedback.deliveryPlus} minus={draftFeedback.deliveryMinus} />
+      {/* 🌟 뷰어 모달 (선 위주의 미니멀 다이어트 UI) */}
+      {viewingFile && (
+        <div className="fixed inset-0 bg-white/95 backdrop-blur-sm flex items-center justify-center p-4 z-[100]">
+          <div className="bg-white w-full max-w-[1500px] h-[90vh] flex flex-col lg:flex-row overflow-hidden relative shadow-2xl border border-slate-400 rounded-sm">
+            <button onClick={() => setViewingFile(null)} className="absolute top-4 right-4 z-50 px-3 py-1.5 bg-slate-100 text-slate-600 text-xs font-bold hover:bg-slate-900 hover:text-white transition-colors rounded-sm border border-slate-300">닫기 ✕</button>
+            
+            <div className="flex-[1.5] bg-black flex flex-col border-r border-slate-300 overflow-hidden">
+              <div className={`w-full ${draftFeedback ? 'aspect-video shrink-0' : 'flex-1'} bg-black transition-all`}>
+                <iframe className="w-full h-full" src={`https://www.youtube.com/embed/${getYoutubeId(viewingFile.file_url)}?autoplay=1`} frameBorder="0" allowFullScreen></iframe>
+              </div>
+
+              {/* 임시저장 노트: 상자 제거, 선으로만 구분 */}
+              {draftFeedback && (
+                <div className="flex-1 overflow-y-auto p-8 bg-[#0f172a]">
+                  <h3 className="text-sm font-extrabold text-emerald-400 uppercase tracking-widest mb-6 pb-2 border-b border-slate-700">
+                    내 임시저장 노트
+                  </h3>
+                  <div className="space-y-6">
+                    <div>
+                      <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Original Message</p>
+                      <p className="text-sm font-medium text-slate-300 leading-relaxed border-l-2 border-slate-600 pl-3">{draftFeedback.originalMessage || '작성된 내용이 없습니다.'}</p>
                     </div>
+                    <DraftBox title="Insight" plus={draftFeedback.insightPlus} minus={draftFeedback.insightMinus} />
+                    <DraftBox title="Graphic" plus={draftFeedback.graphicPlus} minus={draftFeedback.graphicMinus} />
+                    <DraftBox title="Delivery" plus={draftFeedback.deliveryPlus} minus={draftFeedback.deliveryMinus} />
                   </div>
-                )}
+                </div>
+              )}
             </div>
 
-            <div className="flex-1 flex flex-col bg-slate-50 overflow-hidden">
-              <div className="p-8 border-b border-slate-200 bg-white flex justify-between items-end shrink-0">
-                <div>
-                  <h2 className="font-black text-xl text-red-900">Review Board 💬</h2>
-                  <p className="text-[10px] text-slate-400 font-bold mt-1 truncate">{viewingFile.file_name}</p>
-                </div>
-                <div className="flex flex-col items-end gap-1.5">
-                  <span className="text-[9px] font-black text-blue-500 bg-blue-50 px-2 py-0.5 rounded shadow-sm border border-blue-100">
-                    정성 피드백 마감: {getQualitativeDeadline(viewingFile.week) ? formatDate(getQualitativeDeadline(viewingFile.week)) : '미설정'}
-                  </span>
-                  <span className="text-[9px] font-black text-orange-500 bg-orange-50 px-2 py-0.5 rounded shadow-sm border border-orange-100">
-                    셀프(읽음) 마감: {deadlines[viewingFile.week]?.video_comment ? formatDate(deadlines[viewingFile.week].video_comment) : '미설정'}
-                  </span>
+            <div className="flex-1 flex flex-col bg-white">
+              <div className="p-6 border-b border-slate-200">
+                <h2 className="font-extrabold text-lg text-slate-900 border-l-4 border-red-700 pl-2">Feedback</h2>
+                <p className="text-xs text-slate-500 font-semibold mt-2 truncate">{viewingFile.file_name}</p>
+                <div className="flex flex-col sm:flex-row gap-2 mt-3">
+                  {getQualitativeDeadline(viewingFile.week) && (
+                    <span className="text-[10px] font-bold text-red-600 border border-red-200 bg-red-50 px-2 py-0.5 rounded-sm w-fit">
+                      조원 마감: {formatDate(getQualitativeDeadline(viewingFile.week))}
+                    </span>
+                  )}
+                  {deadlines[viewingFile.week]?.video_comment && (
+                    <span className="text-[10px] font-bold text-red-600 border border-red-200 bg-red-50 px-2 py-0.5 rounded-sm w-fit">
+                      본인 마감: {formatDate(deadlines[viewingFile.week].video_comment)}
+                    </span>
+                  )}
                 </div>
               </div>
               
-              <div className="flex-1 overflow-y-auto p-6 space-y-8 bg-slate-50">
-                <div className="space-y-4">
-                  
-                  <h4 className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">● 셀프 피드백 (발표자 본인)</h4>
+              {/* 피드백 리스트: 상자 제거, 선으로만 구분 */}
+              <div className="flex-1 overflow-y-auto p-6 space-y-8">
+                <div>
+                  <h4 className="text-sm font-extrabold text-slate-800 border-b-2 border-slate-800 pb-2 mb-4">셀프 피드백 (본인)</h4>
                   {selfFeedbacks.map((c) => {
                     const isLate = deadlines[viewingFile.week]?.video_comment && new Date(c.created_at) > new Date(deadlines[viewingFile.week].video_comment);
-                    return <FeedbackCard key={c.id} commentId={c.id} name={c.user_name} data={c.details} date={c.created_at} isLate={isLate} />
+                    return <FeedbackCard key={c.id} commentId={c.id} name={c.user_name} data={c.details} date={c.created_at} isLate={isLate} currentUserId={user.id} onDelete={handleDeleteComment} />
                   })}
-                  {selfFeedbacks.length === 0 && <p className="text-xs text-slate-400 font-bold ml-2">아직 등록된 셀프 피드백이 없습니다.</p>}
+                  {selfFeedbacks.length === 0 && <p className="text-xs text-slate-400 font-medium pb-2">등록된 셀프 피드백이 없습니다.</p>}
+                </div>
 
-                  <h4 className="text-[10px] font-black text-blue-600 uppercase tracking-widest pt-4 border-t border-slate-200 mt-4">● 조원 상세 피드백</h4>
+                <div>
+                  <h4 className="text-sm font-extrabold text-slate-800 border-b-2 border-slate-800 pb-2 mb-4">조원 상세 피드백</h4>
                   {peerFeedbacks.map((c) => {
                     const isLate = getQualitativeDeadline(viewingFile.week) && new Date(c.created_at) > new Date(getQualitativeDeadline(viewingFile.week));
                     return (
@@ -514,32 +575,37 @@ export default function VideoRoom() {
                         isVideoOwner={isVideoOwner}
                         onToggleRead={handleToggleRead}
                         selfDeadline={deadlines[viewingFile.week]?.video_comment}
+                        currentUserId={user.id}
+                        onDelete={handleDeleteComment}
                       />
                     )
                   })}
-                  {peerFeedbacks.length === 0 && <p className="text-xs text-slate-400 font-bold ml-2">아직 등록된 조원 피드백이 없습니다.</p>}
+                  {peerFeedbacks.length === 0 && <p className="text-xs text-slate-400 font-medium">등록된 조원 피드백이 없습니다.</p>}
                 </div>
               </div>
 
-              <div className="p-6 bg-white border-t border-slate-200 shadow-inner overflow-y-auto max-h-[40vh] shrink-0">
-                <div className="flex justify-between items-end mb-4">
-                  <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider">피드백 댓글 작성하기 ✏️</h4>
-                </div>
-                <div className="space-y-6">
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black text-red-800 ml-1 block uppercase">• Original Message (필수)</label>
-                    <textarea value={newCommentData.originalMessage} onChange={(e)=>setNewCommentData({...newCommentData, originalMessage: e.target.value})} className="w-full bg-slate-50 p-4 rounded-xl text-xs font-bold min-h-[40px] h-[50px] outline-none border border-slate-200 focus:border-red-400 transition-colors" placeholder="전체적인 핵심 메시지 및 느낀 점을 적어주세요." />
+              {/* 🌟 작성 폼: Original Message 한줄 축소, 하단 선 색상 포인트 추가 */}
+              <div className="p-6 border-t border-slate-300 bg-slate-50/50 max-h-[40vh] overflow-y-auto shrink-0">
+                <h4 className="text-sm font-extrabold text-slate-800 mb-4 border-l-4 border-red-700 pl-2">피드백 작성</h4>
+                <div className="space-y-5">
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-500 mb-1 block uppercase tracking-wider">Original Message (필수)</label>
+                    <input 
+                      type="text" 
+                      value={newCommentData.originalMessage} 
+                      onChange={(e)=>setNewCommentData({...newCommentData, originalMessage: e.target.value})} 
+                      className="w-full border-b border-slate-300 py-1 text-sm font-medium outline-none focus:border-red-800 bg-transparent" 
+                      placeholder="전체적인 핵심 메시지 및 느낀 점" 
+                    />
                   </div>
+                  <FeedbackInputSection title="Insight" plus={newCommentData.insightPlus} minus={newCommentData.insightMinus} onChange={(k, v)=>setNewCommentData({...newCommentData, [k]: v})} />
+                  <FeedbackInputSection title="Graphic" plus={newCommentData.graphicPlus} minus={newCommentData.graphicMinus} onChange={(k, v)=>setNewCommentData({...newCommentData, [k]: v})} />
+                  <FeedbackInputSection title="Delivery" plus={newCommentData.deliveryPlus} minus={newCommentData.deliveryMinus} onChange={(k, v)=>setNewCommentData({...newCommentData, [k]: v})} />
                   
-                  <FeedbackInputSection title="1. Insight (내용적 측면)" plus={newCommentData.insightPlus} minus={newCommentData.insightMinus} onChange={(k, v)=>setNewCommentData({...newCommentData, [k]: v})} />
-                  <FeedbackInputSection title="2. Graphic (디자인 측면)" plus={newCommentData.graphicPlus} minus={newCommentData.graphicMinus} onChange={(k, v)=>setNewCommentData({...newCommentData, [k]: v})} />
-                  <FeedbackInputSection title="3. Delivery (전달력 측면)" plus={newCommentData.deliveryPlus} minus={newCommentData.deliveryMinus} onChange={(k, v)=>setNewCommentData({...newCommentData, [k]: v})} />
-                  
-                  <button onClick={handleAddComment} className="w-full py-5 bg-red-600 text-white rounded-2xl font-black text-sm hover:bg-red-700 transition-all shadow-lg mt-4 active:scale-95">
-                    피드백 등록하기
-                  </button>
+                  <button onClick={handleAddComment} className="w-full py-3 bg-slate-900 text-white font-bold text-sm hover:bg-red-800 transition-colors rounded-sm mt-4">댓글 등록</button>
                 </div>
               </div>
+
             </div>
           </div>
         </div>
@@ -548,21 +614,31 @@ export default function VideoRoom() {
   )
 }
 
-function VideoCard({ file, onOpen, onDelete, formatDate }) {
+// 🌟 가로형 리스트 아이템 (기획서 100% 동일)
+function VideoListItem({ file, onOpen, onEdit, onDelete, formatDate }) {
   return (
-    <div className="bg-white p-6 rounded-3xl border border-slate-200 hover:border-red-300 hover:shadow-xl transition-all group cursor-pointer relative" onClick={onOpen}>
-      {file.is_late && (
-        <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[9px] font-black px-2 py-1 rounded-lg shadow-sm">LATE</span>
-      )}
-      <div className="flex justify-between items-start mb-4">
-        <span className="bg-red-50 text-red-600 text-[9px] px-2 py-1 rounded-full font-black uppercase tracking-wider">YOUTUBE</span>
-        <button onClick={onDelete} className="text-[10px] font-black text-slate-300 hover:text-red-500">삭제</button>
+    <div 
+      className="flex flex-col sm:flex-row sm:items-center justify-between py-4 px-6 border-b border-slate-100 hover:bg-red-50/30 transition-colors cursor-pointer group gap-4 last:border-b-0" 
+      onClick={onOpen}
+    >
+      <div className="flex items-center gap-4 flex-1 min-w-0">
+        <span className="shrink-0 font-black text-[10px] text-red-600 uppercase w-8 text-center">
+          YT
+        </span>
+        <div className="flex flex-col min-w-0 gap-0.5">
+          <div className="flex items-center gap-2">
+            <h4 className="text-sm font-semibold text-slate-800 truncate group-hover:text-red-700 transition-colors">{file.file_name}</h4>
+            {file.is_late && <span className="border border-red-300 text-red-600 bg-red-50 text-[9px] font-black px-1.5 py-0.5 rounded-sm shrink-0">LATE</span>}
+          </div>
+          <span className="text-xs font-medium text-slate-500">{file.uploader}</span>
+        </div>
       </div>
-      <h3 className="text-base font-black text-slate-800 mb-4 break-all line-clamp-2 leading-snug">{file.file_name}</h3>
-      <div className="flex justify-between items-center pt-4 border-t border-slate-100">
-        <div className="flex flex-col gap-0.5">
-          <span className="text-[11px] font-black text-slate-500">👤 {file.uploader}</span>
-          <span className="text-[9px] font-bold text-slate-300">{formatDate(file.created_at)}</span>
+
+      <div className="flex items-center justify-between sm:justify-end gap-6 shrink-0 w-full sm:w-auto pl-14 sm:pl-0">
+        <span className="text-xs font-medium text-slate-400">{formatDate(file.created_at)}</span>
+        <div className="flex items-center gap-3 sm:opacity-0 group-hover:opacity-100 transition-opacity">
+          <button onClick={(e) => { e.stopPropagation(); onEdit(e); }} className="text-[11px] font-bold text-slate-400 hover:text-red-600 transition-colors">수정</button>
+          <button onClick={(e) => { e.stopPropagation(); onDelete(e); }} className="text-[11px] font-bold text-slate-400 hover:text-red-600 transition-colors">삭제</button>
         </div>
       </div>
     </div>
@@ -572,34 +648,45 @@ function VideoCard({ file, onOpen, onDelete, formatDate }) {
 function DraftBox({ title, plus, minus }) {
   if (!plus && !minus) return null;
   return (
-    <div className="bg-slate-800 p-4 rounded-2xl space-y-2 border border-slate-700">
-      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{title}</p>
-      <div className="grid gap-1.5 pl-1">
-        {plus && <p className="text-[11px] font-bold text-emerald-300 leading-relaxed"><span className="text-emerald-500 font-black">+)</span> {plus}</p>}
-        {minus && <p className="text-[11px] font-bold text-red-300 leading-relaxed"><span className="text-red-500 font-black">-)</span> {minus}</p>}
+    <div>
+      <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">{title}</p>
+      <div className="grid gap-2 border-l-2 border-slate-600 pl-3">
+        {plus && <p className="text-xs font-medium text-emerald-300 leading-relaxed"><span className="font-bold text-emerald-400 mr-1">+)</span> {plus}</p>}
+        {minus && <p className="text-xs font-medium text-red-300 leading-relaxed"><span className="font-bold text-red-400 mr-1">-)</span> {minus}</p>}
       </div>
     </div>
   )
 }
 
+// 🌟 작성 폼 피드백 섹션 (+/- 얇은 하단 컬러 포인트 적용)
 function FeedbackInputSection({ title, plus, minus, onChange }) {
-  const kP = title.split('. ')[1].split(' ')[0].toLowerCase() + 'Plus';
-  const kM = title.split('. ')[1].split(' ')[0].toLowerCase() + 'Minus';
+  const kP = title.toLowerCase() + 'Plus';
+  const kM = title.toLowerCase() + 'Minus';
   return (
-    <div className="space-y-3">
-      <p className="text-[11px] font-black text-slate-800 border-l-4 border-red-600 pl-2 uppercase">{title}</p>
+    <div className="space-y-2">
+      <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{title}</p>
       <div className="grid grid-cols-1 gap-2">
-        <textarea value={plus} onChange={(e)=>onChange(kP, e.target.value)} placeholder="(+) 좋았던 점 및 배울 점" className="w-full bg-emerald-50/50 p-3 rounded-xl text-xs font-bold min-h-[50px] outline-none border border-emerald-100 focus:border-emerald-300" />
-        <textarea value={minus} onChange={(e)=>onChange(kM, e.target.value)} placeholder="(-) 아쉬운 점 및 개선 제안" className="w-full bg-red-50/50 p-3 rounded-xl text-xs font-bold min-h-[50px] outline-none border border-red-100 focus:border-red-300" />
+        <textarea 
+          value={plus} 
+          onChange={(e)=>onChange(kP, e.target.value)} 
+          placeholder="(+) 좋았던 점 및 배울 점" 
+          className="w-full border-b-2 border-emerald-400 p-2 text-xs font-medium outline-none focus:border-emerald-600 min-h-[40px] resize-none bg-transparent" 
+        />
+        <textarea 
+          value={minus} 
+          onChange={(e)=>onChange(kM, e.target.value)} 
+          placeholder="(-) 아쉬운 점 및 개선 제안" 
+          className="w-full border-b-2 border-red-400 p-2 text-xs font-medium outline-none focus:border-red-600 min-h-[40px] resize-none bg-transparent" 
+        />
       </div>
     </div>
   )
 }
 
-function FeedbackCard({ commentId, name, data, date, isLate, isPeerFeedback, isVideoOwner, onToggleRead, selfDeadline }) {
+function FeedbackCard({ commentId, name, data, date, isLate, isPeerFeedback, isVideoOwner, onToggleRead, selfDeadline, currentUserId, onDelete }) {
   if (!data) return null;
   const d = date ? new Date(date) : null;
-  const dateStr = d ? `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}` : '';
+  const dateStr = d ? `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}` : '';
 
   const isRead = data.is_read || false;
   const readAtStr = data.read_at ? new Date(data.read_at) : null;
@@ -607,40 +694,42 @@ function FeedbackCard({ commentId, name, data, date, isLate, isPeerFeedback, isV
   const isReadLate = isRead && readAtStr && deadlineDate && readAtStr > deadlineDate;
 
   return (
-    <div className="p-6 rounded-[2rem] shadow-sm border bg-white border-slate-200">
-      <div className="flex justify-between items-center mb-4 border-b border-slate-100 pb-3">
+    <div className="border-b border-slate-200 pb-6 mb-6 last:border-0 group">
+      <div className="flex justify-between items-center mb-4">
         <div className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-blue-500"></span>
-          <span className="text-xs font-black text-slate-800">{name}</span>
-          {isLate && <span className="text-[8px] font-black bg-red-500 text-white px-1.5 py-0.5 rounded shadow-sm ml-1">LATE (작성지각)</span>}
+          <span className="text-sm font-bold text-slate-800">{name}</span>
+          {isLate && <span className="text-[9px] font-bold bg-red-50 text-red-600 border border-red-200 px-1 py-0.5 rounded-sm">LATE</span>}
+          <span className="text-xs font-medium text-slate-400 ml-2">{dateStr}</span>
         </div>
+        
         <div className="flex items-center gap-3">
-          <span className="text-[9px] font-bold text-slate-300">{dateStr}</span>
-          
+          {currentUserId === data.user_id && (
+             <button onClick={() => onDelete(commentId)} className="opacity-0 group-hover:opacity-100 text-[10px] font-bold text-slate-400 hover:text-red-600 transition-opacity">삭제</button>
+          )}
+
           {isPeerFeedback && (
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-2">
               {isVideoOwner ? (
-                <button 
-                  onClick={() => onToggleRead(commentId, data)} 
-                  className={`text-[9px] font-black px-2 py-1 rounded transition-all active:scale-95 ${isRead ? 'bg-emerald-500 text-white shadow-sm' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'}`}
-                >
-                  {isRead ? '✅ 읽음 완료' : '읽음 확인 클릭'}
+                <button onClick={() => onToggleRead(commentId, data)} className={`text-[9px] font-bold px-2 py-1 transition-colors border rounded-sm ${isRead ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 'bg-white text-slate-500 border-slate-300 hover:bg-slate-50'}`}>
+                  {isRead ? '✅ 확인 완료' : '읽음 확인'}
                 </button>
               ) : (
-                isRead && <span className="text-[9px] font-black text-emerald-500 bg-emerald-50 px-2 py-1 rounded">✅ 발표자가 읽음</span>
+                isRead && <span className="text-[10px] font-bold text-emerald-600 border border-emerald-200 bg-emerald-50 px-2 py-0.5 rounded-sm">✅ 작성자가 확인</span>
               )}
-              {isReadLate && <span className="text-[8px] font-black bg-orange-500 text-white px-1.5 py-0.5 rounded shadow-sm">LATE (확인지각)</span>}
+              {isReadLate && <span className="text-[9px] font-bold bg-orange-50 text-orange-600 border border-orange-200 px-1 py-0.5 rounded-sm">LATE 확인</span>}
             </div>
           )}
         </div>
       </div>
-      <div className="space-y-5">
-        <div><p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">● Original Message</p><p className="text-xs font-bold text-slate-700 leading-relaxed bg-slate-50 p-3 rounded-xl">"{data.originalMessage}"</p></div>
-        <div className="space-y-4">
-          <FeedbackBox title="Insight" plus={data.insightPlus} minus={data.insightMinus} />
-          <FeedbackBox title="Graphic" plus={data.graphicPlus} minus={data.graphicMinus} />
-          <FeedbackBox title="Delivery" plus={data.deliveryPlus} minus={data.deliveryMinus} />
+      
+      <div className="space-y-4 pl-1">
+        <div>
+          <p className="text-[10px] font-bold text-slate-400 mb-1 uppercase">Original Message</p>
+          <p className="text-sm font-medium text-slate-700 leading-relaxed border-l-2 border-slate-300 pl-3 py-1">{data.originalMessage}</p>
         </div>
+        <FeedbackBox title="Insight" plus={data.insightPlus} minus={data.insightMinus} />
+        <FeedbackBox title="Graphic" plus={data.graphicPlus} minus={data.graphicMinus} />
+        <FeedbackBox title="Delivery" plus={data.deliveryPlus} minus={data.deliveryMinus} />
       </div>
     </div>
   )
@@ -649,11 +738,11 @@ function FeedbackCard({ commentId, name, data, date, isLate, isPeerFeedback, isV
 function FeedbackBox({ title, plus, minus }) {
   if (!plus && !minus) return null;
   return (
-    <div className="space-y-1">
-      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{title}</p>
-      <div className="grid gap-1.5 pl-1">
-        {plus && <p className="text-[11px] font-bold text-emerald-700 leading-relaxed bg-emerald-50/50 p-2 rounded-lg"><span className="font-black text-emerald-500">+)</span> {plus}</p>}
-        {minus && <p className="text-[11px] font-bold text-red-700 leading-relaxed bg-red-50/50 p-2 rounded-lg"><span className="font-black text-red-500">-)</span> {minus}</p>}
+    <div className="space-y-1.5 mt-2">
+      <p className="text-[10px] font-bold text-slate-400 uppercase">{title}</p>
+      <div className="grid gap-1.5 border-l-2 border-slate-200 pl-3">
+        {plus && <p className="text-xs font-medium text-slate-700 leading-relaxed"><span className="font-bold text-emerald-500 mr-1">+)</span> {plus}</p>}
+        {minus && <p className="text-xs font-medium text-slate-700 leading-relaxed"><span className="font-bold text-red-500 mr-1">-)</span> {minus}</p>}
       </div>
     </div>
   )

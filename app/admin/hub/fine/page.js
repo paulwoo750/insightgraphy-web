@@ -6,14 +6,12 @@ import Link from 'next/link'
 export default function FineAdmin() {
   const [loading, setLoading] = useState(true)
   const [isScanning, setIsScanning] = useState(false)
-  const scanLock = useRef(false) // 🌟 중복 실행 방지를 위한 자물쇠 (Lock)
+  const scanLock = useRef(false) 
   
-  // 데이터 상태
   const [members, setMembers] = useState([])
   const [fines, setFines] = useState([])
   const [penalties, setPenalties] = useState({})
   
-  // 수동 벌금 입력 상태
   const [manualFine, setManualFine] = useState({
     user_name: '', week: 1, category: '세션 지각', amount: '', reason: ''
   })
@@ -22,18 +20,13 @@ export default function FineAdmin() {
     fetchAndScanData()
   }, [])
 
-  // ==========================================
-  // 🧮 핵심: 데이터 로드 및 100% 동기화 자동 스캐너
-  // ==========================================
   const fetchAndScanData = async () => {
-    // 🌟 스캐너가 이미 돌고 있다면 중단! (React Strict Mode 더블 렌더링 방어)
     if (scanLock.current) return
     scanLock.current = true
     setLoading(true)
     setIsScanning(true)
 
     try {
-      // 1. 기초 데이터 불러오기
       const { data: memData } = await supabase.from('pr_members').select('*').eq('is_active', true).order('name')
       const activeMembers = memData || []
       setMembers(activeMembers)
@@ -61,11 +54,9 @@ export default function FineAdmin() {
       const { data: commentsData } = await supabase.from('file_comments').select('*')
       const comments = commentsData || []
 
-      // 🌟 [복구 완료!] 출석 데이터 불러오기
       const { data: attData } = await supabase.from('pr_attendance').select('*')
       const attendances = attData || []
 
-      // 🌟 기존 벌금 데이터 불러오기 및 중복 데이터(버그) 자동 청소
       const { data: existingFinesDataRaw } = await supabase.from('pr_fines').select('*')
       const existingFinesData = existingFinesDataRaw || []
       
@@ -74,10 +65,8 @@ export default function FineAdmin() {
       const seenMap = new Set()
 
       existingFinesData.forEach(f => {
-        // 이름 + 주차 + 카테고리 조합으로 고유 키 생성
         const key = `${f.user_name}-${f.week}-${f.category}`
         if (seenMap.has(key) && !f.is_paid) {
-          // 이미 같은 건이 있는데 또 미납 상태로 존재하면 중복(에러)이므로 삭제 명단에 추가
           duplicateIdsToDelete.push(f.id)
         } else {
           seenMap.add(key)
@@ -85,15 +74,13 @@ export default function FineAdmin() {
         }
       })
       
-      const existingFines = uniqueFines // 중복이 제거된 깨끗한 데이터만 스캐너에 사용
+      const existingFines = uniqueFines 
 
-      // 2. 조 편성에 따른 벌금 '동기화' 배열 준비 (Insert, Update, Delete)
       const finesToInsert = []
       const finesToUpdate = []
       const finesToDelete = []
       const now = new Date().getTime()
 
-      // 벌금 검증 헬퍼 함수
       const processFine = (userName, w, category, expectedFine, expectedReason) => {
         const existing = existingFines.find(f => f.user_name === userName && f.week === w && f.category === category)
         
@@ -126,7 +113,6 @@ export default function FineAdmin() {
             '오프라인 세션 페널티'
           ]
 
-          // 결석/미정인 경우 자동 벌금 0으로 덮어씀 (기존 미납액 지움)
           if (!myGroup || myGroup === '미정' || myGroup === '결석') {
             autoCategories.forEach(cat => processFine(userName, w, cat, 0, ''))
             return
@@ -134,7 +120,7 @@ export default function FineAdmin() {
 
           const groupMembers = Object.keys(wSetup.members).filter(name => wSetup.members[name] === myGroup && name !== userName)
 
-          // [A] 기획서 (proposal)
+          // [A] 기획서
           const pDl = weekDl.find(d => d.category === 'proposal')
           let pFine = 0, pReason = ''
           if (pDl && pDl.deadline_time && new Date(pDl.deadline_time).getTime() < now) {
@@ -149,7 +135,7 @@ export default function FineAdmin() {
           }
           processFine(userName, w, '기획서 지각/미제출', pFine, pReason)
 
-          // [B] 슬라이드 (slide)
+          // [B] 슬라이드
           const sDl = weekDl.find(d => d.category === 'slide')
           let sFine = 0, sReason = ''
           if (sDl && sDl.deadline_time && new Date(sDl.deadline_time).getTime() < now) {
@@ -164,7 +150,7 @@ export default function FineAdmin() {
           }
           processFine(userName, w, '슬라이드 지각/미제출', sFine, sReason)
 
-          // [C] 영상 (video)
+          // [C] 영상
           const vDl = weekDl.find(d => d.category === 'video')
           let vFine = 0, vReason = ''
           if (vDl && vDl.deadline_time && new Date(vDl.deadline_time).getTime() < now) {
@@ -204,7 +190,7 @@ export default function FineAdmin() {
           }
           processFine(userName, w, '기획서 피드백 페널티', pcFine, pcReason)
 
-          // [E] 영상 정성 피드백 (조원 평가)
+          // [E] 영상 정성 피드백
           const vfDl = weekDl.find(d => d.category === 'vote_feedback')
           let vfFine = 0, vfReason = ''
           if (vfDl && vfDl.deadline_time && new Date(vfDl.deadline_time).getTime() < now) {
@@ -247,7 +233,7 @@ export default function FineAdmin() {
           }
           processFine(userName, w, '영상 셀프평가 페널티', vcFine, vcReason)
 
-          // 🌟 [G] 오프라인 세션 출석 (attendances 변수 정상 작동!)
+          // [G] 오프라인 세션 출석
           const sessionStartDl = weekDl.find(d => d.category === 'session_start')
           const attEndDl = weekDl.find(d => d.category === 'attendance_end')
           let attFine = 0, attReason = ''
@@ -278,10 +264,9 @@ export default function FineAdmin() {
           }
           processFine(userName, w, '오프라인 세션 페널티', attFine, attReason)
 
-        }) // members loop end
-      } // weeks loop end
+        }) 
+      }
 
-      // 3. 변경 사항 DB 실행 (중복삭제 -> 삭제 -> 수정 -> 추가 순)
       const finalDeletes = [...new Set([...finesToDelete, ...duplicateIdsToDelete])]
       
       if (finalDeletes.length > 0) {
@@ -296,21 +281,16 @@ export default function FineAdmin() {
         await supabase.from('pr_fines').insert(finesToInsert)
       }
 
-      // 4. 모든(납부/미납 포함) 벌금 내역 가져오기
       const { data: finalFinesData } = await supabase.from('pr_fines').select('*').order('week', { ascending: false }).order('created_at', { ascending: false })
       setFines(finalFinesData || [])
 
     } finally {
-      // 로직이 다 끝나거나 에러가 나도 자물쇠는 무조건 푼다!
       scanLock.current = false
       setIsScanning(false)
       setLoading(false)
     }
   }
 
-  // ==========================================
-  // ✍️ 2. 수동 벌금 입력 (세션 지각 등)
-  // ==========================================
   const handleAddManualFine = async () => {
     if (!manualFine.user_name || !manualFine.amount || !manualFine.reason) return alert("대상, 금액, 사유를 모두 입력해줘!")
     const { error } = await supabase.from('pr_fines').insert([{
@@ -323,29 +303,22 @@ export default function FineAdmin() {
     }
   }
 
-  // ==========================================
-  // 💸 3. 삭제, 납부 및 예외(면제) 처리
-  // ==========================================
-  const handleDeleteFine = async (id) => {
-    if (!confirm("이 벌금 내역을 완전히 삭제할까?\n(조 편성이 바뀌어 억울하게 들어간 벌금을 지울 때 사용해!)")) return
-    await supabase.from('pr_fines').delete().eq('id', id)
+  // 🌟 [핵심 변경] 삭제 버튼을 누르면 스캐너가 부활시키지 못하게 '소프트 삭제' 처리!
+  const handleDeleteFine = async (fineObj) => {
+    if (!confirm("이 벌금 내역을 삭제할까요?\n(화면에서 즉시 사라집니다)")) return
+    
+    // DB에서 지우면 스캐너가 다시 생성하므로, 보이지 않는 상태(0원, 결제완료, [삭제됨] 꼬리표)로 업데이트
+    await supabase.from('pr_fines').update({ 
+      is_paid: true, 
+      amount: 0, 
+      reason: `[삭제됨] ${fineObj.reason}` 
+    }).eq('id', fineObj.id)
+    
     fetchAndScanData() 
   }
 
   const handleMarkAsPaid = async (id) => {
     await supabase.from('pr_fines').update({ is_paid: true }).eq('id', id)
-    fetchAndScanData()
-  }
-
-  const handleExemptFine = async (fineObj) => {
-    const reasonMsg = prompt("예외(면제) 처리 사유를 적어주세요. (예: 병결, 시스템오류 등)")
-    if (reasonMsg === null) return 
-    
-    await supabase.from('pr_fines').update({ 
-      is_paid: true, 
-      amount: 0, 
-      reason: `${fineObj.reason} [면제: ${reasonMsg || '사유없음'}]` 
-    }).eq('id', fineObj.id)
     fetchAndScanData()
   }
 
@@ -357,9 +330,10 @@ export default function FineAdmin() {
 
   if (loading) return <div className="p-10 text-center font-black text-slate-500">벌금 데이터를 스캔하고 불러오는 중... 🔄</div>
 
-  // 멤버별 데이터 병합
+  // 🌟 멤버별 데이터 병합 (화면에 보일 때 '[삭제됨]' 태그가 붙은 건 아예 걸러냄!)
   const combinedData = members.map(m => {
-    const userFines = fines.filter(f => f.user_name === m.name)
+    // 삭제된 내역 필터링
+    const userFines = fines.filter(f => f.user_name === m.name && !f.reason?.includes('[삭제됨]'))
     const totalAmount = userFines.filter(f => !f.is_paid).reduce((sum, curr) => sum + curr.amount, 0)
     return {
       name: m.name,
@@ -396,7 +370,6 @@ export default function FineAdmin() {
 
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_350px] gap-8 items-start">
           
-          {/* 🌟 좌측: 엑셀 형태의 통합 벌금 대장 */}
           <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-200 overflow-hidden">
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-xl font-black text-slate-800">📋 통합 벌금 대장 (Excel View)</h2>
@@ -417,13 +390,11 @@ export default function FineAdmin() {
                   {combinedData.map((user, idx) => (
                     <tr key={user.name} className={`border-b border-slate-200 transition-colors ${user.total > 0 ? 'bg-red-50/20 hover:bg-red-50' : 'bg-white hover:bg-slate-50'}`}>
                       
-                      {/* 이름 */}
                       <td className="p-4 border-r border-slate-200 text-center align-top pt-6">
                         <span className="font-black text-slate-800 block">{user.name}</span>
                         <span className="text-[9px] text-slate-400">{user.generation}</span>
                       </td>
                       
-                      {/* 총 미납액 */}
                       <td className="p-4 border-r border-slate-200 text-center align-top pt-6 font-black">
                         {user.total > 0 ? (
                           <span className="text-red-600 bg-red-100 px-3 py-1.5 rounded-lg text-lg tracking-tighter">₩{user.total.toLocaleString()}</span>
@@ -432,7 +403,6 @@ export default function FineAdmin() {
                         )}
                       </td>
                       
-                      {/* 상세 내역 리스트 */}
                       <td className="p-4 border-r border-slate-200">
                         {user.details.length === 0 ? (
                           <span className="text-slate-300 text-xs font-bold pl-2 flex items-center h-full">-</span>
@@ -452,14 +422,11 @@ export default function FineAdmin() {
                                     ₩{f.amount.toLocaleString()}
                                   </span>
                                   
-                                  {/* 🌟 액션 버튼들 */}
                                   {!f.is_paid ? (
                                     <div className="flex gap-1.5 shrink-0">
-                                      <button onClick={() => handleDeleteFine(f.id)} className="bg-white hover:bg-slate-800 hover:text-white text-slate-400 px-2 py-1.5 rounded-lg font-black text-[10px] transition-colors border border-slate-200 hover:border-slate-800" title="잘못 부과된 벌금 삭제">
+                                      {/* 🌟 예외 처리(면제) 버튼 삭제하고 진짜 '삭제' 버튼으로 대체 */}
+                                      <button onClick={() => handleDeleteFine(f)} className="bg-white hover:bg-slate-800 hover:text-white text-slate-400 px-3 py-1.5 rounded-lg font-black text-[10px] transition-colors border border-slate-200 hover:border-slate-800" title="화면에서 완전히 지우기">
                                         삭제 🗑️
-                                      </button>
-                                      <button onClick={() => handleExemptFine(f)} className="bg-slate-100 hover:bg-yellow-500 hover:text-white text-slate-500 px-3 py-1.5 rounded-lg font-black text-[10px] transition-colors border border-slate-200 hover:border-yellow-500">
-                                        면제 ✋
                                       </button>
                                       <button onClick={() => handleMarkAsPaid(f.id)} className="bg-red-50 hover:bg-emerald-500 hover:text-white text-red-600 px-3 py-1.5 rounded-lg font-black text-[10px] transition-colors border border-red-200 hover:border-emerald-500">
                                         납부 ✓
@@ -470,7 +437,7 @@ export default function FineAdmin() {
                                       <span className={`text-[10px] font-black px-2 py-1 rounded-md ${f.amount === 0 ? 'bg-blue-100 text-blue-500' : 'bg-emerald-100 text-emerald-600'}`}>
                                         {f.amount === 0 ? '면제됨' : '완납'}
                                       </span>
-                                      <button onClick={() => handleDeleteFine(f.id)} className="text-[10px] font-black text-slate-300 hover:text-red-500 px-1" title="기록 영구 삭제">
+                                      <button onClick={() => handleDeleteFine(f)} className="text-[10px] font-black text-slate-300 hover:text-red-500 px-1" title="기록 영구 삭제">
                                         ✕
                                       </button>
                                     </div>
@@ -482,7 +449,6 @@ export default function FineAdmin() {
                         )}
                       </td>
                       
-                      {/* 일괄 납부 버튼 */}
                       <td className="p-4 text-center align-middle">
                         <button 
                           onClick={() => handlePayAll(user.name)} 
@@ -499,7 +465,6 @@ export default function FineAdmin() {
             </div>
           </div>
 
-          {/* 🌟 우측: 수동 벌금 부과 폼 */}
           <div className="space-y-6 sticky top-8">
             <div className="bg-slate-900 p-8 rounded-[2.5rem] shadow-xl border border-slate-800 text-white">
               <h2 className="text-lg font-black mb-6 border-b border-slate-700 pb-3 flex items-center gap-2">
