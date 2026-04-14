@@ -77,11 +77,9 @@ export default function FeedbackArxiv() {
     }
   }, [selectedSemester, allPresentations])
 
-  // 🌟 핵심 로직: 무조건 file_comments(최종 영상 댓글)에서만 데이터를 가져옴!
   const fetchFeedbacks = async (presentation) => {
     setSelectedP(presentation)
     
-    // 1. 해당 주차의 내 영상 파일(files_metadata) 찾기
     const { data: fileData } = await supabase
       .from('files_metadata')
       .select('id')
@@ -92,7 +90,6 @@ export default function FeedbackArxiv() {
       .single()
 
     if (fileData) {
-      // 2. 그 영상에 달린 모든 댓글(file_comments) 가져오기
       const { data: commentData } = await supabase
         .from('file_comments')
         .select('*')
@@ -100,11 +97,9 @@ export default function FeedbackArxiv() {
         .order('created_at', { ascending: true })
 
       if (commentData) {
-        // [조건 1] 셀프 피드백: 본인이 작성한 댓글
         const selfFbs = commentData.filter(c => c.user_name === presentation.presenter_name)
         setSelfFeedbacks(selfFbs)
 
-        // [조건 2] 조원 피드백: 타인이 작성했고, 내가 '읽음(is_read: true)'을 누른 댓글만!
         const peerFbs = commentData.filter(c => 
           c.user_name !== presentation.presenter_name && 
           c.details?.is_read === true
@@ -115,7 +110,6 @@ export default function FeedbackArxiv() {
         setReceivedFeedbacks([])
       }
     } else {
-      // 영상 파일이 없으면 피드백도 없음
       setSelfFeedbacks([])
       setReceivedFeedbacks([])
     }
@@ -124,49 +118,66 @@ export default function FeedbackArxiv() {
   if (loading) return <div className="p-8 text-center font-black text-black">데이터 로딩 중... 🔄</div>
 
   return (
-    <div className="p-6 bg-slate-50 min-h-screen text-black font-sans pb-32">
-      <div className="max-w-[1400px] mx-auto">
+    <div className="bg-slate-50 min-h-screen text-slate-900 font-sans pb-32">
+      
+      {/* 투표 전용 가로형 탭 네비게이션 */}
+      <header className="border-b border-slate-300 bg-slate-50 sticky top-0 z-50">
+        <div className="max-w-[1600px] mx-auto flex items-end px-6 pt-4 overflow-x-auto no-scrollbar">
+          <Link href="/home" className="pb-4 pr-6 text-sm font-extrabold text-slate-400 hover:text-teal-800 transition-colors flex items-center shrink-0">HOME</Link>
+          <div className="w-px h-4 bg-slate-300 mx-2 mb-4 shrink-0"></div>
+          <Link href="/vote/score" className="pb-4 px-6 text-sm font-semibold text-slate-400 hover:text-slate-800 transition-colors shrink-0">발표 채점 📝</Link>
+          <Link href="/vote/feedback" className="pb-4 px-6 text-sm font-semibold text-slate-400 hover:text-slate-800 transition-colors shrink-0">임시저장 피드백 ✍️</Link>
+          <Link href="/vote/results/my" className="pb-4 px-6 text-sm font-semibold text-slate-400 hover:text-slate-800 transition-colors shrink-0">결과 확인 📊</Link>
+          <Link href="/vote/results/arxiv" className="pb-4 px-6 text-sm font-extrabold text-teal-800 border-b-[3px] border-teal-800 transition-colors shrink-0">피드백 확인 💬</Link>
+          <Link href="/vote/results/ranking" className="pb-4 px-6 text-sm font-semibold text-slate-400 hover:text-slate-800 transition-colors shrink-0">베스트 프레젠터 🏆</Link>
+        </div>
+      </header>
+
+      <div className="max-w-[1400px] mx-auto px-6 mt-12">
         
-        <header className="w-full mb-12 flex flex-col md:flex-row md:justify-between md:items-end border-b-2 border-slate-200 pb-6 gap-6">
-          <div>
-            <Link href="/vote" className="text-emerald-600 text-xs font-black hover:underline tracking-widest uppercase mb-4 block">← Back to Vote Hub</Link>
-            <h1 className="text-4xl font-black text-slate-800 tracking-tighter mb-2 uppercase italic">My Growth Record</h1>
-            <p className="text-slate-400 font-bold text-sm">확인 완료된 조원 피드백 & 내 셀프 피드백 보관소 📂</p>
+        {/* 🌟 헤더 (중앙 정렬, 선 기반) */}
+        <header className="w-full flex flex-col items-center mb-16">
+          <div className="w-full flex justify-end items-center mb-6">
+            <div className="flex items-center gap-3">
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Target Semester:</label>
+              <select 
+                value={selectedSemester} 
+                onChange={(e) => setSelectedSemester(e.target.value)}
+                className="bg-transparent font-black text-sm outline-none cursor-pointer text-teal-800 border-b-2 border-teal-800 pb-1"
+              >
+                <option value="all">전체 누적 기록</option>
+                {semesters.map(s => <option key={s} value={s}>{s} 학기</option>)}
+              </select>
+            </div>
           </div>
           
-          <div className="flex items-center gap-3 bg-white p-2 px-4 rounded-2xl shadow-sm border border-slate-200">
-            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Target Semester:</label>
-            <select 
-              value={selectedSemester} 
-              onChange={(e) => setSelectedSemester(e.target.value)}
-              className="bg-transparent font-black text-sm outline-none cursor-pointer text-emerald-600"
-            >
-              <option value="all">전체 누적 기록</option>
-              {semesters.map(s => <option key={s} value={s}>{s} 학기</option>)}
-            </select>
-          </div>
+          <h1 className="text-4xl md:text-5xl font-extrabold uppercase tracking-tight text-teal-900 mb-2">MY GROWTH RECORD</h1>
+          <p className="text-[11px] font-black text-slate-400 mt-4 tracking-widest uppercase">확인 완료된 조원 피드백 & 내 셀프 피드백 보관소</p>
         </header>
 
-        <div className="flex flex-col lg:flex-row justify-center items-start gap-10">
+        <div className="flex flex-col lg:flex-row justify-center items-start gap-12">
           
+          {/* [좌] 발표 리스트 사이드바 (상자 제거, 선 리스트) */}
           <aside className="w-full lg:w-72 shrink-0">
-            <div className="bg-slate-900 p-6 rounded-[2.5rem] text-white shadow-2xl sticky top-8 border border-slate-800">
-              <h3 className="text-[10px] font-black text-emerald-400 uppercase tracking-[0.2em] mb-8 flex items-center gap-2">
-                <span className="animate-pulse">●</span> My Presentations
+            <div className="sticky top-24 pt-2">
+              <h3 className="text-xs font-black text-slate-400 uppercase mb-6 border-b border-slate-300 pb-3 tracking-widest">
+                My Presentations
               </h3>
-              {myPresentations.length === 0 ? <p className="text-xs text-slate-500 text-center py-4">선택한 학기에 발표 기록이 없어요.</p> : (
-                <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-2 no-scrollbar">
+              {myPresentations.length === 0 ? (
+                <p className="text-xs text-slate-500 py-6 border-b border-slate-200 font-bold">선택한 학기에 발표 기록이 없습니다.</p>
+              ) : (
+                <div className="space-y-1">
                   {myPresentations.map((p) => (
                     <button 
                       key={p.id} 
                       onClick={() => fetchFeedbacks(p)}
-                      className={`w-full p-5 rounded-2xl text-left transition-all border-2 ${selectedP?.id === p.id ? 'bg-emerald-600 border-emerald-500 text-white shadow-lg' : 'bg-transparent border-slate-800 text-slate-400 hover:border-slate-700'}`}
+                      className="w-full flex items-center justify-between py-4 border-b border-slate-200 last:border-0 group transition-colors px-1"
                     >
-                      <div className="flex justify-between items-start mb-2">
-                        <p className="text-[10px] font-black opacity-60 uppercase">{p.semester} / W{p.week}</p>
-                        <span className="text-[8px] bg-slate-800 px-1.5 py-0.5 rounded text-emerald-400 font-bold">Group {p.group_id}</span>
+                      <div className="flex flex-col items-start gap-1 text-left">
+                        <span className="text-[10px] font-bold opacity-60 uppercase text-slate-500 tracking-wider">{p.semester} / W{p.week}</span>
+                        <p className={`text-sm font-extrabold truncate w-48 ${selectedP?.id === p.id ? 'text-teal-800' : 'text-slate-600 group-hover:text-slate-900'}`}>{p.topic}</p>
                       </div>
-                      <p className="text-sm font-black leading-tight line-clamp-2">{p.topic}</p>
+                      <span className={`text-[9px] font-bold px-1.5 py-0.5 border ${selectedP?.id === p.id ? 'border-teal-800 text-teal-800 bg-teal-50' : 'border-slate-300 text-slate-400'}`}>G{p.group_id}</span>
                     </button>
                   ))}
                 </div>
@@ -174,76 +185,68 @@ export default function FeedbackArxiv() {
             </div>
           </aside>
 
-          <main className="flex-1 w-full space-y-8 pb-32">
+          {/* [우] 피드백 본문 영역 */}
+          <main className="flex-1 w-full space-y-12 pb-32 max-w-4xl">
             {!selectedP ? (
-              <div className="bg-white p-20 rounded-[3rem] text-center border-2 border-dashed border-slate-200">
-                <p className="text-slate-400 font-bold font-sans">확인할 발표 주차를 왼쪽에서 선택해줘! 👈</p>
+              <div className="py-24 text-center border-y border-slate-300 font-bold text-slate-400 text-xl tracking-widest uppercase">
+                좌측에서 발표 주차를 선택해 주세요.
               </div>
             ) : (
               <>
-                <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-200 flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+                {/* 선택된 발표 정보 (상단 박스 제거, 선 기반) */}
+                <div className="border-b-[3px] border-slate-900 pb-6 flex flex-col sm:flex-row justify-between sm:items-end gap-6">
                   <div>
-                    <span className="bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full text-[9px] font-black uppercase mb-3 block w-fit">
-                      {selectedP.semester} 학기 / {selectedP.week}주차 발표
+                    <span className="text-[10px] font-black text-teal-700 uppercase tracking-widest block mb-2">
+                      {selectedP.semester} / W{selectedP.week}
                     </span>
-                    <h2 className="text-2xl font-black text-slate-800">{selectedP.topic}</h2>
+                    <h2 className="text-3xl font-extrabold text-slate-900 tracking-tight">{selectedP.topic}</h2>
                   </div>
-                  <div className="flex gap-4 text-right">
+                  <div className="flex gap-6 text-right pb-1">
                     <div>
-                      <p className="text-[10px] font-black text-slate-400 uppercase">Self Feedback</p>
-                      <p className="text-xl font-black text-blue-600">{selfFeedbacks.length} <span className="text-sm text-slate-300">건</span></p>
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Self Feedback</p>
+                      <p className="text-2xl font-black text-teal-800">{selfFeedbacks.length} <span className="text-sm text-slate-400">건</span></p>
                     </div>
                     <div>
-                      <p className="text-[10px] font-black text-slate-400 uppercase">Checked Peer Feedback</p>
-                      <p className="text-xl font-black text-emerald-600">{receivedFeedbacks.length} <span className="text-sm text-slate-300">건</span></p>
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Peer Feedback</p>
+                      <p className="text-2xl font-black text-slate-700">{receivedFeedbacks.length} <span className="text-sm text-slate-400">건</span></p>
                     </div>
                   </div>
                 </div>
 
-                <div className="space-y-12">
+                <div className="space-y-16">
                   
+                  {/* 셀프 피드백 섹션 */}
                   <section>
-                    <h3 className="text-sm font-black text-blue-600 mb-6 flex items-center gap-2 uppercase tracking-widest pl-2 border-l-4 border-blue-500">
+                    <h3 className="text-sm font-extrabold text-teal-800 mb-6 uppercase tracking-widest">
                       📝 My Self-Feedback
                     </h3>
-                    <div className="space-y-6">
+                    <div className="space-y-8">
                       {selfFeedbacks.length === 0 ? (
-                        <div className="py-12 text-center bg-white rounded-[2rem] border border-dashed border-slate-200">
+                        <div className="py-12 border-y border-slate-200">
                           <p className="text-slate-400 font-bold text-sm">작성한 셀프 피드백이 없습니다.</p>
                         </div>
                       ) : (
                         selfFeedbacks.map((fb, idx) => (
-                          <FeedbackCard 
-                            key={fb.id} 
-                            index={idx + 1} 
-                            data={fb.details} 
-                            isSelf={true}
-                            date={fb.created_at}
-                          />
+                          <FeedbackCard key={fb.id} index={idx + 1} data={fb.details} isSelf={true} date={fb.created_at} />
                         ))
                       )}
                     </div>
                   </section>
 
+                  {/* 조원 피드백 섹션 */}
                   <section>
-                    <h3 className="text-sm font-black text-emerald-600 mb-6 flex items-center gap-2 uppercase tracking-widest pl-2 border-l-4 border-emerald-500">
+                    <h3 className="text-sm font-extrabold text-slate-800 mb-6 uppercase tracking-widest">
                       🤝 Checked Peer Feedbacks
                     </h3>
-                    <div className="space-y-6">
+                    <div className="space-y-8">
                       {receivedFeedbacks.length === 0 ? (
-                        <div className="py-12 text-center bg-white rounded-[2.5rem] border border-slate-100">
-                          <p className="text-slate-400 font-bold mb-1">아직 확인을 완료한 조원 피드백이 없어요! ✉️</p>
-                          <p className="text-[10px] text-slate-300 font-bold">Video Room에서 조원이 남긴 피드백에 '읽음 확인'을 누르면 이곳으로 넘어옵니다.</p>
+                        <div className="py-12 border-y border-slate-200 space-y-2">
+                          <p className="text-slate-500 font-bold">아직 확인을 완료한 조원 피드백이 없습니다.</p>
+                          <p className="text-[10px] text-slate-400 font-bold tracking-widest uppercase">※ Video Room 영상에 달린 댓글을 '읽음' 처리하면 이곳으로 이관됩니다.</p>
                         </div>
                       ) : (
                         receivedFeedbacks.map((fb, idx) => (
-                          <FeedbackCard 
-                            key={fb.id} 
-                            index={idx + 1} 
-                            data={fb.details} 
-                            isSelf={false}
-                            date={fb.created_at}
-                          />
+                          <FeedbackCard key={fb.id} index={idx + 1} data={fb.details} isSelf={false} date={fb.created_at} />
                         ))
                       )}
                     </div>
@@ -260,31 +263,33 @@ export default function FeedbackArxiv() {
   )
 }
 
+// 🌟 피드백 카드 (박스 제거, 굵은 윗선과 얇은 밑선으로 영역 구분)
 function FeedbackCard({ index, data, isSelf, date }) {
   if (!data) return null;
   const d = date ? new Date(date) : null;
-  const dateStr = d ? `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}` : '';
+  const dateStr = d ? `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}` : '';
 
   return (
-    <div className={`bg-white p-8 rounded-[2.5rem] shadow-sm border space-y-6 relative overflow-hidden ${isSelf ? 'border-blue-100' : 'border-emerald-100'}`}>
-      <div className="flex justify-between items-center border-b border-slate-50 pb-4">
+    <div className={`border-t-[3px] pt-6 pb-10 ${isSelf ? 'border-teal-700' : 'border-slate-800'}`}>
+      
+      <div className="flex justify-between items-end border-b border-slate-200 pb-4 mb-6">
         <div className="flex items-center gap-3">
-          <span className={`${isSelf ? 'bg-blue-600' : 'bg-emerald-600'} text-white w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black`}>{index}</span>
-          <p className="text-xs font-black text-slate-400 uppercase tracking-widest">
-            {isSelf ? 'My Reflection' : 'Group Member Feedback'}
+          <span className={`text-[11px] font-black w-5 h-5 flex items-center justify-center rounded-sm text-white ${isSelf ? 'bg-teal-700' : 'bg-slate-800'}`}>{index}</span>
+          <p className={`text-xs font-black uppercase tracking-widest ${isSelf ? 'text-teal-800' : 'text-slate-700'}`}>
+            {isSelf ? 'My Reflection' : 'Peer Feedback'}
           </p>
         </div>
-        <span className="text-[9px] font-bold text-slate-300">{dateStr}</span>
+        <span className="text-[10px] font-bold text-slate-400 tracking-wider">{dateStr}</span>
       </div>
 
-      <div className="space-y-6">
+      <div className="space-y-8">
         {data.originalMessage && (
           <div>
-            <label className={`text-[9px] font-black ${isSelf ? 'text-blue-500' : 'text-emerald-500'} uppercase tracking-tighter mb-1 block`}>● Original Message</label>
-            <p className={`text-sm font-bold text-slate-700 ${isSelf ? 'bg-blue-50/30' : 'bg-emerald-50/30'} p-4 rounded-xl leading-relaxed`}>{data.originalMessage}</p>
+            <label className={`text-[10px] font-black uppercase tracking-widest mb-2 block ${isSelf ? 'text-teal-700' : 'text-slate-500'}`}>Original Message</label>
+            <p className="text-[13px] font-medium text-slate-800 bg-white border border-slate-200 p-5 rounded-sm leading-relaxed shadow-sm">{data.originalMessage}</p>
           </div>
         )}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 md:gap-6 pt-2 border-t border-slate-100">
           <FeedbackDetail title="Insight" plus={data.insightPlus} minus={data.insightMinus} />
           <FeedbackDetail title="Graphic" plus={data.graphicPlus} minus={data.graphicMinus} />
           <FeedbackDetail title="Delivery" plus={data.deliveryPlus} minus={data.deliveryMinus} />
@@ -294,21 +299,22 @@ function FeedbackCard({ index, data, isSelf, date }) {
   )
 }
 
+// 🌟 디테일 섹션 (심플한 선과 라벨 위주)
 function FeedbackDetail({ title, plus, minus }) {
   return (
-    <div className="space-y-3">
-      <p className="text-[11px] font-black text-slate-800 border-l-2 border-slate-800 pl-2">{title}</p>
-      <div className="space-y-2">
+    <div className="space-y-4">
+      <p className="text-[11px] font-extrabold text-slate-900 border-l-2 border-slate-900 pl-2 uppercase tracking-widest">{title}</p>
+      <div className="space-y-3">
         {plus && (
-          <div className="bg-emerald-50/50 p-3 rounded-xl">
-            <p className="text-[10px] font-bold text-emerald-600 mb-1">(+)</p>
-            <p className="text-[11px] font-medium text-slate-600 leading-snug whitespace-pre-wrap">{plus}</p>
+          <div className="border-l border-emerald-300 pl-3">
+            <p className="text-[10px] font-black text-emerald-600 mb-1">(+)</p>
+            <p className="text-[11px] font-medium text-slate-700 leading-relaxed whitespace-pre-wrap">{plus}</p>
           </div>
         )}
         {minus && (
-          <div className="bg-red-50/50 p-3 rounded-xl">
-            <p className="text-[10px] font-bold text-red-400 mb-1">(-)</p>
-            <p className="text-[11px] font-medium text-slate-600 leading-snug whitespace-pre-wrap">{minus}</p>
+          <div className="border-l border-red-300 pl-3">
+            <p className="text-[10px] font-black text-red-500 mb-1">(-)</p>
+            <p className="text-[11px] font-medium text-slate-700 leading-relaxed whitespace-pre-wrap">{minus}</p>
           </div>
         )}
       </div>

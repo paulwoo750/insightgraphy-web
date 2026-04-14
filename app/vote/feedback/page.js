@@ -9,7 +9,6 @@ export default function FeedbackPage() {
   const [user, setUser] = useState(null)
   const [week, setWeek] = useState(1)
   
-  // 🌟 시스템 데이터 (학기, 주제) 상태 추가
   const [currentSemester, setCurrentSemester] = useState('2026-1')
   const [weekTopics, setWeekTopics] = useState({})
 
@@ -37,7 +36,6 @@ export default function FeedbackPage() {
         const currentUser = session.user;
         setUser(currentUser);
         
-        // 🌟 시스템 데이터 먼저 불러오기
         await fetchSystemData();
 
         const { data: lastScore } = await supabase.from('scores').select('presentation_id').eq('voter_name', currentUser.user_metadata.name).order('created_at', { ascending: false }).limit(1);
@@ -53,7 +51,6 @@ export default function FeedbackPage() {
     init()
   }, [])
 
-  // 🌟 시스템 데이터(학기, 주제) 패치 함수
   const fetchSystemData = async () => {
     const { data: configData } = await supabase.from('pr_config').select('*')
     if (configData) {
@@ -75,17 +72,15 @@ export default function FeedbackPage() {
     const me = pAll.find(p => p.presenter_name === userName);
     setMyInfo({ cluster_id: me?.cluster_id, group_id: me?.group_id });
 
-    // 내 클러스터 멤버들 로드
     const { data: sData } = await supabase.from('scores').select('*').eq('voter_name', userName);
     const clusterMembers = pAll.filter(p => p.cluster_id === me?.cluster_id && p.presenter_name !== userName);
     
     const combined = clusterMembers.map(p => {
       const scoreRecord = sData?.find(s => s.presentation_id === p.id);
       return {
-        id: scoreRecord?.id || null, // DB의 실제 PK ID
+        id: scoreRecord?.id || null, 
         presentation_id: p.id,
         presenter_info: p,
-        // 🌟 is_submitted(최종 제출 여부) 개념 사실상 무효화 (항상 수정 가능)
         is_submitted: scoreRecord?.is_submitted || false,
         total_score: scoreRecord?.total_score || 0,
         details: scoreRecord?.details || {}
@@ -93,7 +88,6 @@ export default function FeedbackPage() {
     });
     setEvaluatedScores(combined);
 
-    // 현재 선택된 아이템의 최신 정보 유지
     if (selectedItem) {
       const current = combined.find(c => c.presentation_id === selectedItem.presentation_id);
       if (current) setSelectedItem(current);
@@ -115,41 +109,26 @@ export default function FeedbackPage() {
     })
   }
 
-  // 🌟 업데이트 로직 (오직 '임시 저장' 기능만 수행, is_submitted 강제 false)
   const handleUpdate = async () => {
     if (!selectedItem) return
     
     setUpdating(true)
-    const updatedDetails = { 
-      ...selectedItem.details, 
-      qualitative: editFeedback 
-    }
+    const updatedDetails = { ...selectedItem.details, qualitative: editFeedback }
 
     try {
       if (selectedItem.id) {
-        // 이미 기록(ID)이 있는 경우 -> UPDATE
-        const { error } = await supabase
-          .from('scores')
-          .update({ 
-            is_submitted: false, // 🌟 무조건 false (임시 저장 상태 유지)
-            details: updatedDetails 
-          })
-          .eq('id', selectedItem.id);
+        const { error } = await supabase.from('scores').update({ is_submitted: false, details: updatedDetails }).eq('id', selectedItem.id);
         if (error) throw error;
       } else {
-        // 기록이 없는 경우 -> INSERT
-        const { error } = await supabase
-          .from('scores')
-          .insert([{
+        const { error } = await supabase.from('scores').insert([{
             presentation_id: selectedItem.presentation_id,
             voter_name: user.user_metadata.name,
             total_score: 0,
-            is_submitted: false, // 🌟 무조건 false
+            is_submitted: false,
             details: { version: 'v1', qualitative: editFeedback }
           }]);
         if (error) throw error;
       }
-      
       alert("영상 댓글용 피드백이 안전하게 저장됐어! 📝✨");
       await fetchMyData(); 
     } catch (err) {
@@ -159,7 +138,6 @@ export default function FeedbackPage() {
     }
   }
 
-  // 메모 자동 저장 (포커스 아웃 시 저장)
   const handleAutoSaveMemo = async (newMemo) => {
     if (!selectedItem) return;
     const updatedDetails = { ...selectedItem.details, qualitative: { ...editFeedback, memo: newMemo } };
@@ -176,125 +154,195 @@ export default function FeedbackPage() {
     }
   }
 
-  if (!user) return <div className="p-8 text-center font-black">데이터 불러오는 중... 🔄</div>
+  if (!user) return <div className="p-8 text-center font-bold text-slate-400">데이터 로딩 중...</div>
   const isSameGroup = selectedItem?.presenter_info?.group_id === myInfo.group_id;
 
   return (
-    <div className="p-6 bg-slate-50 min-h-screen text-black font-sans">
-      <div className="max-w-[1700px] mx-auto">
-        <header className="w-full text-center mb-12">
-          <div className="flex justify-between items-center mb-6 max-w-2xl mx-auto">
-            <Link href="/vote" className="text-emerald-600 text-xs font-black hover:underline uppercase">← Vote Hub</Link>
-            <div className="bg-slate-900 text-white px-4 py-1.5 rounded-full shadow-lg font-black text-[10px] uppercase">Feedback Draft Room</div>
+    <div className="bg-slate-50 min-h-screen text-slate-900 font-sans pb-32">
+      
+      {/* 🌟 1. 투표 전용 가로형 탭 네비게이션 (1600px) */}
+      <header className="border-b border-slate-300 bg-slate-50 sticky top-0 z-50">
+        <div className="max-w-[1600px] mx-auto flex items-end px-6 pt-4 overflow-x-auto no-scrollbar">
+          <Link href="/home" className="pb-4 pr-6 text-sm font-extrabold text-slate-400 hover:text-teal-800 transition-colors flex items-center shrink-0">
+            HOME
+          </Link>
+          <div className="w-px h-4 bg-slate-300 mx-2 mb-4 shrink-0"></div>
+          <Link href="/vote/score" className="pb-4 px-6 text-sm font-semibold text-slate-400 hover:text-slate-800 transition-colors shrink-0">
+            발표 채점 📝
+          </Link>
+          <Link href="/vote/feedback" className="pb-4 px-6 text-sm font-extrabold text-teal-800 border-b-[3px] border-teal-800 transition-colors shrink-0">
+            임시저장 피드백 ✍️
+          </Link>
+          <Link href="/vote/results/my" className="pb-4 px-6 text-sm font-semibold text-slate-400 hover:text-slate-800 transition-colors shrink-0">
+            결과 확인 📊
+          </Link>
+          <Link href="/vote/results/arxiv" className="pb-4 px-6 text-sm font-semibold text-slate-400 hover:text-slate-800 transition-colors shrink-0">
+            피드백 확인 💬
+          </Link>
+          <Link href="/vote/results/ranking" className="pb-4 px-6 text-sm font-semibold text-slate-400 hover:text-slate-800 transition-colors shrink-0">
+            베스트 프레젠터 🏆
+          </Link>
+        </div>
+      </header>
+
+      <div className="max-w-[1600px] mx-auto px-6 mt-12">
+        
+        {/* 🌟 2. 헤더 구역 (중앙 정렬, 선 기반) */}
+        <header className="w-full mb-16 flex flex-col items-center">
+          
+          <div className="w-full flex justify-end items-center mb-6">
+            <div className="flex items-center gap-3">
+              {currentSemester && <span className="text-[11px] font-black text-teal-800 uppercase tracking-widest">{currentSemester}</span>}
+              <span className="w-px h-3 bg-slate-400"></span>
+              <span className="text-[11px] font-black text-slate-500 uppercase tracking-widest">DRAFT ROOM</span>
+              <span className="w-px h-3 bg-slate-400"></span>
+              <span className="text-[11px] font-black text-teal-600 uppercase tracking-widest">C#{myInfo.cluster_id} / G#{myInfo.group_id}</span>
+            </div>
           </div>
           
-          <h1 className="text-4xl font-black text-slate-800 tracking-tighter mb-8 uppercase italic">Draft Feedback Memo 📝</h1>
+          <h1 className="text-4xl md:text-5xl font-extrabold uppercase text-teal-900 tracking-tight mb-12 text-center">Feedback Draft Room</h1>
           
-          {/* 🌟 학기 및 주차/주제 통합 패널 */}
-          <div className="bg-white p-8 rounded-[2.5rem] shadow-xl space-y-6 max-w-2xl mx-auto border border-emerald-100 flex flex-col items-center">
+          <div className="w-full border-y-2 border-teal-800 py-10 flex flex-col items-center">
+            <span className="text-xs font-extrabold text-teal-700 uppercase tracking-widest mb-6">Select Active Week</span>
             
-            <div className="flex flex-col items-center gap-1 mb-2">
-              <span className="text-[10px] bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full font-black uppercase tracking-widest">{currentSemester} 학기</span>
-              <h2 className="text-2xl font-black text-slate-800 mt-2">
-                {week}주차: {weekTopics[week] || '자유 주제'}
-              </h2>
+            <div className="flex flex-wrap justify-center gap-4 md:gap-6 mb-10 w-full max-w-4xl">
+              {weeks.map((w) => (
+                <button 
+                  key={w} 
+                  onClick={() => setWeek(w)} 
+                  className={`pb-1 text-base md:text-lg font-black transition-all ${week === w ? 'text-teal-800 border-b-[3px] border-teal-800 scale-110' : 'text-slate-400 border-b-[3px] border-transparent hover:text-slate-700 hover:scale-105'}`}
+                >
+                  W{w}
+                </button>
+              ))}
             </div>
-
-            <div className="flex flex-col items-center w-full">
-              <span className="text-[10px] font-black text-slate-400 uppercase block mb-3 border-t border-slate-100 w-full text-center pt-4">Jump to Week</span>
-              <div className="flex flex-wrap justify-center gap-2">
-                {weeks.map((w) => (<button key={w} onClick={() => setWeek(w)} className={`w-9 h-9 rounded-xl font-black text-xs transition-all ${week === w ? 'bg-emerald-500 text-white shadow-md scale-110' : 'bg-slate-100 text-slate-400 hover:bg-slate-200 hover:text-slate-600'}`}>{w}</button>))}
-              </div>
+            
+            <div className="flex flex-col items-center">
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Target Topic</span>
+              <p className="text-2xl font-extrabold text-slate-900">{weekTopics[week] || "자유 주제"}</p>
             </div>
           </div>
-
         </header>
 
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_750px_1fr] gap-8 items-start">
-          <aside className="w-full lg:w-72 lg:justify-self-end">
-            <div className="bg-slate-900 p-6 rounded-[2.5rem] text-white shadow-2xl sticky top-8 border border-slate-800">
-              <h3 className="text-[10px] font-black text-emerald-400 uppercase tracking-[0.2em] mb-8 flex items-center gap-2">● My Target List</h3>
-              <div className="space-y-3">
-                {evaluatedScores.map((item) => (
-                  <button key={item.presentation_id} onClick={() => selectRecord(item)} className={`w-full p-4 rounded-2xl text-left transition-all border-2 ${selectedItem?.presentation_id === item.presentation_id ? 'bg-emerald-600 border-emerald-500 text-white shadow-lg' : 'bg-transparent border-slate-800 text-slate-400 hover:border-slate-700'}`}>
-                    <div className="flex justify-between items-center"><p className="text-sm font-black">{item.presenter_info?.presenter_name}</p></div>
-                    <div className="flex gap-2 mt-1"><span className="text-[8px] font-bold text-slate-500">W{item.presenter_info?.week}</span>{item.presenter_info?.group_id === myInfo.group_id && <span className="text-[8px] font-bold text-emerald-400">My Group</span>}</div>
-                  </button>
-                ))}
-                {evaluatedScores.length === 0 && <p className="text-xs text-slate-400 font-bold text-center py-4">이번 주차 평가 대상이 없어!</p>}
-              </div>
+        {/* 🌟 3. 레이아웃: [좌] 명단 사이드바 / [우] 작성 폼 */}
+        <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr] xl:grid-cols-[350px_1fr] gap-12 items-start">
+          
+          {/* [좌] 대상 명단 사이드바 (상자 제거, 선 기반) */}
+          <aside className="w-full sticky top-24 pt-2">
+            <h3 className="text-xs font-black text-slate-400 uppercase mb-6 border-b border-slate-300 pb-3 tracking-widest">My Target List</h3>
+            <div className="space-y-1">
+              {evaluatedScores.map((item) => (
+                <button 
+                  key={item.presentation_id} 
+                  onClick={() => selectRecord(item)} 
+                  className="w-full flex items-center justify-between py-4 border-b border-slate-200 last:border-0 group transition-colors hover:bg-slate-50 px-2"
+                >
+                  <div className="flex items-center gap-4">
+                    <span className={`text-base font-extrabold truncate transition-colors ${selectedItem?.presentation_id === item.presentation_id ? 'text-teal-800' : 'text-slate-500 group-hover:text-slate-800'}`}>
+                      {item.presenter_info?.presenter_name}
+                    </span>
+                    {item.presenter_info?.group_id === myInfo.group_id && <span className="text-[10px] text-teal-500">★</span>}
+                  </div>
+                  <span className="text-[10px] font-bold text-slate-400">W{item.presenter_info?.week}</span>
+                </button>
+              ))}
+              {evaluatedScores.length === 0 && <p className="text-xs text-slate-400 font-bold text-center py-6 border-b border-slate-200">이번 주차 평가 대상이 없습니다.</p>}
             </div>
           </aside>
 
-          <div className="w-full space-y-8 pb-32">
+          {/* [우] 피드백 폼 (상자 제거, 선 기반) */}
+          <div className="w-full space-y-12 max-w-4xl mx-auto">
             {!selectedItem ? (
-              <div className="bg-white p-20 rounded-[3rem] text-center border-2 border-dashed border-slate-200 font-bold text-slate-300">왼쪽에서 명단을 선택해줘!</div>
+              <div className="text-center py-24 border-y border-slate-300 font-bold text-slate-400 text-xl tracking-widest uppercase">
+                좌측에서 대상을 선택해 주세요.
+              </div>
             ) : (
-              <div className="bg-white p-10 rounded-[3rem] shadow-sm border border-slate-200 space-y-10 relative">
-                <div className="flex justify-between items-end border-b border-slate-100 pb-6">
+              <div className="space-y-12 relative">
+                
+                <div className="flex justify-between items-end border-b-[3px] border-slate-900 pb-6 mb-12">
                   <div>
-                    <h2 className="text-3xl font-black text-slate-800">{selectedItem.presenter_info?.presenter_name} 님</h2>
-                    <p className="text-sm text-slate-400 font-bold mt-1">Topic: {selectedItem.presenter_info?.topic}</p>
+                    <h2 className="text-4xl font-black text-teal-800 tracking-tight">{selectedItem.presenter_info?.presenter_name} 님</h2>
+                    <p className="text-sm text-slate-500 font-bold mt-2">Topic: {selectedItem.presenter_info?.topic}</p>
                   </div>
                   <div className="text-right">
-                    <p className={`text-[10px] font-black uppercase mb-1 ${isSameGroup ? 'text-emerald-500' : 'text-amber-500'}`}>{isSameGroup ? 'Group Feedback' : 'Simple Memo'}</p>
-                    <p className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-1 rounded">임시 보관함</p>
+                    <p className={`text-[10px] font-black uppercase mb-1.5 tracking-widest ${isSameGroup ? 'text-teal-600' : 'text-slate-400'}`}>
+                      {isSameGroup ? 'Detail Feedback' : 'Simple Memo'}
+                    </p>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest bg-slate-100 px-2 py-1 inline-block">Draft Box</p>
                   </div>
                 </div>
 
                 <div className="space-y-10">
                   {isSameGroup ? (
                     <>
-                      {/* 🌟 disabled 속성 모두 제거하여 언제든 수정 가능하게 함 */}
-                      <div><label className="text-[10px] font-black text-slate-400 uppercase ml-1 mb-2 block tracking-widest">• 원메세지 초안 (Video Room 제출용)</label>
-                        <textarea value={editFeedback.originalMessage} onChange={(e)=>setEditFeedback({...editFeedback, originalMessage: e.target.value})} className="w-full p-6 rounded-2xl text-base font-bold min-h-[100px] outline-none bg-slate-50 border border-transparent focus:border-emerald-100" placeholder="발표를 들으며 핵심 메시지를 미리 기록해 둬!" />
+                      <div>
+                        <label className="text-xs font-black text-slate-500 uppercase tracking-widest block mb-3">Original Message</label>
+                        <input 
+                          type="text" 
+                          value={editFeedback.originalMessage} 
+                          onChange={(e)=>setEditFeedback({...editFeedback, originalMessage: e.target.value})} 
+                          className="w-full border-b-[3px] border-slate-300 py-3 text-base font-bold outline-none focus:border-teal-700 bg-transparent placeholder:text-slate-300 transition-colors" 
+                          placeholder="발표를 들으며 핵심 메시지를 미리 기록해 보세요." 
+                        />
                       </div>
-                      <EditSection title="1. Insight" plus={editFeedback.insightPlus} minus={editFeedback.insightMinus} onChange={(k, v)=>setEditFeedback({...editFeedback, [k]: v})} />
-                      <EditSection title="2. Graphic" plus={editFeedback.graphicPlus} minus={editFeedback.graphicMinus} onChange={(k, v)=>setEditFeedback({...editFeedback, [k]: v})} />
-                      <EditSection title="3. Delivery" plus={editFeedback.deliveryPlus} minus={editFeedback.deliveryMinus} onChange={(k, v)=>setEditFeedback({...editFeedback, [k]: v})} />
+                      <FeedbackSection title="1. Insight" subtitle="독창성, 적합성" plusVal={editFeedback.insightPlus} minusVal={editFeedback.insightMinus} onPlusChange={(v)=>setEditFeedback({...editFeedback, insightPlus: v})} onMinusChange={(v)=>setEditFeedback({...editFeedback, insightMinus: v})} />
+                      <FeedbackSection title="2. Graphic" subtitle="가독성, 가시성" plusVal={editFeedback.graphicPlus} minusVal={editFeedback.graphicMinus} onPlusChange={(v)=>setEditFeedback({...editFeedback, graphicPlus: v})} onMinusChange={(v)=>setEditFeedback({...editFeedback, graphicMinus: v})} />
+                      <FeedbackSection title="3. Delivery" subtitle="목소리, 흐름" plusVal={editFeedback.deliveryPlus} minusVal={editFeedback.deliveryMinus} onPlusChange={(v)=>setEditFeedback({...editFeedback, deliveryPlus: v})} onMinusChange={(v)=>setEditFeedback({...editFeedback, deliveryMinus: v})} />
+                      
+                      <div className="pt-12 border-t-[3px] border-slate-900 mt-16">
+                        <button 
+                          onClick={handleUpdate} 
+                          disabled={updating} 
+                          className="w-full max-w-sm mx-auto block py-5 border-[3px] border-teal-800 text-teal-900 font-black text-xl uppercase tracking-widest hover:bg-teal-800 hover:text-white transition-all active:scale-95"
+                        >
+                          {updating ? '저장 중...' : '임시 저장하기 💾'}
+                        </button>
+                      </div>
                     </>
                   ) : (
-                    <div className="space-y-4">
-                      <div className="flex justify-between items-center ml-1"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">● Evaluation Memo</label></div>
+                    <div>
+                      <label className="text-xs font-black text-slate-500 uppercase tracking-widest mb-3 block">Evaluation Memo</label>
                       <textarea 
                         value={editFeedback.memo || ''} 
                         onChange={(e)=>setEditFeedback({...editFeedback, memo: e.target.value})} 
                         onBlur={(e)=>handleAutoSaveMemo(e.target.value)}
-                        className="w-full bg-slate-50 p-8 rounded-[2.5rem] text-sm font-bold min-h-[500px] outline-none border-2 border-dashed border-slate-100 focus:border-amber-100 transition-all" 
-                        placeholder="이 발표자에 대해 자유롭게 메모를 남겨줘!" 
+                        className="w-full border-y-[3px] border-slate-200 py-6 text-base font-medium min-h-[500px] outline-none focus:border-slate-400 transition-colors placeholder:text-slate-300 resize-none bg-transparent leading-relaxed" 
+                        placeholder="이 발표자에 대해 자유롭게 메모를 남겨주세요. (입력 시 자동 저장됩니다)" 
                       />
                     </div>
                   )}
                 </div>
-
-                {isSameGroup && (
-                  <div className="flex pt-6 border-t border-slate-50">
-                    <button onClick={handleUpdate} disabled={updating} className="w-full py-6 bg-slate-900 text-white rounded-[2.5rem] font-black text-xl hover:bg-emerald-600 shadow-xl transition-all active:scale-95">
-                      {updating ? '저장 중...' : '작성한 내용 임시 저장하기 💾'}
-                    </button>
-                  </div>
-                )}
                 
               </div>
             )}
           </div>
-          <aside className="w-full lg:w-72 hidden lg:block" />
         </div>
       </div>
     </div>
   )
 }
 
-// 🌟 disabled 파라미터 삭제
-function EditSection({ title, plus, minus, onChange }) {
-  const pKey = title.toLowerCase().split('. ')[1].toLowerCase() + 'Plus';
-  const mKey = title.toLowerCase().split('. ')[1].toLowerCase() + 'Minus';
+// 🌟 얇은 컬러 밑줄 기반 텍스트 에어리어 (score 탭 완벽 동기화)
+function FeedbackSection({ title, subtitle, plusVal, minusVal, onPlusChange, onMinusChange }) {
   return (
     <div className="space-y-4">
-      <p className="text-lg font-black text-slate-800 border-l-4 border-emerald-500 pl-3 uppercase">{title}</p>
-      <div className="flex flex-col gap-3">
-        <textarea value={plus} onChange={(e)=>onChange(pKey, e.target.value)} className="w-full p-4 rounded-xl text-sm font-bold min-h-[80px] bg-emerald-50/30 outline-none border border-transparent focus:border-emerald-100" placeholder="(+) 장점 및 인상 깊었던 점" />
-        <textarea value={minus} onChange={(e)=>onChange(mKey, e.target.value)} className="w-full p-4 rounded-xl text-sm font-bold min-h-[80px] bg-red-50/30 outline-none border border-transparent focus:border-red-100" placeholder="(-) 아쉬운 점 및 개선 아이디어" />
+      <div className="flex items-end gap-3">
+        <p className="text-sm font-black text-slate-800 uppercase tracking-widest">{title}</p>
+        <p className="text-[10px] font-bold text-slate-400 mb-0.5">{subtitle}</p>
+      </div>
+      <div className="flex flex-col gap-4">
+        <textarea 
+          value={plusVal} 
+          onChange={(e)=>onPlusChange(e.target.value)} 
+          className="w-full border-b-[3px] border-emerald-400 py-2 px-1 text-sm font-bold min-h-[50px] outline-none focus:border-emerald-700 transition-colors bg-transparent placeholder:text-slate-300 placeholder:font-medium resize-none" 
+          placeholder="(+) 장점 및 인상 깊었던 점" 
+        />
+        <textarea 
+          value={minusVal} 
+          onChange={(e)=>onMinusChange(e.target.value)} 
+          className="w-full border-b-[3px] border-red-400 py-2 px-1 text-sm font-bold min-h-[50px] outline-none focus:border-red-700 transition-colors bg-transparent placeholder:text-slate-300 placeholder:font-medium resize-none" 
+          placeholder="(-) 아쉬운 점 및 개선 아이디어" 
+        />
       </div>
     </div>
   )
