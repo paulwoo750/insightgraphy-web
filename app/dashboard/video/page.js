@@ -14,7 +14,8 @@ export default function VideoRoom() {
   const [targetWeek, setTargetWeek] = useState(1) 
   
   const [activeMembers, setActiveMembers] = useState([]) 
-  const [selectedOwnerName, setSelectedOwnerName] = useState('') 
+  const [uploadTargets, setUploadTargets] = useState([]) // 🌟 팀/개인 단위 타겟 리스트
+  const [selectedTargetId, setSelectedTargetId] = useState('') 
   const [ytUrl, setYtUrl] = useState('') 
 
   const [currentSemester, setCurrentSemester] = useState('2026-1')
@@ -100,6 +101,67 @@ export default function VideoRoom() {
     setTargetWeek(initialWeek)
   }
 
+  // 🌟 타겟 생성 로직 (주차 변경 시 팀/개인 구분)
+  useEffect(() => {
+    let targets = [];
+    const setup = weeklySetup[targetWeek] || {};
+    const mTeams = setup.memberTeams || setup.members || {};
+    const tGroups = setup.teamGroups || setup.groupToCluster || {};
+
+    const teamMap = {};
+    const absentMembers = [];
+
+    Object.keys(mTeams).forEach(name => {
+      const t = mTeams[name];
+      if (t === '결석') {
+        absentMembers.push(name);
+      } else if (t !== '미정' && !isNaN(Number(t))) {
+        if (!teamMap[t]) teamMap[t] = [];
+        teamMap[t].push(name);
+      }
+    });
+
+    // 🌟 1명 이상인 팀이 하나라도 있으면 팀 발표 모드로 간주
+    const isTeamMode = Object.values(teamMap).some(members => members.length > 1);
+
+    if (isTeamMode) {
+      Object.keys(teamMap).forEach(tId => {
+        targets.push({
+          id: `Team ${tId}`,
+          label: `Team #${tId} (${teamMap[tId].join(', ')})`,
+          group_id: tGroups[tId] || null
+        });
+      });
+      absentMembers.forEach(name => {
+        targets.push({
+          id: name,
+          label: `${name} (결석자 보강)`,
+          group_id: null
+        });
+      });
+    } else {
+      Object.keys(mTeams).forEach(name => {
+        if (mTeams[name] !== '미정') {
+          targets.push({
+            id: name,
+            label: name + (mTeams[name] === '결석' ? ' (결석자 보강)' : ''),
+            group_id: tGroups[mTeams[name]] || null
+          });
+        }
+      });
+    }
+
+    if (targets.length === 0 && activeMembers.length > 0) {
+      targets = activeMembers.map(m => ({ id: m.name, label: m.name, group_id: null }));
+    }
+
+    // 이름 순 및 팀 번호 순 정렬
+    targets.sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
+    setUploadTargets(targets);
+    setSelectedTargetId('');
+  }, [targetWeek, weeklySetup, activeMembers]);
+
+
   const formatDate = (dateStr) => {
     if (!dateStr) return '';
     const d = new Date(dateStr);
@@ -132,20 +194,17 @@ export default function VideoRoom() {
     }
   }
 
+  // 🌟 영상 등록 (타겟 ID 기반)
   const handleRegisterYoutube = async () => {
-    if (!selectedOwnerName || !ytUrl.trim()) return alert("영상 주인과 유튜브 링크를 모두 입력해줘! 🔗")
+    if (!selectedTargetId || !ytUrl.trim()) return alert("업로드 대상과 유튜브 링크를 모두 입력해줘! 🔗")
     
     setUploading(true)
     const currentTopic = weekTopics[targetWeek] || (targetWeek === 0 ? 'OT 및 자유 주제' : '자유 주제')
-    const autoTitle = `${targetWeek}W (${currentTopic}) ${selectedOwnerName} 발표영상`;
+    const target = uploadTargets.find(t => t.id === selectedTargetId);
     
-    let myGroup = null
-    if (weeklySetup[targetWeek] && weeklySetup[targetWeek].members) {
-      const g = weeklySetup[targetWeek].members[selectedOwnerName]
-      if (g && g !== '미정' && g !== '결석') {
-        myGroup = Number(g) 
-      }
-    }
+    // ex) "5W (주제) Team 1 발표영상" 또는 "5W (주제) 홍길동 발표영상"
+    const autoTitle = `${targetWeek}W (${currentTopic}) ${target.id} 발표영상`; 
+    const myGroup = target.group_id;
 
     const deadline = deadlines[targetWeek]?.video
     const isLate = deadline ? new Date() > new Date(deadline) : false
@@ -156,7 +215,7 @@ export default function VideoRoom() {
       week: targetWeek,
       file_category: 'video', 
       is_archive: false, 
-      uploader: selectedOwnerName, 
+      uploader: target.id, // 'Team 1' 또는 '홍길동'
       storage_path: 'youtube',
       semester: currentSemester,
       is_late: isLate,
@@ -165,7 +224,7 @@ export default function VideoRoom() {
     if (!error) { 
       alert('영상 등록 완료!'); 
       setYtUrl(''); 
-      setSelectedOwnerName(''); 
+      setSelectedTargetId(''); 
       setSelectedWeek(targetWeek);
       fetchFiles(); 
     }
@@ -173,18 +232,39 @@ export default function VideoRoom() {
     setUploading(false)
   }
 
+  // 🌟 영상 권한 검증 및 데이터 호출
+  const isVideoOwner = (file, userName) => {
+    if (!file || !userName) return false;
+    if (file.uploader === userName) return true;
+    if (file.uploader.startsWith('Team ')) {
+      const tId = Number(file.uploader.replace('Team ', ''));
+      const setup = weeklySetup[file.week] || {};
+      const mTeams = setup.memberTeams || setup.members || {};
+      return Number(mTeams[userName]) === tId; 
+    }
+    return false;
+  }
+
   const handleOpenVideo = async (file) => {
     setViewingFile(file);
     setDraftFeedback(null); 
     fetchComments(file.id);
 
-    const { data: pData } = await supabase.from('presentations').select('id').eq('week', file.week).eq('presenter_name', file.uploader).single();
-    if (pData) {
-      const userName = user?.user_metadata?.name;
-      if (userName) {
-        const { data: myDraft } = await supabase.from('scores').select('*').eq('presentation_id', pData.id).eq('voter_name', userName).single();
-        if (myDraft) setDraftFeedback(myDraft.details?.qualitative || null);
-      }
+    const userName = user?.user_metadata?.name;
+    if (!userName) return;
+
+    let query = supabase.from('presentations').select('id').eq('week', file.week);
+    if (file.uploader.startsWith('Team ')) {
+      const tId = Number(file.uploader.replace('Team ', ''));
+      query = query.eq('team_id', tId);
+    } else {
+      query = query.eq('presenter_name', file.uploader);
+    }
+
+    const { data: pData } = await query.limit(1); // 다수일 경우 1개 대표 ID 사용
+    if (pData && pData.length > 0) {
+      const { data: myDraft } = await supabase.from('scores').select('*').eq('presentation_id', pData[0].id).eq('voter_name', userName).single();
+      if (myDraft) setDraftFeedback(myDraft.details?.qualitative || null);
     }
   }
 
@@ -231,13 +311,6 @@ export default function VideoRoom() {
     if (!error) fetchComments(viewingFile.id)
   }
 
-  const handleUpdateComment = async (commentId, editText) => {
-    const { error } = await supabase.from('file_comments').update({ 
-      details: { ...comments.find(c => c.id === commentId).details, originalMessage: editText } 
-    }).eq('id', commentId)
-    if (!error) { setEditingCommentId(null); fetchComments(viewingFile.id); }
-  }
-
   const getYoutubeId = (url) => {
     if (!url) return null;
     const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
@@ -258,10 +331,11 @@ export default function VideoRoom() {
 
   if (!user) return <div className="p-8 text-center font-bold text-slate-500">데이터 로딩 중...</div>
 
-  const selfFeedbacks = comments.filter(c => c.user_name === viewingFile?.uploader);
-  const peerFeedbacks = comments.filter(c => c.user_name !== viewingFile?.uploader);
+  // 🌟 피드백 필터링 로직 업그레이드
+  const selfFeedbacks = comments.filter(c => isVideoOwner(viewingFile, c.user_name));
+  const peerFeedbacks = comments.filter(c => !isVideoOwner(viewingFile, c.user_name));
   const loggedInUserName = user?.user_metadata?.name;
-  const isVideoOwner = loggedInUserName === viewingFile?.uploader;
+  const isMeVideoOwner = isVideoOwner(viewingFile, loggedInUserName);
 
   const getQualitativeDeadline = (weekNum) => deadlines[weekNum]?.vote_feedback || deadlines[weekNum]?.feedback;
 
@@ -273,13 +347,18 @@ export default function VideoRoom() {
     maxGroup = Number(weeklySetup[selectedWeek].groupCount)
   }
 
+  // 🌟 Dynamic Group 파악
   const getDynamicGroup = (file) => {
-    if (weeklySetup[selectedWeek] && weeklySetup[selectedWeek].members && weeklySetup[selectedWeek].members[file.uploader]) {
-      const g = weeklySetup[selectedWeek].members[file.uploader]
-      if (g !== '미정' && g !== '결석') return Number(g)
+    if (file.group_id) return file.group_id;
+    const setup = weeklySetup[file.week] || {};
+    if (file.uploader.startsWith('Team ')) {
+       const tId = Number(file.uploader.replace('Team ', ''));
+       return setup.teamGroups?.[tId] || null;
+    } else {
+       const tId = setup.memberTeams?.[file.uploader] || setup.members?.[file.uploader];
+       if (tId && !isNaN(Number(tId))) return setup.teamGroups?.[tId] || null;
     }
-    if (file.group_id) return file.group_id
-    return null
+    return null;
   }
   
   filesThisWeek.forEach(f => {
@@ -362,13 +441,13 @@ export default function VideoRoom() {
 
           <div className="flex flex-col sm:flex-row gap-3 w-full xl:w-auto shrink-0">
             <select 
-              value={selectedOwnerName} 
-              onChange={(e) => setSelectedOwnerName(e.target.value)} 
+              value={selectedTargetId} 
+              onChange={(e) => setSelectedTargetId(e.target.value)} 
               className="border border-slate-300 px-4 py-2.5 text-sm font-bold text-slate-700 outline-none focus:border-slate-500 bg-white cursor-pointer rounded-none"
             >
-              <option value="">발표자 선택</option>
-              {activeMembers.map((m, idx) => (
-                <option key={m.id || idx} value={m.name}>{m.name}</option>
+              <option value="">업로드 대상 선택</option>
+              {uploadTargets.map((t, idx) => (
+                <option key={t.id || idx} value={t.id}>{t.label}</option>
               ))}
             </select>
             <div className="flex w-full sm:w-auto">
@@ -500,7 +579,7 @@ export default function VideoRoom() {
         </div>
       )}
 
-      {/* 🌟 뷰어 모달 (선 위주의 미니멀 다이어트 UI) */}
+      {/* 🌟 뷰어 모달 */}
       {viewingFile && (
         <div className="fixed inset-0 bg-white/95 backdrop-blur-sm flex items-center justify-center p-4 z-[100]">
           <div className="bg-white w-full max-w-[1500px] h-[90vh] flex flex-col lg:flex-row overflow-hidden relative shadow-2xl border border-slate-400 rounded-sm">
@@ -511,7 +590,7 @@ export default function VideoRoom() {
                 <iframe className="w-full h-full" src={`https://www.youtube.com/embed/${getYoutubeId(viewingFile.file_url)}?autoplay=1`} frameBorder="0" allowFullScreen></iframe>
               </div>
 
-              {/* 임시저장 노트: 상자 제거, 선으로만 구분 */}
+              {/* 임시저장 노트 */}
               {draftFeedback && (
                 <div className="flex-1 overflow-y-auto p-8 bg-[#0f172a]">
                   <h3 className="text-sm font-extrabold text-emerald-400 uppercase tracking-widest mb-6 pb-2 border-b border-slate-700">
@@ -548,10 +627,9 @@ export default function VideoRoom() {
                 </div>
               </div>
               
-              {/* 피드백 리스트: 상자 제거, 선으로만 구분 */}
               <div className="flex-1 overflow-y-auto p-6 space-y-8">
                 <div>
-                  <h4 className="text-sm font-extrabold text-slate-800 border-b-2 border-slate-800 pb-2 mb-4">셀프 피드백 (본인)</h4>
+                  <h4 className="text-sm font-extrabold text-slate-800 border-b-2 border-slate-800 pb-2 mb-4">셀프 피드백 (본인/팀원)</h4>
                   {selfFeedbacks.map((c) => {
                     const isLate = deadlines[viewingFile.week]?.video_comment && new Date(c.created_at) > new Date(deadlines[viewingFile.week].video_comment);
                     return <FeedbackCard key={c.id} commentId={c.id} name={c.user_name} data={c.details} date={c.created_at} isLate={isLate} currentUserId={user.id} onDelete={handleDeleteComment} />
@@ -572,7 +650,7 @@ export default function VideoRoom() {
                         date={c.created_at} 
                         isLate={isLate} 
                         isPeerFeedback={true}
-                        isVideoOwner={isVideoOwner}
+                        isVideoOwner={isMeVideoOwner}
                         onToggleRead={handleToggleRead}
                         selfDeadline={deadlines[viewingFile.week]?.video_comment}
                         currentUserId={user.id}
@@ -584,7 +662,7 @@ export default function VideoRoom() {
                 </div>
               </div>
 
-              {/* 🌟 작성 폼: Original Message 한줄 축소, 하단 선 색상 포인트 추가 */}
+              {/* 작성 폼 */}
               <div className="p-6 border-t border-slate-300 bg-slate-50/50 max-h-[40vh] overflow-y-auto shrink-0">
                 <h4 className="text-sm font-extrabold text-slate-800 mb-4 border-l-4 border-red-700 pl-2">피드백 작성</h4>
                 <div className="space-y-5">
@@ -614,7 +692,6 @@ export default function VideoRoom() {
   )
 }
 
-// 🌟 가로형 리스트 아이템 (기획서 100% 동일)
 function VideoListItem({ file, onOpen, onEdit, onDelete, formatDate }) {
   return (
     <div 
@@ -658,7 +735,6 @@ function DraftBox({ title, plus, minus }) {
   )
 }
 
-// 🌟 작성 폼 피드백 섹션 (+/- 얇은 하단 컬러 포인트 적용)
 function FeedbackInputSection({ title, plus, minus, onChange }) {
   const kP = title.toLowerCase() + 'Plus';
   const kM = title.toLowerCase() + 'Minus';

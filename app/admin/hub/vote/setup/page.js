@@ -30,12 +30,12 @@ export default function VoteSetup() {
   const [groupCount, setGroupCount] = useState(1) 
   const [teamCount, setTeamCount] = useState(1) 
   
-  const [memberTeams, setMemberTeams] = useState({}) // { '우제윤': 1 (팀) }
-  const [teamGroups, setTeamGroups] = useState({})   // { 1 (팀): 1 (그룹) }
-  const [groupClusters, setGroupClusters] = useState({}) // { 1 (그룹): 1 (클러스터) }
+  const [memberTeams, setMemberTeams] = useState({}) 
+  const [teamGroups, setTeamGroups] = useState({})   
+  const [groupClusters, setGroupClusters] = useState({}) 
   
   // 🌟 평가 모드 상태 (개인 vs 팀별)
-  const [evalMode, setEvalMode] = useState('individual') // 'individual' | 'team'
+  const [evalMode, setEvalMode] = useState('individual') 
   const [selectedItems, setSelectedItems] = useState([]) 
   
   // 실시간 채점 현황용 상태
@@ -88,7 +88,6 @@ export default function VoteSetup() {
       if (wSetup) {
         Object.values(wSetup).forEach(wk => {
           if (wk.memberTeams) Object.keys(wk.memberTeams).forEach(n => allNames.add(n))
-          // 레거시 대응
           if (wk.members) Object.keys(wk.members).forEach(n => allNames.add(n))
         })
       }
@@ -118,13 +117,59 @@ export default function VoteSetup() {
     loadWeekData(week, semester, weeklySetup, weekTopics, mode)
   }
 
-  // 🌟 데이터 로드 및 3단계 계층 병합 로직
+  // 🌟 카운트 변경 시 유령 데이터(Out-of-bounds) 방지 로직
+  const handleGroupCountChange = (val) => {
+    setGroupCount(val);
+    setTeamGroups(prev => {
+      const next = {...prev};
+      Object.keys(next).forEach(k => { if (next[k] > val) next[k] = 1; });
+      setSelectedItems(items => items.map(item => {
+        const newGId = next[item.team_id] || 1;
+        const cId = groupClusters[newGId] || 1;
+        return { ...item, group_id: newGId, cluster_id: cId };
+      }));
+      return next;
+    });
+  }
+
+  const handleClusterCountChange = (val) => {
+    setClusterCount(val);
+    setGroupClusters(prev => {
+      const next = {...prev};
+      Object.keys(next).forEach(k => { if (next[k] > val) next[k] = 1; });
+      setSelectedItems(items => items.map(item => ({
+        ...item, cluster_id: next[item.group_id] || 1
+      })));
+      return next;
+    });
+  }
+
+  // 🌟 드롭다운 변경 시 드래그 보드 즉각 동기화 로직
+  const updateTeamGroup = (tId, newGId) => {
+    setTeamGroups(prev => ({...prev, [tId]: newGId}));
+    setSelectedItems(prevItems => prevItems.map(item => {
+      if (item.team_id === tId) {
+        const currentCluster = groupClusters[newGId] || 1;
+        return { ...item, group_id: newGId, cluster_id: currentCluster };
+      }
+      return item;
+    }));
+  }
+
+  const updateGroupCluster = (gId, newCId) => {
+    setGroupClusters(prev => ({...prev, [gId]: newCId}));
+    setSelectedItems(prevItems => prevItems.map(item => {
+      if (item.group_id === gId) {
+        return { ...item, cluster_id: newCId };
+      }
+      return item;
+    }));
+  }
+
   const loadWeekData = async (targetWeek, currentSem, wSetup, topics, mode) => {
     setLoading(true)
     
     const setup = wSetup[targetWeek] || {}
-    
-    // 과거 레거시 데이터 마이그레이션 방어 로직
     const legacyMembers = setup.members || {}
     const legacyGroupToCluster = setup.groupToCluster || {}
     
@@ -136,14 +181,18 @@ export default function VoteSetup() {
         mTeams = legacyMembers; 
         Object.keys(legacyMembers).forEach(k => {
             const gId = legacyMembers[k];
-            if (gId !== '미정' && gId !== '결석') tGroups[gId] = gId; 
+            if (gId !== '미정' && gId !== '결석') tGroups[gId] = 1; // 과거 유령 데이터 1그룹으로 초기화
         });
         gClusters = legacyGroupToCluster;
     }
 
     const cCount = Number(setup.clusterCount) || 1
     const gCount = Number(setup.groupCount) || 1
-    const tCount = Number(setup.teamCount) || gCount || 1
+    const tCount = Number(setup.teamCount) || Math.max(...Object.values(mTeams).filter(v => !isNaN(v)), 1)
+
+    // 데이터 정제 (가용 범위 초과 시 1로 고정)
+    Object.keys(tGroups).forEach(k => { if (tGroups[k] > gCount) tGroups[k] = 1; });
+    Object.keys(gClusters).forEach(k => { if (gClusters[k] > cCount) gClusters[k] = 1; });
 
     setClusterCount(cCount)
     setGroupCount(gCount)
@@ -176,10 +225,7 @@ export default function VoteSetup() {
 
     let items = [];
     if (finalMode === 'team') {
-       const activeTeams = [...new Set(Object.values(mTeams))]
-         .filter(v => v !== '미정' && v !== '결석' && !isNaN(Number(v)))
-         .map(Number);
-         
+       const activeTeams = [...new Set(Object.values(mTeams))].filter(v => v !== '미정' && v !== '결석' && !isNaN(Number(v))).map(Number);
        items = activeTeams.map(tId => {
            const gId = Number(tGroups[tId]) || 1;
            const cId = Number(gClusters[gId]) || 1;
@@ -208,10 +254,7 @@ export default function VoteSetup() {
   const syncToDnd = () => {
     let items = [];
     if (evalMode === 'team') {
-       const activeTeams = [...new Set(Object.values(memberTeams))]
-         .filter(v => v !== '미정' && v !== '결석' && !isNaN(Number(v)))
-         .map(Number);
-
+       const activeTeams = [...new Set(Object.values(memberTeams))].filter(v => v !== '미정' && v !== '결석' && !isNaN(Number(v))).map(Number);
        items = activeTeams.map(tId => {
            const gId = Number(teamGroups[tId]) || 1;
            const cId = Number(groupClusters[gId]) || 1;
@@ -386,11 +429,11 @@ export default function VoteSetup() {
                 </div>
                 <div className="w-full md:w-[12%]">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Group Count</label>
-                  <input type="number" value={groupCount} onChange={(e)=>setGroupCount(Number(e.target.value))} className="w-full border-b-[3px] border-slate-300 py-2 text-lg font-black text-slate-800 outline-none bg-transparent focus:border-teal-700 transition-colors" />
+                  <input type="number" value={groupCount} onChange={(e)=>handleGroupCountChange(Number(e.target.value))} className="w-full border-b-[3px] border-slate-300 py-2 text-lg font-black text-slate-800 outline-none bg-transparent focus:border-teal-700 transition-colors" />
                 </div>
                 <div className="w-full md:w-[12%]">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Cluster Count</label>
-                  <input type="number" value={clusterCount} onChange={(e)=>setClusterCount(Number(e.target.value))} className="w-full border-b-[3px] border-slate-300 py-2 text-lg font-black text-slate-800 outline-none bg-transparent focus:border-teal-700 transition-colors" />
+                  <input type="number" value={clusterCount} onChange={(e)=>handleClusterCountChange(Number(e.target.value))} className="w-full border-b-[3px] border-slate-300 py-2 text-lg font-black text-slate-800 outline-none bg-transparent focus:border-teal-700 transition-colors" />
                 </div>
                 <div className="flex-1 w-full">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Topic (주제)</label>
@@ -425,10 +468,9 @@ export default function VoteSetup() {
               </div>
             </div>
 
-            {/* Step 3. 3단계 배정 (멤버 -> 팀 -> 그룹 -> 클러스터) */}
+            {/* Step 3. 3단계 배정 */}
             <div className="border-t-[3px] border-teal-800 pt-6 space-y-12">
               
-              {/* 3-1. 멤버 -> 팀 배정 */}
               <div>
                 <h3 className="text-sm font-extrabold text-slate-900 uppercase tracking-widest mb-6">Step 3-1. Member ➡️ Team Assignment</h3>
                 <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
@@ -451,7 +493,6 @@ export default function VoteSetup() {
                 </div>
               </div>
 
-              {/* 3-2 & 3-3 팀 -> 그룹 -> 클러스터 배정 */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
                 <div>
                   <h3 className="text-sm font-extrabold text-slate-900 uppercase tracking-widest mb-6">Step 3-2. Team ➡️ Group Mapping</h3>
@@ -461,7 +502,7 @@ export default function VoteSetup() {
                         <span className="font-extrabold text-sm text-slate-800">Team #{tId}</span>
                         <select 
                           value={teamGroups[tId] || 1} 
-                          onChange={(e) => setTeamGroups({...teamGroups, [tId]: Number(e.target.value)})}
+                          onChange={(e) => updateTeamGroup(tId, Number(e.target.value))}
                           className="bg-slate-50 border border-slate-200 text-xs font-black text-blue-700 outline-none p-1.5 cursor-pointer rounded-sm"
                         >
                           {Array.from({length: groupCount}, (_,i)=>i+1).map(g => (
@@ -481,7 +522,7 @@ export default function VoteSetup() {
                         <span className="font-extrabold text-sm text-slate-800">Group #{gId}</span>
                         <select 
                           value={groupClusters[gId] || 1} 
-                          onChange={(e) => setGroupClusters({...groupClusters, [gId]: Number(e.target.value)})}
+                          onChange={(e) => updateGroupCluster(gId, Number(e.target.value))}
                           className="bg-slate-50 border border-slate-200 text-xs font-black text-purple-700 outline-none p-1.5 cursor-pointer rounded-sm"
                         >
                           {Array.from({length: clusterCount}, (_,i)=>i+1).map(c => (
@@ -538,7 +579,6 @@ export default function VoteSetup() {
                                             <p className="font-extrabold text-sm text-slate-900">{item.name}</p>
                                           </div>
                                           <div className="flex gap-1">
-                                            {/* 개인 모드에서는 팀 표시 제거 */}
                                             <span className="text-[9px] font-bold text-blue-600 border border-blue-200 bg-blue-50 px-1.5 py-0.5 rounded uppercase">G#{item.group_id}</span>
                                           </div>
                                         </div>
@@ -581,7 +621,7 @@ export default function VoteSetup() {
             </div>
             
             <button onClick={handleSave} disabled={saving} className="w-full py-6 border-[3px] border-slate-900 text-slate-900 font-black text-xl uppercase tracking-widest hover:bg-slate-900 hover:text-white transition-all active:scale-95 mt-10">
-              {saving ? '저장 중...' : '최종 확정 및 저장 🏁'}
+              {saving ? '최종 확정 및 저장 🏁' : '최종 확정 및 저장 🏁'}
             </button>
           </div>
         </div>

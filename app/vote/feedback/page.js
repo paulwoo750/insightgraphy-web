@@ -12,8 +12,8 @@ export default function FeedbackPage() {
   const [currentSemester, setCurrentSemester] = useState('2026-1')
   const [weekTopics, setWeekTopics] = useState({})
 
-  const [evaluatedScores, setEvaluatedScores] = useState([]) 
-  const [selectedItem, setSelectedItem] = useState(null) 
+  const [evalTargets, setEvalTargets] = useState([]) // 🌟 개별 발표자가 아닌 타겟 단위 배열
+  const [selectedTargetId, setSelectedTargetId] = useState(null) 
   const [myInfo, setMyInfo] = useState({ cluster_id: null, group_id: null })
   const [loading, setLoading] = useState(true)
   const [updating, setUpdating] = useState(false)
@@ -63,34 +63,63 @@ export default function FeedbackPage() {
 
   useEffect(() => { if (user?.user_metadata?.name) fetchMyData() }, [user, week])
 
+  // 🌟 타겟 그룹핑 및 평가 데이터 로드 로직
   const fetchMyData = async () => {
     setLoading(true)
     const userName = user.user_metadata.name;
     const { data: pAll } = await supabase.from('presentations').select('*').eq('week', week).order('order_index', { ascending: true });
-    if (!pAll || pAll.length === 0) { setEvaluatedScores([]); setLoading(false); return; }
-
-    const me = pAll.find(p => p.presenter_name === userName);
-    setMyInfo({ cluster_id: me?.cluster_id, group_id: me?.group_id });
-
-    const { data: sData } = await supabase.from('scores').select('*').eq('voter_name', userName);
-    const clusterMembers = pAll.filter(p => p.cluster_id === me?.cluster_id && p.presenter_name !== userName);
     
-    const combined = clusterMembers.map(p => {
-      const scoreRecord = sData?.find(s => s.presentation_id === p.id);
+    if (!pAll || pAll.length === 0) { setEvalTargets([]); setLoading(false); return; }
+
+    // 1. 타겟 그룹핑 로직 (score 화면과 동일)
+    const tMap = new Map();
+    pAll.forEach(p => {
+      if (!tMap.has(p.order_index)) {
+        tMap.set(p.order_index, {
+          id: `tgt-${p.order_index}`,
+          order_index: p.order_index,
+          cluster_id: p.cluster_id,
+          group_id: p.group_id,
+          team_id: p.team_id,
+          topic: p.topic,
+          week: p.week,
+          members: [],
+          pids: [] 
+        });
+      }
+      const tgt = tMap.get(p.order_index);
+      tgt.members.push(p.presenter_name);
+      tgt.pids.push(p.id);
+    });
+    
+    const allTargets = Array.from(tMap.values());
+    const myTarget = allTargets.find(t => t.members.includes(userName));
+    
+    setMyInfo({ cluster_id: myTarget?.cluster_id, group_id: myTarget?.group_id });
+
+    // 2. 내 클러스터에 속한 사람들 점수 불러오기
+    const { data: sData } = await supabase.from('scores').select('*').eq('voter_name', userName);
+    const clusterTargets = allTargets.filter(t => t.cluster_id === myTarget?.cluster_id && !t.members.includes(userName));
+    
+    const combined = clusterTargets.map(tgt => {
+      // 🌟 타겟에 속한 여러 명 중 첫 번째 사람의 점수 기록을 대표로 가져옴 (어차피 동일하게 저장됨)
+      const scoreRecord = sData?.find(s => tgt.pids.includes(s.presentation_id));
+      
       return {
-        id: scoreRecord?.id || null, 
-        presentation_id: p.id,
-        presenter_info: p,
+        id: tgt.id,
+        target_info: tgt,
+        score_record_id: scoreRecord?.id || null, // 대표 ID (안 쓸 수도 있음, pids로 일괄 업데이트)
         is_submitted: scoreRecord?.is_submitted || false,
         total_score: scoreRecord?.total_score || 0,
         details: scoreRecord?.details || {}
       };
     });
-    setEvaluatedScores(combined);
+    
+    setEvalTargets(combined);
 
-    if (selectedItem) {
-      const current = combined.find(c => c.presentation_id === selectedItem.presentation_id);
-      if (current) setSelectedItem(current);
+    if (selectedTargetId) {
+      const current = combined.find(c => c.id === selectedTargetId);
+      if (current) selectRecord(current);
     } else if (combined.length > 0) {
       selectRecord(combined[0]);
     }
@@ -98,7 +127,7 @@ export default function FeedbackPage() {
   }
 
   const selectRecord = (item) => {
-    setSelectedItem(item)
+    setSelectedTargetId(item.id)
     const qual = item.details?.qualitative || {}
     setEditFeedback({
       originalMessage: qual.originalMessage || '',
@@ -109,26 +138,38 @@ export default function FeedbackPage() {
     })
   }
 
+  // 🌟 일괄 피드백 업데이트 로직 (타겟에 속한 모든 PID 동시에 업데이트)
   const handleUpdate = async () => {
-    if (!selectedItem) return
+    if (!selectedTargetId) return
     
+    const currentTargetItem = evalTargets.find(c => c.id === selectedTargetId);
+    if (!currentTargetItem) return;
+
     setUpdating(true)
-    const updatedDetails = { ...selectedItem.details, qualitative: editFeedback }
+    const updatedDetails = { ...currentTargetItem.details, qualitative: editFeedback }
+    const targetPids = currentTargetItem.target_info.pids;
 
     try {
-      if (selectedItem.id) {
-        const { error } = await supabase.from('scores').update({ is_submitted: false, details: updatedDetails }).eq('id', selectedItem.id);
+      if (currentTargetItem.score_record_id) {
+        // 이미 저장된 점수가 있다면 해당 PID들을 일괄 업데이트
+        const { error } = await supabase.from('scores')
+          .update({ is_submitted: false, details: updatedDetails })
+          .in('presentation_id', targetPids)
+          .eq('voter_name', user.user_metadata.name);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from('scores').insert([{
-            presentation_id: selectedItem.presentation_id,
+        // 임시저장 내역도 없을 경우 최초 생성 (일괄 Insert)
+        const inserts = targetPids.map(pid => ({
+            presentation_id: pid,
             voter_name: user.user_metadata.name,
             total_score: 0,
             is_submitted: false,
             details: { version: 'v1', qualitative: editFeedback }
-          }]);
+        }));
+        const { error } = await supabase.from('scores').insert(inserts);
         if (error) throw error;
       }
+      
       alert("영상 댓글용 피드백이 안전하게 저장됐어! 📝✨");
       await fetchMyData(); 
     } catch (err) {
@@ -138,24 +179,39 @@ export default function FeedbackPage() {
     }
   }
 
+  // 🌟 메모 자동저장 (일괄 업데이트)
   const handleAutoSaveMemo = async (newMemo) => {
-    if (!selectedItem) return;
-    const updatedDetails = { ...selectedItem.details, qualitative: { ...editFeedback, memo: newMemo } };
-    if (selectedItem.id) {
-      await supabase.from('scores').update({ details: updatedDetails, is_submitted: false }).eq('id', selectedItem.id);
+    if (!selectedTargetId) return;
+    const currentTargetItem = evalTargets.find(c => c.id === selectedTargetId);
+    if (!currentTargetItem) return;
+
+    const updatedDetails = { ...currentTargetItem.details, qualitative: { ...editFeedback, memo: newMemo } };
+    const targetPids = currentTargetItem.target_info.pids;
+
+    if (currentTargetItem.score_record_id) {
+      await supabase.from('scores')
+        .update({ details: updatedDetails, is_submitted: false })
+        .in('presentation_id', targetPids)
+        .eq('voter_name', user.user_metadata.name);
     } else {
-      await supabase.from('scores').insert([{
-        presentation_id: selectedItem.presentation_id,
+      const inserts = targetPids.map(pid => ({
+        presentation_id: pid,
         voter_name: user.user_metadata.name,
         total_score: 0,
         is_submitted: false,
         details: { version: 'v1', qualitative: { ...editFeedback, memo: newMemo } }
-      }]);
+      }));
+      await supabase.from('scores').insert(inserts);
     }
   }
 
   if (!user) return <div className="p-8 text-center font-bold text-slate-400">데이터 로딩 중...</div>
-  const isSameGroup = selectedItem?.presenter_info?.group_id === myInfo.group_id;
+  
+  const currentTargetData = evalTargets.find(t => t.id === selectedTargetId);
+  const isSameGroup = currentTargetData?.target_info?.group_id === myInfo.group_id;
+
+  // 이름 포맷팅 헬퍼 함수
+  const getSidebarName = (t) => t.members.length > 1 ? `Team #${t.team_id} (${t.members.join(', ')})` : t.members[0];
 
   return (
     <div className="bg-slate-50 min-h-screen text-slate-900 font-sans pb-32">
@@ -231,28 +287,31 @@ export default function FeedbackPage() {
           <aside className="w-full sticky top-24 pt-2">
             <h3 className="text-xs font-black text-slate-400 uppercase mb-6 border-b border-slate-300 pb-3 tracking-widest">My Target List</h3>
             <div className="space-y-1">
-              {evaluatedScores.map((item) => (
-                <button 
-                  key={item.presentation_id} 
-                  onClick={() => selectRecord(item)} 
-                  className="w-full flex items-center justify-between py-4 border-b border-slate-200 last:border-0 group transition-colors hover:bg-slate-50 px-2"
-                >
-                  <div className="flex items-center gap-4">
-                    <span className={`text-base font-extrabold truncate transition-colors ${selectedItem?.presentation_id === item.presentation_id ? 'text-teal-800' : 'text-slate-500 group-hover:text-slate-800'}`}>
-                      {item.presenter_info?.presenter_name}
-                    </span>
-                    {item.presenter_info?.group_id === myInfo.group_id && <span className="text-[10px] text-teal-500">★</span>}
-                  </div>
-                  <span className="text-[10px] font-bold text-slate-400">W{item.presenter_info?.week}</span>
-                </button>
-              ))}
-              {evaluatedScores.length === 0 && <p className="text-xs text-slate-400 font-bold text-center py-6 border-b border-slate-200">이번 주차 평가 대상이 없습니다.</p>}
+              {evalTargets.map((item) => {
+                const targetInfo = item.target_info;
+                return (
+                  <button 
+                    key={targetInfo.id} 
+                    onClick={() => selectRecord(item)} 
+                    className="w-full flex items-center justify-between py-4 border-b border-slate-200 last:border-0 group transition-colors hover:bg-slate-50 px-2"
+                  >
+                    <div className="flex items-center gap-4">
+                      <span className={`text-[15px] font-extrabold truncate transition-colors ${selectedTargetId === item.id ? 'text-teal-800' : 'text-slate-500 group-hover:text-slate-800'}`}>
+                        {getSidebarName(targetInfo)}
+                      </span>
+                      {targetInfo.group_id === myInfo.group_id && <span className="text-[10px] text-teal-500">★</span>}
+                    </div>
+                    <span className="text-[10px] font-bold text-slate-400">W{targetInfo.week}</span>
+                  </button>
+                )
+              })}
+              {evalTargets.length === 0 && <p className="text-xs text-slate-400 font-bold text-center py-6 border-b border-slate-200">이번 주차 평가 대상이 없습니다.</p>}
             </div>
           </aside>
 
           {/* [우] 피드백 폼 (상자 제거, 선 기반) */}
           <div className="w-full space-y-12 max-w-4xl mx-auto">
-            {!selectedItem ? (
+            {!currentTargetData ? (
               <div className="text-center py-24 border-y border-slate-300 font-bold text-slate-400 text-xl tracking-widest uppercase">
                 좌측에서 대상을 선택해 주세요.
               </div>
@@ -261,8 +320,8 @@ export default function FeedbackPage() {
                 
                 <div className="flex justify-between items-end border-b-[3px] border-slate-900 pb-6 mb-12">
                   <div>
-                    <h2 className="text-4xl font-black text-teal-800 tracking-tight">{selectedItem.presenter_info?.presenter_name} 님</h2>
-                    <p className="text-sm text-slate-500 font-bold mt-2">Topic: {selectedItem.presenter_info?.topic}</p>
+                    <h2 className="text-4xl font-black text-teal-800 tracking-tight">{getSidebarName(currentTargetData.target_info)}</h2>
+                    <p className="text-sm text-slate-500 font-bold mt-2">Topic: {currentTargetData.target_info.topic}</p>
                   </div>
                   <div className="text-right">
                     <p className={`text-[10px] font-black uppercase mb-1.5 tracking-widest ${isSameGroup ? 'text-teal-600' : 'text-slate-400'}`}>
@@ -322,7 +381,7 @@ export default function FeedbackPage() {
   )
 }
 
-// 🌟 얇은 컬러 밑줄 기반 텍스트 에어리어 (score 탭 완벽 동기화)
+// 🌟 얇은 컬러 밑줄 기반 텍스트 에어리어
 function FeedbackSection({ title, subtitle, plusVal, minusVal, onPlusChange, onMinusChange }) {
   return (
     <div className="space-y-4">

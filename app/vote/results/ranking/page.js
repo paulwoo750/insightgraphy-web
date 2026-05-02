@@ -72,27 +72,66 @@ export default function RankingPage() {
       const currentWeekPs = presentations.filter(p => p.week === targetWeek)
       setWeekTopic(currentWeekPs[0]?.topic || '등록된 주제 없음')
 
+      // 🌟 현재 주차가 '조별(팀) 모드'인지 판별
+      const isTeamMode = currentWeekPs.length > 0 && new Set(currentWeekPs.map(p => p.order_index)).size < currentWeekPs.length;
+
       const getRankingsByCluster = (weekPs) => {
         const clusters = [...new Set(weekPs.map(p => p.cluster_id))].sort((a, b) => a - b);
         
         return clusters.map(cId => {
           const members = weekPs.filter(p => p.cluster_id === cId);
-          const rankedMembers = members.map(m => {
-            const pScores = scores.filter(s => s.presentation_id === m.id);
-            const avg = pScores.length > 0 
-              ? (pScores.reduce((a, b) => a + (b.total_score || 0), 0) / pScores.length).toFixed(2)
-              : 0;
-            return { name: m.presenter_name, score: Number(avg) };
-          })
-          .sort((a, b) => b.score - a.score)
-          .slice(0, 3); 
           
-          return { clusterId: cId, ranks: rankedMembers };
+          let rankedItems = [];
+          
+          if (isTeamMode) {
+            // 🌟 1. 팀 모드: order_index 기준으로 팀 단위로 묶어서 랭킹 집계
+            const teamMap = new Map();
+            members.forEach(m => {
+              if (!teamMap.has(m.order_index)) {
+                teamMap.set(m.order_index, {
+                  team_id: m.team_id,
+                  members: [],
+                  pids: []
+                });
+              }
+              const team = teamMap.get(m.order_index);
+              team.members.push(m.presenter_name);
+              team.pids.push(m.id);
+            });
+            
+            rankedItems = Array.from(teamMap.values()).map(team => {
+              // 팀에 속한 모든 팀원의 평가 기록을 합산 후 평균
+              const teamScores = scores.filter(s => team.pids.includes(s.presentation_id));
+              const avg = teamScores.length > 0 
+                ? (teamScores.reduce((a, b) => a + (b.total_score || 0), 0) / teamScores.length).toFixed(2)
+                : 0;
+              return { 
+                name: `Team #${team.team_id}`, 
+                subName: team.members.join(', '), // 하단에 작게 팀원 표시
+                score: Number(avg) 
+              };
+            });
+          } else {
+            // 🌟 2. 개인 모드: 기존처럼 개인별 랭킹 집계
+            rankedItems = members.map(m => {
+              const pScores = scores.filter(s => s.presentation_id === m.id);
+              const avg = pScores.length > 0 
+                ? (pScores.reduce((a, b) => a + (b.total_score || 0), 0) / pScores.length).toFixed(2)
+                : 0;
+              return { name: m.presenter_name, subName: '', score: Number(avg) };
+            });
+          }
+
+          // 점수 높은 순으로 정렬 후 Top 3 추출
+          rankedItems = rankedItems.sort((a, b) => b.score - a.score).slice(0, 3); 
+          
+          return { clusterId: cId, ranks: rankedItems };
         });
       }
 
       setClusterRankings(getRankingsByCluster(currentWeekPs));
 
+      // 🌟 Most Improved (개선상) 로직
       const getAllAvg = (ps) => ps.map(p => {
         const pScores = scores.filter(s => s.presentation_id === p.id);
         const avg = pScores.length > 0 ? (pScores.reduce((a,b)=>a+(b.total_score||0), 0)/pScores.length).toFixed(2) : 0;
@@ -110,30 +149,53 @@ export default function RankingPage() {
         setMostImproved(improvements[0]);
       } else { setMostImproved(null); }
 
+      // 🌟 Hall of Fame (명예의 전당) 로직
       const winCounts = {}; 
       
       for (let w = 1; w <= 12; w++) {
         const wPs = presentations.filter(p => p.week === w);
         if (wPs.length === 0) continue;
         
+        const wIsTeamMode = new Set(wPs.map(p => p.order_index)).size < wPs.length;
         const wClusters = [...new Set(wPs.map(p => p.cluster_id))];
+        
         wClusters.forEach(cId => {
           const cMembers = wPs.filter(p => p.cluster_id === cId);
-          let bestMember = null;
           let highestScore = 0;
+          let bestMembers = [];
 
-          cMembers.forEach(m => {
-            const mScores = scores.filter(s => s.presentation_id === m.id);
-            const mAvg = mScores.length > 0 ? (mScores.reduce((a, b) => a + (b.total_score || 0), 0) / mScores.length) : 0;
+          if (wIsTeamMode) {
+            const teamMap = new Map();
+            cMembers.forEach(m => {
+              if (!teamMap.has(m.order_index)) teamMap.set(m.order_index, { members: [], pids: [] });
+              const team = teamMap.get(m.order_index);
+              team.members.push(m.presenter_name);
+              team.pids.push(m.id);
+            });
             
-            if (mAvg > highestScore) {
-              highestScore = mAvg;
-              bestMember = m.presenter_name;
-            }
-          });
+            Array.from(teamMap.values()).forEach(team => {
+              const tScores = scores.filter(s => team.pids.includes(s.presentation_id));
+              const tAvg = tScores.length > 0 ? (tScores.reduce((a, b) => a + (b.total_score || 0), 0) / tScores.length) : 0;
+              if (tAvg > highestScore) {
+                highestScore = tAvg;
+                bestMembers = team.members; // 팀원 전체가 공동 1등
+              }
+            });
+          } else {
+            cMembers.forEach(m => {
+              const mScores = scores.filter(s => s.presentation_id === m.id);
+              const mAvg = mScores.length > 0 ? (mScores.reduce((a, b) => a + (b.total_score || 0), 0) / mScores.length) : 0;
+              if (mAvg > highestScore) {
+                highestScore = mAvg;
+                bestMembers = [m.presenter_name];
+              }
+            });
+          }
 
-          if (bestMember && highestScore > 0) {
-            winCounts[bestMember] = (winCounts[bestMember] || 0) + 1;
+          if (bestMembers.length > 0 && highestScore > 0) {
+            bestMembers.forEach(winner => {
+              winCounts[winner] = (winCounts[winner] || 0) + 1;
+            });
           }
         });
       }
@@ -233,9 +295,14 @@ export default function RankingPage() {
                     <div key={r.name} className={`flex items-center justify-between py-4 border-b border-slate-200 last:border-0 ${idx === 0 ? 'bg-teal-50/50' : ''}`}>
                       <div className="flex items-center gap-4 px-2">
                         <span className="text-xl">{idx === 0 ? '🥇' : idx === 1 ? '🥈' : '🥉'}</span>
-                        <div>
+                        <div className="flex flex-col">
                           <p className={`font-extrabold text-base ${idx === 0 ? 'text-teal-900' : 'text-slate-800'}`}>{r.name} {idx === 0 && '👑'}</p>
-                          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">{idx === 0 ? 'Best Presenter' : `Top ${idx + 1}`}</p>
+                          {/* 🌟 팀 모드일 때 팀원 이름 작게 표시 */}
+                          {r.subName ? (
+                            <p className="text-[10px] text-slate-400 font-bold tracking-tight">{r.subName}</p>
+                          ) : (
+                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">{idx === 0 ? 'Best Presenter' : `Top ${idx + 1}`}</p>
+                          )}
                         </div>
                       </div>
                       <div className="text-right px-2">
