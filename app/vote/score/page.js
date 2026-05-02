@@ -9,9 +9,9 @@ export default function ScorePage() {
   const [user, setUser] = useState(null)
   const [version, setVersion] = useState('v1') 
   const [semester, setSemester] = useState('') 
-  const [presentations, setPresentations] = useState([]) 
+  const [evalTargets, setEvalTargets] = useState([]) // 🌟 개별 발표자가 아닌 '평가 타겟(팀 or 개인)' 단위 배열
   const [votedPids, setVotedPids] = useState([]) 
-  const [selectedPid, setSelectedPid] = useState('')
+  const [selectedTargetId, setSelectedTargetId] = useState('')
   const [week, setWeek] = useState(1) 
   const [submitting, setSubmitting] = useState(false)
   const [myInfo, setMyInfo] = useState({ cluster_id: null, group_id: null })
@@ -48,17 +48,42 @@ export default function ScorePage() {
   }, [router])
 
   useEffect(() => {
-    if (user?.id) fetchData(user.user_metadata.name, week);
-  }, [week, user?.id]);
+    if (user?.user_metadata?.name) fetchData(user.user_metadata.name, week);
+  }, [week, user]);
 
   const fetchData = async (userName, targetWeek) => {
     const { data: pAll } = await supabase.from('presentations').select('*').eq('week', targetWeek).order('order_index', { ascending: true }) 
     if (pAll && pAll.length > 0) {
-      const me = pAll.find(p => p.presenter_name === userName)
-      const myCluster = me?.cluster_id || 1
-      setMyInfo({ cluster_id: myCluster, group_id: me?.group_id || 1 })
-      const filtered = pAll.filter(p => p.cluster_id === myCluster) 
-      setPresentations(filtered)
+      
+      // 🌟 [핵심 로직] order_index가 같은 인원(팀원)끼리 묶어서 하나의 'Target'으로 만듦
+      const tMap = new Map();
+      pAll.forEach(p => {
+        if (!tMap.has(p.order_index)) {
+          tMap.set(p.order_index, {
+            id: `tgt-${p.order_index}`,
+            order_index: p.order_index,
+            cluster_id: p.cluster_id,
+            group_id: p.group_id,
+            team_id: p.team_id,
+            topic: p.topic,
+            members: [],
+            pids: [] // 여러 팀원의 presentation_id를 모두 보존
+          });
+        }
+        const tgt = tMap.get(p.order_index);
+        tgt.members.push(p.presenter_name);
+        tgt.pids.push(p.id);
+      });
+      const allTargets = Array.from(tMap.values());
+
+      const myTarget = allTargets.find(t => t.members.includes(userName))
+      const myCluster = myTarget?.cluster_id || 1
+      setMyInfo({ cluster_id: myCluster, group_id: myTarget?.group_id || 1 })
+      
+      // 내 클러스터에 속한 타겟만 필터링
+      const filteredTargets = allTargets.filter(t => t.cluster_id === myCluster) 
+      setEvalTargets(filteredTargets)
+      
       const currentVersion = pAll[0].eval_version || 'v1'
       setVersion(currentVersion) 
 
@@ -69,11 +94,15 @@ export default function ScorePage() {
         rubricData.criteria_data.forEach(cat => cat.items.forEach(item => { initialScores[item.id] = null }))
         setScores(initialScores)
       }
+      
       const { data: sData } = await supabase.from('scores').select('presentation_id').eq('voter_name', userName)
       const votedIds = sData ? sData.map(s => s.presentation_id) : []
       setVotedPids(votedIds)
-      const nextToScore = filtered.find(p => p.presenter_name !== userName && !votedIds.includes(p.id))
-      if (nextToScore) setSelectedPid(nextToScore.id)
+      
+      // 내 팀이 아니고, 아직 평가하지 않은 첫 번째 타겟 찾기
+      const nextToScore = filteredTargets.find(t => !t.members.includes(userName) && !t.pids.some(pid => votedIds.includes(pid)))
+      if (nextToScore) setSelectedTargetId(nextToScore.id)
+      else setSelectedTargetId('')
     }
     setFeedback({ originalMessage: '', insightPlus: '', insightMinus: '', graphicPlus: '', graphicMinus: '', deliveryPlus: '', deliveryMinus: '', memo: '' })
   }
@@ -85,21 +114,40 @@ export default function ScorePage() {
   const grandTotal = dynamicRubric.reduce((sum, cat) => sum + calculateCategoryTotal(cat), 0)
   const maxPossibleScore = dynamicRubric.reduce((sum, cat) => sum + cat.items.reduce((itemSum, item) => itemSum + Math.max(...item.criteria.map(c => c.s), 0), 0), 0)
 
+  // 🌟 제출 로직: 팀 평가 시 팀원 수만큼 개별 채점 데이터 Insert (나중 분석용)
   const handleSubmit = async () => {
-    if (!selectedPid) return alert("채점 대상이 없습니다.")
+    if (!selectedTargetId) return alert("채점 대상이 없습니다.")
     if (!Object.values(scores).every(v => v !== null)) return alert("모든 항목을 평가해 주세요.")
     setSubmitting(true)
-    const { error } = await supabase.from('scores').insert([{ presentation_id: selectedPid, voter_name: user.user_metadata.name, total_score: grandTotal, semester, details: { scores, version, qualitative: feedback } }])
+    
+    const currentTarget = evalTargets.find(t => t.id === selectedTargetId);
+    
+    const inserts = currentTarget.pids.map(pid => ({
+      presentation_id: pid,
+      voter_name: user.user_metadata.name,
+      total_score: grandTotal,
+      semester,
+      details: { scores, version, qualitative: feedback }
+    }));
+
+    const { error } = await supabase.from('scores').insert(inserts)
+    
     if (!error) { alert("채점 완료!"); window.location.reload(); }
     else { alert("오류 발생: " + error.message) }
     setSubmitting(false)
   }
 
   if (!user) return <div className="p-8 text-center font-bold text-slate-400">데이터 로딩 중...</div>
-  const currentPresenter = presentations.find(p => p.id === selectedPid)
-  const targetsToScore = presentations.filter(p => p.presenter_name !== user.user_metadata.name);
-  const allEvaluated = targetsToScore.length > 0 && targetsToScore.every(p => votedPids.includes(p.id));
-  const isSameGroup = currentPresenter?.group_id === myInfo.group_id;
+
+  // 🌟 타겟 관련 변수 정의
+  const currentTarget = evalTargets.find(t => t.id === selectedTargetId)
+  const targetsToScore = evalTargets.filter(t => !t.members.includes(user?.user_metadata?.name));
+  const allEvaluated = targetsToScore.length > 0 && targetsToScore.every(t => t.pids.some(pid => votedPids.includes(pid)));
+  const isSameGroup = currentTarget?.group_id === myInfo.group_id;
+
+  // 이름 포맷팅 헬퍼 함수
+  const getSidebarName = (t) => t.members.length > 1 ? `T#${t.team_id} (${t.members.join(', ')})` : t.members[0];
+  const getActiveTargetName = (t) => t.members.length > 1 ? `Team ${t.team_id} (${t.members.join(', ')})` : `${t.members[0]} 님`;
 
   return (
     <div className="bg-slate-50 min-h-screen text-slate-900 font-sans pb-32">
@@ -138,11 +186,11 @@ export default function ScorePage() {
               ))}
             </div>
             <span className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Target Topic</span>
-            <p className="text-2xl font-extrabold text-slate-900">{presentations[0]?.topic || "등록된 주제 없음"}</p>
+            <p className="text-2xl font-extrabold text-slate-900">{evalTargets[0]?.topic || "등록된 주제 없음"}</p>
           </div>
         </header>
 
-        {/* 🌟 사이드바는 적당히 고정, 중앙 1fr을 극대화 */}
+        {/* 🌟 레이아웃 배치 */}
         <div className="grid grid-cols-1 lg:grid-cols-[200px_1fr_300px] xl:grid-cols-[240px_1fr_380px] gap-10 xl:gap-16 items-start">
           
           {/* [좌] 클러스터 순서 사이드바 */}
@@ -150,21 +198,31 @@ export default function ScorePage() {
             <div className="sticky top-24 pt-2">
               <h3 className="text-[10px] font-black text-slate-400 uppercase mb-6 border-b border-slate-300 pb-3 tracking-widest">Cluster Flow</h3>
               <div className="space-y-1">
-                {presentations.map((p, idx) => (
-                  <div key={p.id} className="flex items-center gap-4 py-3 border-b border-slate-200 last:border-0">
-                    <span className={`text-xs font-black w-4 ${p.id === selectedPid ? 'text-teal-700' : votedPids.includes(p.id) ? 'text-slate-300' : 'text-slate-400'}`}>{String(idx + 1).padStart(2, '0')}</span>
-                    <p className={`text-base font-extrabold truncate ${p.id === selectedPid ? 'text-teal-800' : votedPids.includes(p.id) ? 'text-slate-400 line-through' : 'text-slate-800'}`}>{p.presenter_name} {p.group_id === myInfo.group_id && <span className="text-[10px] text-teal-500 ml-1">★</span>}</p>
-                  </div>
-                ))}
+                {evalTargets.map((t, idx) => {
+                  const isVoted = t.pids.some(pid => votedPids.includes(pid));
+                  const isMe = t.members.includes(user?.user_metadata?.name);
+                  return (
+                    <div key={t.id} className="flex items-center gap-4 py-3 border-b border-slate-200 last:border-0">
+                      <span className={`text-xs font-black w-4 ${t.id === selectedTargetId ? 'text-teal-700' : isVoted ? 'text-slate-300' : 'text-slate-400'}`}>{String(idx + 1).padStart(2, '0')}</span>
+                      <p className={`text-sm font-extrabold truncate ${t.id === selectedTargetId ? 'text-teal-800' : isVoted ? 'text-slate-400 line-through' : 'text-slate-800'}`}>
+                        {getSidebarName(t)} 
+                        {t.group_id === myInfo.group_id && !isMe && <span className="text-[10px] text-teal-500 ml-1">★</span>}
+                        {isMe && <span className="text-[10px] text-blue-500 ml-1">(ME)</span>}
+                      </p>
+                    </div>
+                  )
+                })}
               </div>
             </div>
           </aside>
 
-          {/* [중] 동적 정량 평가창 (가로폭 엄청 넓어짐) */}
+          {/* [중] 동적 정량 평가창 */}
           <div className="w-full space-y-16">
             <div className="text-center pb-8 border-b-[3px] border-slate-900">
               <label className="text-xs font-black text-slate-500 uppercase tracking-widest block mb-4">Active Target</label>
-              <div className="font-black text-teal-800 text-4xl tracking-tight">{allEvaluated ? "평가 완료" : currentPresenter ? `${currentPresenter.presenter_name} 님` : "대상 없음"}</div>
+              <div className="font-black text-teal-800 text-4xl tracking-tight">
+                {allEvaluated ? "평가 완료" : currentTarget ? getActiveTargetName(currentTarget) : "대상 없음"}
+              </div>
             </div>
 
             {!allEvaluated ? (
@@ -200,7 +258,9 @@ export default function ScorePage() {
           {!allEvaluated && (
             <aside className="w-full lg:justify-self-start h-fit sticky top-24 pt-2">
               <div className="flex justify-between items-end border-b-2 border-slate-300 pb-3 mb-8">
-                <h3 className="text-lg font-extrabold text-slate-900">{currentPresenter?.presenter_name} {isSameGroup ? '피드백' : '메모장'}</h3>
+                <h3 className="text-lg font-extrabold text-slate-900">
+                  {currentTarget ? getSidebarName(currentTarget) : ''} {isSameGroup ? '피드백' : '메모장'}
+                </h3>
                 <p className={`text-[10px] font-black uppercase ${isSameGroup ? 'text-teal-700' : 'text-slate-400'}`}>{isSameGroup ? 'Detail' : 'Simple'}</p>
               </div>
               {isSameGroup ? (
@@ -240,7 +300,6 @@ function CategoryCard({ title, icon, total, max, theme, children }) {
   )
 }
 
-// 🌟 기준표 줄바꿈 방지 (break-keep) 적용 완료
 function EvaluationItem({ itemData, val, onChange, theme }) {
   const points = [];
   const maxScore = Math.max(...itemData.criteria.map(c => c.s), 0);
@@ -254,7 +313,6 @@ function EvaluationItem({ itemData, val, onChange, theme }) {
         <span className={`text-sm font-black ${theme.text} ${theme.lightBg} px-3 py-1 rounded-none border-b-2 ${theme.lightBorder}`}>{val === null ? '?' : val} pt</span>
       </div>
       
-      {/* 🌟 텍스트 크기 상향 및 break-keep 추가로 줄바꿈 최소화 */}
       <div className="border-y-2 border-slate-300 py-3">
         <table className="w-full text-left">
           <tbody>
