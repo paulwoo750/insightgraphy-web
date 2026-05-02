@@ -14,10 +14,10 @@ export default function DashboardManager() {
   const [totalWeeks, setTotalWeeks] = useState(12)
   const [weekTopics, setWeekTopics] = useState({}) 
 
-  // 🌟 2. 장소 즐겨찾기 관리 상태 (새로 추가!)
+  // 🌟 2. 장소 즐겨찾기 관리 상태
   const [favoriteLocs, setFavoriteLocs] = useState([]) 
 
-  // 3. 마감 시간 & 파일 현황 상태 (🌟 출석 관련 카테고리 추가!)
+  // 3. 마감 시간 & 파일 현황 상태
   const [deadlines, setDeadlines] = useState({})
   const [recentFiles, setRecentFiles] = useState([])
 
@@ -32,7 +32,7 @@ export default function DashboardManager() {
 
   const deadlineCategories = [
     'proposal', 'slide', 'video', 'proposal_comment', 'vote_feedback', 'video_comment',
-    'attendance_start', 'session_start', 'attendance_end' // 🌟 출석용 3단계 시간 추가!
+    'attendance_start', 'session_start', 'attendance_end'
   ]
   const weeks = Array.from({ length: totalWeeks + 1 }, (_, i) => i)
 
@@ -76,7 +76,7 @@ export default function DashboardManager() {
       const wks = configData.find(c => c.key === 'total_weeks')?.value
       const topics = configData.find(c => c.key === 'week_topics')?.value
       const wSetup = configData.find(c => c.key === 'weekly_setup')?.value 
-      const favLocs = configData.find(c => c.key === 'favorite_locations')?.value // 🌟 즐겨찾기 불러오기
+      const favLocs = configData.find(c => c.key === 'favorite_locations')?.value 
 
       if (sem) setSemester(sem)
       if (wks) setTotalWeeks(Number(wks))
@@ -119,25 +119,27 @@ export default function DashboardManager() {
     setLoading(false)
   }
 
-  // 주차별 설정 업데이트 핸들러
+  // 🌟 주차별 설정 업데이트 핸들러 (안전한 방어 로직 추가)
   const handleUpdateSetup = (key, val) => {
     setWeeklySetup(prev => {
-      const current = prev[setupWeek] || { groupCount: 1, clusterCount: 1, groupToCluster: { 1: 1 }, members: {}, location: { lat: '', lng: '', radius: 100 } }
+      const current = prev[setupWeek] || {}
       return { ...prev, [setupWeek]: { ...current, [key]: val } }
     })
   }
 
   const handleUpdateMapping = (gId, cId) => {
     setWeeklySetup(prev => {
-      const current = prev[setupWeek] || { groupCount: 1, clusterCount: 1, groupToCluster: { 1: 1 }, members: {}, location: {} }
-      return { ...prev, [setupWeek]: { ...current, groupToCluster: { ...current.groupToCluster, [gId]: cId } } }
+      const current = prev[setupWeek] || {}
+      const currentMapping = current.groupToCluster || {}
+      return { ...prev, [setupWeek]: { ...current, groupToCluster: { ...currentMapping, [gId]: cId } } }
     })
   }
 
   const handleMemberAssign = (name, val) => {
     setWeeklySetup(prev => {
-      const current = prev[setupWeek] || { groupCount: 1, clusterCount: 1, groupToCluster: { 1: 1 }, members: {}, location: {} }
-      return { ...prev, [setupWeek]: { ...current, members: { ...current.members, [name]: val } } }
+      const current = prev[setupWeek] || {}
+      const currentMembers = current.members || {}
+      return { ...prev, [setupWeek]: { ...current, members: { ...currentMembers, [name]: val } } }
     })
   }
 
@@ -177,7 +179,7 @@ export default function DashboardManager() {
       { key: 'total_weeks', value: String(totalWeeks) },
       { key: 'week_topics', value: JSON.stringify(weekTopics) },
       { key: 'weekly_setup', value: JSON.stringify(weeklySetup) },
-      { key: 'favorite_locations', value: JSON.stringify(favoriteLocs) } // 🌟 즐겨찾기 저장
+      { key: 'favorite_locations', value: JSON.stringify(favoriteLocs) } 
     ])
 
     const deadlineUpserts = []
@@ -238,7 +240,15 @@ export default function DashboardManager() {
 
   if (loading) return <div className="min-h-screen flex justify-center items-center font-bold text-slate-400">데이터를 불러오는 중입니다... 🔄</div>
 
-  const currentSetup = weeklySetup[setupWeek] || { groupCount: 1, clusterCount: 1, groupToCluster: { 1: 1 }, members: {}, location: { lat: '', lng: '', radius: 100 } }
+  // 🌟 [핵심 해결] undefined 에러 방지를 위한 완벽한 Fallback 객체 생성
+  const rawSetup = weeklySetup[setupWeek] || {};
+  const currentSetup = {
+    groupCount: rawSetup.groupCount || 1,
+    clusterCount: rawSetup.clusterCount || 1,
+    groupToCluster: rawSetup.groupToCluster || {},
+    members: rawSetup.members || {},
+    location: rawSetup.location || { lat: '', lng: '', radius: 100 }
+  };
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans p-6 md:p-12 pb-32">
@@ -319,7 +329,7 @@ export default function DashboardManager() {
                   </div>
                 </div>
 
-                {/* 🌟 [B] 오프라인 출석 및 장소 세팅 (새로 추가/개편됨!) */}
+                {/* [B] 오프라인 출석 및 장소 세팅 */}
                 <div className="space-y-4">
                   <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest flex items-center gap-2 border-b border-slate-100 pb-2"><span>📍</span> 출석 장소 및 시간 세팅</h3>
                   
@@ -342,19 +352,18 @@ export default function DashboardManager() {
                       <div className="grid grid-cols-2 gap-3">
                         <div className="space-y-1.5">
                           <label className="text-[9px] font-black text-slate-400">위도 (Lat)</label>
-                          <input type="number" value={currentSetup.location?.lat || ''} onChange={e => handleUpdateSetup('location', {...currentSetup.location, lat: e.target.value})} className="w-full p-2.5 rounded-xl text-xs font-bold outline-none border border-slate-200 focus:border-blue-400" placeholder="예: 37.456" />
+                          <input type="number" value={currentSetup.location.lat || ''} onChange={e => handleUpdateSetup('location', {...currentSetup.location, lat: e.target.value})} className="w-full p-2.5 rounded-xl text-xs font-bold outline-none border border-slate-200 focus:border-blue-400" placeholder="예: 37.456" />
                         </div>
                         <div className="space-y-1.5">
                           <label className="text-[9px] font-black text-slate-400">경도 (Lng)</label>
-                          <input type="number" value={currentSetup.location?.lng || ''} onChange={e => handleUpdateSetup('location', {...currentSetup.location, lng: e.target.value})} className="w-full p-2.5 rounded-xl text-xs font-bold outline-none border border-slate-200 focus:border-blue-400" placeholder="예: 126.953" />
+                          <input type="number" value={currentSetup.location.lng || ''} onChange={e => handleUpdateSetup('location', {...currentSetup.location, lng: e.target.value})} className="w-full p-2.5 rounded-xl text-xs font-bold outline-none border border-slate-200 focus:border-blue-400" placeholder="예: 126.953" />
                         </div>
                         <div className="space-y-1.5 col-span-2">
                           <label className="text-[9px] font-black text-slate-400">허용 반경 (m)</label>
-                          <input type="number" value={currentSetup.location?.radius || 100} onChange={e => handleUpdateSetup('location', {...currentSetup.location, radius: Number(e.target.value)})} className="w-full p-2.5 rounded-xl text-xs font-bold outline-none border border-slate-200 focus:border-blue-400" />
+                          <input type="number" value={currentSetup.location.radius || 100} onChange={e => handleUpdateSetup('location', {...currentSetup.location, radius: Number(e.target.value)})} className="w-full p-2.5 rounded-xl text-xs font-bold outline-none border border-slate-200 focus:border-blue-400" />
                         </div>
                       </div>
 
-                      {/* 즐겨찾기 목록 보여주기 (삭제 기능 포함) */}
                       {favoriteLocs.length > 0 && (
                         <div className="mt-3 pt-3 border-t border-slate-200 flex flex-wrap gap-1.5">
                           {favoriteLocs.map(f => (
