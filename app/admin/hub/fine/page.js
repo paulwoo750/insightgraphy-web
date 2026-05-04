@@ -101,11 +101,16 @@ export default function FineAdmin() {
         const weekDl = deadlines.filter(d => d.week === w)
         if (weekDl.length === 0) continue
 
-        const wSetup = weeklySetup[w] || { members: {} }
+        // 🌟 [핵심 변경] 과거 데이터와 새로운 3단계 팀 데이터를 완벽 호환되게 추출
+        const wSetup = weeklySetup[w] || {}
+        const isNewLogic = !!wSetup.memberTeams; 
+        const mTeams = wSetup.memberTeams || wSetup.members || {};
+        const tGroups = wSetup.teamGroups || wSetup.groupToCluster || {};
+        const gClusters = wSetup.groupClusters || {};
 
         activeMembers.forEach(m => {
           const userName = m.name
-          const myGroup = wSetup.members[userName]
+          const myTId = mTeams[userName]
           
           const autoCategories = [
             '기획서 지각/미제출', '슬라이드 지각/미제출', '영상 지각/미제출', 
@@ -113,18 +118,50 @@ export default function FineAdmin() {
             '오프라인 세션 페널티'
           ]
 
-          if (!myGroup || myGroup === '미정' || myGroup === '결석') {
+          // 배정되지 않은 인원이면 스킵
+          if (!myTId || myTId === '미정' || myTId === '결석') {
             autoCategories.forEach(cat => processFine(userName, w, cat, 0, ''))
             return
           }
 
-          const groupMembers = Object.keys(wSetup.members).filter(name => wSetup.members[name] === myGroup && name !== userName)
+          // 내 소속 파악
+          const myGId = tGroups[myTId] || myTId;
+          const myCId = gClusters[myGId] || gClusters[myTId] || 1;
+
+          // 파일 업로더 추적용 (개인 이름 or 팀 이름 둘 다 허용)
+          const myUploaderNames = [userName, `Team ${myTId}`, `Team #${myTId}`];
+
+          // 🌟 평가 타겟 추적 (새로운 로직은 클러스터 기준, 구 로직은 그룹 기준)
+          const targetUploaders = [];
+          Object.keys(mTeams).forEach(name => {
+            if (name === userName) return;
+            const tId = mTeams[name];
+            if (tId === '미정' || tId === '결석') return;
+            
+            const gId = tGroups[tId] || tId;
+            const cId = gClusters[gId] || gClusters[tId] || 1;
+            
+            let isTarget = false;
+            if (isNewLogic) {
+              // 신규 로직: 같은 클러스터 내의 "다른 팀"
+              isTarget = (cId === myCId && tId !== myTId);
+            } else {
+              // 구 로직: 같은 그룹
+              isTarget = (tId === myTId);
+            }
+            
+            if (isTarget) {
+              targetUploaders.push(name);
+              targetUploaders.push(`Team ${tId}`);
+              targetUploaders.push(`Team #${tId}`);
+            }
+          });
 
           // [A] 기획서
           const pDl = weekDl.find(d => d.category === 'proposal')
           let pFine = 0, pReason = ''
           if (pDl && pDl.deadline_time && new Date(pDl.deadline_time).getTime() < now) {
-            const myFile = files.find(f => f.week === w && f.file_category === 'proposal' && f.uploader === userName)
+            const myFile = files.find(f => f.week === w && f.file_category === 'proposal' && myUploaderNames.includes(f.uploader))
             if (!myFile) {
               pFine = currentPenalties.proposalMiss || 10000; pReason = '기획서 미제출'
             } else if (new Date(myFile.created_at).getTime() > new Date(pDl.deadline_time).getTime()) {
@@ -139,7 +176,7 @@ export default function FineAdmin() {
           const sDl = weekDl.find(d => d.category === 'slide')
           let sFine = 0, sReason = ''
           if (sDl && sDl.deadline_time && new Date(sDl.deadline_time).getTime() < now) {
-            const myFile = files.find(f => f.week === w && f.file_category === 'slide' && f.uploader === userName)
+            const myFile = files.find(f => f.week === w && f.file_category === 'slide' && myUploaderNames.includes(f.uploader))
             if (!myFile) {
               sFine = currentPenalties.slideMiss || 10000; sReason = '슬라이드 미제출'
             } else if (new Date(myFile.created_at).getTime() > new Date(sDl.deadline_time).getTime()) {
@@ -154,7 +191,7 @@ export default function FineAdmin() {
           const vDl = weekDl.find(d => d.category === 'video')
           let vFine = 0, vReason = ''
           if (vDl && vDl.deadline_time && new Date(vDl.deadline_time).getTime() < now) {
-            const myFile = files.find(f => f.week === w && f.file_category === 'video' && f.uploader === userName)
+            const myFile = files.find(f => f.week === w && f.file_category === 'video' && myUploaderNames.includes(f.uploader))
             if (!myFile) {
               vFine = currentPenalties.slideMiss || 10000; vReason = '발표영상 미제출'
             } else if (new Date(myFile.created_at).getTime() > new Date(vDl.deadline_time).getTime()) {
@@ -169,11 +206,11 @@ export default function FineAdmin() {
           const pcDl = weekDl.find(d => d.category === 'proposal_comment')
           let pcFine = 0, pcReason = ''
           if (pcDl && pcDl.deadline_time && new Date(pcDl.deadline_time).getTime() < now) {
-            const groupProps = files.filter(f => f.week === w && f.file_category === 'proposal' && groupMembers.includes(f.uploader))
+            const targetFiles = files.filter(f => f.week === w && f.file_category === 'proposal' && targetUploaders.includes(f.uploader))
             let missed = 0, maxLateMin = 0
             
-            groupProps.forEach(gp => {
-              const myComm = comments.find(c => c.file_id === gp.id && c.user_name === userName)
+            targetFiles.forEach(tf => {
+              const myComm = comments.find(c => c.file_id === tf.id && c.user_name === userName)
               if (!myComm) missed++
               else if (new Date(myComm.created_at).getTime() > new Date(pcDl.deadline_time).getTime()) {
                 const diffMin = Math.floor((new Date(myComm.created_at).getTime() - new Date(pcDl.deadline_time).getTime()) / 60000)
@@ -181,7 +218,7 @@ export default function FineAdmin() {
               }
             })
 
-            if (groupProps.length > 0 && missed > 0) {
+            if (targetFiles.length > 0 && missed > 0) {
               pcFine = currentPenalties.fbMiss || 3000; pcReason = `기획서 조원 피드백 누락 (${missed}건 미제출)`
             } else if (maxLateMin > 0) {
               if (maxLateMin >= 60) { pcFine = currentPenalties.fbMiss || 3000; pcReason = '기획서 피드백 1시간 이상 지각' }
@@ -194,11 +231,11 @@ export default function FineAdmin() {
           const vfDl = weekDl.find(d => d.category === 'vote_feedback')
           let vfFine = 0, vfReason = ''
           if (vfDl && vfDl.deadline_time && new Date(vfDl.deadline_time).getTime() < now) {
-            const groupVids = files.filter(f => f.week === w && f.file_category === 'video' && groupMembers.includes(f.uploader))
+            const targetFiles = files.filter(f => f.week === w && f.file_category === 'video' && targetUploaders.includes(f.uploader))
             let missed = 0, maxLateMin = 0
             
-            groupVids.forEach(gv => {
-              const myComm = comments.find(c => c.file_id === gv.id && c.user_name === userName)
+            targetFiles.forEach(tf => {
+              const myComm = comments.find(c => c.file_id === tf.id && c.user_name === userName)
               if (!myComm) missed++
               else if (new Date(myComm.created_at).getTime() > new Date(vfDl.deadline_time).getTime()) {
                 const diffMin = Math.floor((new Date(myComm.created_at).getTime() - new Date(vfDl.deadline_time).getTime()) / 60000)
@@ -206,7 +243,7 @@ export default function FineAdmin() {
               }
             })
 
-            if (groupVids.length > 0 && missed > 0) {
+            if (targetFiles.length > 0 && missed > 0) {
               vfFine = currentPenalties.fbMiss || 3000; vfReason = `영상 조원평가 누락 (${missed}건 미제출)`
             } else if (maxLateMin > 0) {
               if (maxLateMin >= 60) { vfFine = currentPenalties.fbMiss || 3000; vfReason = '영상 조원평가 1시간 이상 지각' }
@@ -219,7 +256,7 @@ export default function FineAdmin() {
           const vcDl = weekDl.find(d => d.category === 'video_comment')
           let vcFine = 0, vcReason = ''
           if (vcDl && vcDl.deadline_time && new Date(vcDl.deadline_time).getTime() < now) {
-            const myVid = files.find(f => f.week === w && f.file_category === 'video' && f.uploader === userName)
+            const myVid = files.find(f => f.week === w && f.file_category === 'video' && myUploaderNames.includes(f.uploader))
             if (myVid) {
               const myComm = comments.find(c => c.file_id === myVid.id && c.user_name === userName)
               if (!myComm) {
@@ -303,11 +340,9 @@ export default function FineAdmin() {
     }
   }
 
-  // 🌟 [핵심 변경] 삭제 버튼을 누르면 스캐너가 부활시키지 못하게 '소프트 삭제' 처리!
   const handleDeleteFine = async (fineObj) => {
     if (!confirm("이 벌금 내역을 삭제할까요?\n(화면에서 즉시 사라집니다)")) return
     
-    // DB에서 지우면 스캐너가 다시 생성하므로, 보이지 않는 상태(0원, 결제완료, [삭제됨] 꼬리표)로 업데이트
     await supabase.from('pr_fines').update({ 
       is_paid: true, 
       amount: 0, 
@@ -330,9 +365,7 @@ export default function FineAdmin() {
 
   if (loading) return <div className="p-10 text-center font-black text-slate-500">벌금 데이터를 스캔하고 불러오는 중... 🔄</div>
 
-  // 🌟 멤버별 데이터 병합 (화면에 보일 때 '[삭제됨]' 태그가 붙은 건 아예 걸러냄!)
   const combinedData = members.map(m => {
-    // 삭제된 내역 필터링
     const userFines = fines.filter(f => f.user_name === m.name && !f.reason?.includes('[삭제됨]'))
     const totalAmount = userFines.filter(f => !f.is_paid).reduce((sum, curr) => sum + curr.amount, 0)
     return {
@@ -424,7 +457,6 @@ export default function FineAdmin() {
                                   
                                   {!f.is_paid ? (
                                     <div className="flex gap-1.5 shrink-0">
-                                      {/* 🌟 예외 처리(면제) 버튼 삭제하고 진짜 '삭제' 버튼으로 대체 */}
                                       <button onClick={() => handleDeleteFine(f)} className="bg-white hover:bg-slate-800 hover:text-white text-slate-400 px-3 py-1.5 rounded-lg font-black text-[10px] transition-colors border border-slate-200 hover:border-slate-800" title="화면에서 완전히 지우기">
                                         삭제 🗑️
                                       </button>

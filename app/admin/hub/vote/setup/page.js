@@ -19,23 +19,16 @@ export default function VoteSetup() {
   // 🌟 대시보드 연동 데이터
   const [weeklySetup, setWeeklySetup] = useState({})
   const [weekTopics, setWeekTopics] = useState({})
-  const [profiles, setProfiles] = useState([]) 
   
   // 🌟 투표 및 순서 세팅 상태
   const [availableVersions, setAvailableVersions] = useState(['v1']) 
   const [evalVersion, setEvalVersion] = useState('v1') 
   
-  // 🌟 위계 설정 상태 (클러스터 > 그룹 > 팀)
+  // 🌟 위계 설정 상태 (대시보드에서 받아온 읽기 전용 상태)
   const [clusterCount, setClusterCount] = useState(1) 
-  const [groupCount, setGroupCount] = useState(1) 
-  const [teamCount, setTeamCount] = useState(1) 
-  
-  const [memberTeams, setMemberTeams] = useState({}) 
-  const [teamGroups, setTeamGroups] = useState({})   
-  const [groupClusters, setGroupClusters] = useState({}) 
-  
-  // 🌟 평가 모드 상태 (개인 vs 팀별)
   const [evalMode, setEvalMode] = useState('individual') 
+  
+  // 드래그 앤 드롭용 상태
   const [selectedItems, setSelectedItems] = useState([]) 
   
   // 실시간 채점 현황용 상태
@@ -55,44 +48,21 @@ export default function VoteSetup() {
       let currentSem = '2026-1'
       let wSetup = {}
       let topics = {}
-      let currentGen = null 
 
       if (configData) {
         const sem = configData.find(c => c.key === 'current_semester')?.value
         const wks = configData.find(c => c.key === 'total_weeks')?.value
         const setupStr = configData.find(c => c.key === 'weekly_setup')?.value
         const topicStr = configData.find(c => c.key === 'week_topics')?.value
-        const genConf = configData.find(c => c.key === 'current_generation')?.value 
 
         if (sem) { currentSem = sem; setSemester(sem); }
         if (wks) setTotalWeeks(Number(wks))
         if (setupStr) wSetup = JSON.parse(setupStr)
         if (topicStr) topics = JSON.parse(topicStr)
-        if (genConf) currentGen = genConf
         
         setWeeklySetup(wSetup)
         setWeekTopics(topics)
       }
-
-      const { data: profData } = await supabase.from('profiles').select('name, generation')
-      let allNames = new Set()
-      
-      if (profData && profData.length > 0) {
-        profData.forEach(p => {
-          if (!currentGen || String(p.generation) === String(currentGen)) {
-            allNames.add(p.name)
-          }
-        })
-      }
-
-      if (wSetup) {
-        Object.values(wSetup).forEach(wk => {
-          if (wk.memberTeams) Object.keys(wk.memberTeams).forEach(n => allNames.add(n))
-          if (wk.members) Object.keys(wk.members).forEach(n => allNames.add(n))
-        })
-      }
-      
-      setProfiles([...allNames].sort())
 
       let currentWeek = 1
       const { data: latestP } = await supabase.from('presentations').select('week').eq('semester', currentSem).order('created_at', { ascending: false }).limit(1)
@@ -101,7 +71,7 @@ export default function VoteSetup() {
       }
       setWeek(currentWeek)
 
-      await loadWeekData(currentWeek, currentSem, wSetup, topics, 'individual')
+      await loadWeekData(currentWeek, currentSem, wSetup, topics)
     }
     
     initPage()
@@ -109,97 +79,25 @@ export default function VoteSetup() {
 
   const handleWeekChange = (newWeek) => {
     setWeek(newWeek)
-    loadWeekData(newWeek, semester, weeklySetup, weekTopics, evalMode)
+    loadWeekData(newWeek, semester, weeklySetup, weekTopics)
   }
 
-  const handleModeChange = (mode) => {
-    setEvalMode(mode)
-    loadWeekData(week, semester, weeklySetup, weekTopics, mode)
-  }
-
-  // 🌟 카운트 변경 시 유령 데이터(Out-of-bounds) 방지 로직
-  const handleGroupCountChange = (val) => {
-    setGroupCount(val);
-    setTeamGroups(prev => {
-      const next = {...prev};
-      Object.keys(next).forEach(k => { if (next[k] > val) next[k] = 1; });
-      setSelectedItems(items => items.map(item => {
-        const newGId = next[item.team_id] || 1;
-        const cId = groupClusters[newGId] || 1;
-        return { ...item, group_id: newGId, cluster_id: cId };
-      }));
-      return next;
-    });
-  }
-
-  const handleClusterCountChange = (val) => {
-    setClusterCount(val);
-    setGroupClusters(prev => {
-      const next = {...prev};
-      Object.keys(next).forEach(k => { if (next[k] > val) next[k] = 1; });
-      setSelectedItems(items => items.map(item => ({
-        ...item, cluster_id: next[item.group_id] || 1
-      })));
-      return next;
-    });
-  }
-
-  // 🌟 드롭다운 변경 시 드래그 보드 즉각 동기화 로직
-  const updateTeamGroup = (tId, newGId) => {
-    setTeamGroups(prev => ({...prev, [tId]: newGId}));
-    setSelectedItems(prevItems => prevItems.map(item => {
-      if (item.team_id === tId) {
-        const currentCluster = groupClusters[newGId] || 1;
-        return { ...item, group_id: newGId, cluster_id: currentCluster };
-      }
-      return item;
-    }));
-  }
-
-  const updateGroupCluster = (gId, newCId) => {
-    setGroupClusters(prev => ({...prev, [gId]: newCId}));
-    setSelectedItems(prevItems => prevItems.map(item => {
-      if (item.group_id === gId) {
-        return { ...item, cluster_id: newCId };
-      }
-      return item;
-    }));
-  }
-
-  const loadWeekData = async (targetWeek, currentSem, wSetup, topics, mode) => {
+  // 🌟 대시보드 데이터를 기반으로 DND 아이템 생성 (수정 기능 걷어냄)
+  const loadWeekData = async (targetWeek, currentSem, wSetup, topics) => {
     setLoading(true)
     
     const setup = wSetup[targetWeek] || {}
-    const legacyMembers = setup.members || {}
-    const legacyGroupToCluster = setup.groupToCluster || {}
     
-    let mTeams = setup.memberTeams || {}
-    let tGroups = setup.teamGroups || {}
-    let gClusters = setup.groupClusters || {}
-    
-    if (Object.keys(mTeams).length === 0 && Object.keys(legacyMembers).length > 0) {
-        mTeams = legacyMembers; 
-        Object.keys(legacyMembers).forEach(k => {
-            const gId = legacyMembers[k];
-            if (gId !== '미정' && gId !== '결석') tGroups[gId] = 1; // 과거 유령 데이터 1그룹으로 초기화
-        });
-        gClusters = legacyGroupToCluster;
-    }
+    const mode = setup.evalMode || 'individual';
+    setEvalMode(mode);
 
+    // 맵핑 데이터 로드 (안전장치 적용)
+    const mTeams = setup.memberTeams || setup.members || {}
+    const tGroups = setup.teamGroups || {}
+    const gClusters = setup.groupClusters || setup.groupToCluster || {}
+    
     const cCount = Number(setup.clusterCount) || 1
-    const gCount = Number(setup.groupCount) || 1
-    const tCount = Number(setup.teamCount) || Math.max(...Object.values(mTeams).filter(v => !isNaN(v)), 1)
-
-    // 데이터 정제 (가용 범위 초과 시 1로 고정)
-    Object.keys(tGroups).forEach(k => { if (tGroups[k] > gCount) tGroups[k] = 1; });
-    Object.keys(gClusters).forEach(k => { if (gClusters[k] > cCount) gClusters[k] = 1; });
-
     setClusterCount(cCount)
-    setGroupCount(gCount)
-    setTeamCount(tCount)
-    setMemberTeams(mTeams)
-    setTeamGroups(tGroups)
-    setGroupClusters(gClusters)
     setTopic(topics[targetWeek] || '')
 
     const { data: pData } = await supabase.from('presentations').select('*').eq('week', targetWeek).eq('semester', currentSem).order('order_index', { ascending: true })
@@ -208,23 +106,14 @@ export default function VoteSetup() {
     setCurrentPs(pData || [])
     setCurrentScores(sData || [])
 
-    let finalEvalVersion = 'v1'
-    let finalMode = mode
-
     if (pData && pData.length > 0) {
-      finalEvalVersion = pData[0].eval_version || 'v1'
-      const hasGroupOrder = new Set(pData.map(p => p.order_index)).size < pData.length;
-      if(hasGroupOrder && mode === 'individual') finalMode = 'team';
-      else if(!hasGroupOrder && mode === 'team') finalMode = 'individual';
+      setEvalVersion(pData[0].eval_version || 'v1')
     } else {
-      finalEvalVersion = 'v1'
+      setEvalVersion('v1')
     }
-    
-    setEvalVersion(finalEvalVersion)
-    setEvalMode(finalMode)
 
     let items = [];
-    if (finalMode === 'team') {
+    if (mode === 'team') {
        const activeTeams = [...new Set(Object.values(mTeams))].filter(v => v !== '미정' && v !== '결석' && !isNaN(Number(v))).map(Number);
        items = activeTeams.map(tId => {
            const gId = Number(tGroups[tId]) || 1;
@@ -239,53 +128,24 @@ export default function VoteSetup() {
            return t !== '미정' && t !== '결석' && !isNaN(Number(t));
        });
        items = activeMembers.map(name => {
-           const tId = Number(mTeams[name]);
-           const gId = Number(tGroups[tId]) || 1;
+           const gId = Number(mTeams[name]); // 개인모드에선 멤버 값이 곧 조(Group) 번호
            const cId = Number(gClusters[gId]) || 1;
            const dbExisting = pData?.find(p => p.presenter_name === name);
-           return { id: `ind-${name}`, type: 'individual', name: name, team_id: tId, group_id: gId, cluster_id: cId, order_index: dbExisting ? dbExisting.order_index : 999 }
+           return { id: `ind-${name}`, type: 'individual', name: name, group_id: gId, cluster_id: cId, order_index: dbExisting ? dbExisting.order_index : 999 }
        });
     }
+    
     items.sort((a,b) => a.order_index - b.order_index);
     setSelectedItems(items);
     setLoading(false)
   }
 
-  const syncToDnd = () => {
-    let items = [];
-    if (evalMode === 'team') {
-       const activeTeams = [...new Set(Object.values(memberTeams))].filter(v => v !== '미정' && v !== '결석' && !isNaN(Number(v))).map(Number);
-       items = activeTeams.map(tId => {
-           const gId = Number(teamGroups[tId]) || 1;
-           const cId = Number(groupClusters[gId]) || 1;
-           const members = Object.keys(memberTeams).filter(m => Number(memberTeams[m]) === tId);
-           const existing = selectedItems.find(i => i.id === `team-${tId}`);
-           return { id: `team-${tId}`, type: 'team', team_id: tId, group_id: gId, cluster_id: cId, members, order_index: existing ? existing.order_index : 999 }
-       });
-    } else {
-       const activeMembers = Object.keys(memberTeams).filter(m => {
-           const t = memberTeams[m];
-           return t !== '미정' && t !== '결석' && !isNaN(Number(t));
-       });
-       items = activeMembers.map(name => {
-           const tId = Number(memberTeams[name]);
-           const gId = Number(teamGroups[tId]) || 1;
-           const cId = Number(groupClusters[gId]) || 1;
-           const existing = selectedItems.find(i => i.id === `ind-${name}`);
-           return { id: `ind-${name}`, type: 'individual', name: name, team_id: tId, group_id: gId, cluster_id: cId, order_index: existing ? existing.order_index : 999 }
-       });
-    }
-    items.sort((a,b) => a.order_index - b.order_index);
-    setSelectedItems(items);
-    alert("배정 내역이 하단 드래그 보드에 반영되었습니다! ⬇️")
-  }
-
   const handleResetWeek = async () => {
-    if(!confirm(`[${week}주차]에 설정된 모든 발표 데이터와 순서를 삭제하고 초기화할까요?`)) return;
+    if(!confirm(`[${week}주차]에 설정된 발표 데이터와 순서를 삭제하고 초기화할까요?`)) return;
     setLoading(true);
     await supabase.from('presentations').delete().eq('week', week).eq('semester', semester);
     alert('해당 주차 발표 데이터가 초기화되었습니다. 🔄');
-    loadWeekData(week, semester, weeklySetup, weekTopics, evalMode);
+    loadWeekData(week, semester, weeklySetup, weekTopics);
   }
 
   const randomizeOrderByCluster = (cId) => {
@@ -321,16 +181,12 @@ export default function VoteSetup() {
   };
 
   const handleSave = async () => {
-    if (selectedItems.length === 0) return alert("드래그 보드에 배정된 발표자가 없습니다! [배정 내역 반영] 버튼을 눌러주세요. 👤")
+    if (selectedItems.length === 0) return alert("대시보드에서 배정된 발표자가 없습니다. Dashboard를 확인하세요. 👤")
     if (!evalVersion) return alert("채점표 버전을 선택해줘! 📝")
     
     const modeName = evalMode === 'team' ? '팀 단위' : '개인 단위';
     if (!confirm(`[${semester}] 학기 ${week}주차를 [${modeName}] 평가로 확정하고 저장할까?`)) return
     setSaving(true)
-    
-    const newSetup = { clusterCount, groupCount, teamCount, memberTeams, teamGroups, groupClusters }
-    const updatedWSetup = { ...weeklySetup, [week]: newSetup }
-    await supabase.from('pr_config').update({ value: JSON.stringify(updatedWSetup) }).eq('key', 'weekly_setup')
     
     await supabase.from('presentations').delete().eq('week', week).eq('semester', semester)
     
@@ -347,7 +203,7 @@ export default function VoteSetup() {
               insertData.push({ presenter_name: memberName, topic: topic, week: week, eval_version: evalVersion, order_index: globalIndex, team_id: item.team_id, group_id: item.group_id, cluster_id: item.cluster_id, semester: semester });
             });
         } else {
-            insertData.push({ presenter_name: item.name, topic: topic, week: week, eval_version: evalVersion, order_index: globalIndex, team_id: item.team_id, group_id: item.group_id, cluster_id: item.cluster_id, semester: semester });
+            insertData.push({ presenter_name: item.name, topic: topic, week: week, eval_version: evalVersion, order_index: globalIndex, group_id: item.group_id, cluster_id: item.cluster_id, semester: semester });
         }
         globalIndex++;
       });
@@ -356,8 +212,7 @@ export default function VoteSetup() {
     const { error } = await supabase.from('presentations').insert(insertData)
     if (!error) { 
       alert(`저장 완료! 🏁`)
-      setWeeklySetup(updatedWSetup)
-      loadWeekData(week, semester, updatedWSetup, weekTopics, evalMode)
+      loadWeekData(week, semester, weeklySetup, weekTopics)
     } else {
       alert("오류: " + error.message)
     }
@@ -411,11 +266,13 @@ export default function VoteSetup() {
 
           <div className="space-y-16">
             
-            {/* Step 1. Basic Info */}
+            {/* Step 1. Info Viewer */}
             <div className="border-t-[3px] border-teal-800 pt-6">
-              <h3 className="text-sm font-extrabold text-slate-900 uppercase tracking-widest mb-6">Step 1. Basic Setup</h3>
+              <h3 className="text-sm font-extrabold text-slate-900 uppercase tracking-widest mb-6 flex items-center gap-2">
+                Step 1. Weekly Target <span className="text-[9px] font-bold bg-slate-200 text-slate-500 px-2 py-0.5 rounded">대시보드 연동됨</span>
+              </h3>
               <div className="flex flex-col md:flex-row gap-6">
-                <div className="w-full md:w-[12%]">
+                <div className="w-full md:w-[15%]">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Target Week</label>
                   <select value={week} onChange={(e)=>handleWeekChange(Number(e.target.value))} className="w-full border-b-[3px] border-slate-300 py-2 text-lg font-black text-teal-800 outline-none cursor-pointer bg-transparent focus:border-teal-700 transition-colors">
                     {Array.from({ length: totalWeeks + 1 }, (_, i) => i).map(w => (
@@ -423,135 +280,43 @@ export default function VoteSetup() {
                     ))}
                   </select>
                 </div>
-                <div className="w-full md:w-[12%]">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Team Count</label>
-                  <input type="number" value={teamCount} onChange={(e)=>setTeamCount(Number(e.target.value))} className="w-full border-b-[3px] border-slate-300 py-2 text-lg font-black text-slate-800 outline-none bg-transparent focus:border-teal-700 transition-colors" />
-                </div>
-                <div className="w-full md:w-[12%]">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Group Count</label>
-                  <input type="number" value={groupCount} onChange={(e)=>handleGroupCountChange(Number(e.target.value))} className="w-full border-b-[3px] border-slate-300 py-2 text-lg font-black text-slate-800 outline-none bg-transparent focus:border-teal-700 transition-colors" />
-                </div>
-                <div className="w-full md:w-[12%]">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Cluster Count</label>
-                  <input type="number" value={clusterCount} onChange={(e)=>handleClusterCountChange(Number(e.target.value))} className="w-full border-b-[3px] border-slate-300 py-2 text-lg font-black text-slate-800 outline-none bg-transparent focus:border-teal-700 transition-colors" />
+                <div className="w-full md:w-[20%]">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Eval Mode</label>
+                  <div className={`w-full border-b-[3px] py-2 text-lg font-black bg-transparent outline-none cursor-default ${evalMode === 'team' ? 'border-teal-800 text-teal-800' : 'border-blue-800 text-blue-800'}`}>
+                    {evalMode === 'team' ? '👥 팀 단위 평가' : '👤 개인 단위 평가'}
+                  </div>
                 </div>
                 <div className="flex-1 w-full">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Topic (주제)</label>
-                  <input type="text" value={topic} onChange={(e)=>setTopic(e.target.value)} className="w-full border-b-[3px] border-slate-300 py-2 text-lg font-black text-slate-800 outline-none bg-transparent focus:border-teal-700 transition-colors placeholder:text-slate-300" placeholder="이번 주차 주제" />
-                </div>
-              </div>
-            </div>
-
-            {/* Step 2. 평가 방식 및 버전 */}
-            <div className="border-t-[3px] border-teal-800 pt-6 grid grid-cols-1 md:grid-cols-2 gap-10">
-              <div>
-                <h3 className="text-sm font-extrabold text-slate-900 uppercase tracking-widest mb-6">Step 2-1. Eval Mode</h3>
-                <div className="flex gap-4">
-                  <button onClick={() => handleModeChange('individual')} className={`flex-1 py-4 font-black text-sm uppercase transition-all border-b-[3px] ${evalMode === 'individual' ? 'text-teal-800 border-teal-800 scale-[1.02]' : 'text-slate-400 border-transparent hover:border-slate-300'}`}>
-                    👤 개인 단위 평가
-                  </button>
-                  <button onClick={() => handleModeChange('team')} className={`flex-1 py-4 font-black text-sm uppercase transition-all border-b-[3px] ${evalMode === 'team' ? 'text-teal-800 border-teal-800 scale-[1.02]' : 'text-slate-400 border-transparent hover:border-slate-300'}`}>
-                    👥 팀 단위 평가
-                  </button>
-                </div>
-              </div>
-              
-              <div>
-                <h3 className="text-sm font-extrabold text-slate-900 uppercase tracking-widest mb-6">Step 2-2. Scoreboard Version</h3>
-                <div className="flex flex-wrap gap-4">
-                  {availableVersions.map(v => (
-                    <button key={v} onClick={()=>setEvalVersion(v)} className={`flex-1 py-4 font-black uppercase tracking-widest transition-all border-b-[3px] ${evalVersion === v ? 'text-teal-800 border-teal-800 scale-[1.02]' : 'text-slate-400 border-transparent hover:text-slate-600 hover:border-slate-300'}`}>
-                      {v} 버전
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* Step 3. 3단계 배정 */}
-            <div className="border-t-[3px] border-teal-800 pt-6 space-y-12">
-              
-              <div>
-                <h3 className="text-sm font-extrabold text-slate-900 uppercase tracking-widest mb-6">Step 3-1. Member ➡️ Team Assignment</h3>
-                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                  {profiles.map(name => (
-                    <div key={name} className="flex items-center justify-between border border-slate-200 bg-white p-3 shadow-sm rounded-sm">
-                      <span className="font-extrabold text-[13px] text-slate-800">{name}</span>
-                      <select 
-                        value={memberTeams[name] || '미정'} 
-                        onChange={(e) => setMemberTeams({...memberTeams, [name]: e.target.value})}
-                        className="bg-slate-50 border border-slate-200 text-xs font-black text-teal-800 outline-none p-1.5 cursor-pointer rounded-sm"
-                      >
-                        <option value="미정">미정</option>
-                        <option value="결석">결석</option>
-                        {Array.from({length: teamCount}, (_,i)=>i+1).map(t => (
-                          <option key={t} value={t}>{t}팀</option>
-                        ))}
-                      </select>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
-                <div>
-                  <h3 className="text-sm font-extrabold text-slate-900 uppercase tracking-widest mb-6">Step 3-2. Team ➡️ Group Mapping</h3>
-                  <div className="space-y-3">
-                    {Array.from({length: teamCount}, (_,i)=>i+1).map(tId => (
-                      <div key={tId} className="flex items-center justify-between border border-slate-200 bg-white p-3 shadow-sm rounded-sm">
-                        <span className="font-extrabold text-sm text-slate-800">Team #{tId}</span>
-                        <select 
-                          value={teamGroups[tId] || 1} 
-                          onChange={(e) => updateTeamGroup(tId, Number(e.target.value))}
-                          className="bg-slate-50 border border-slate-200 text-xs font-black text-blue-700 outline-none p-1.5 cursor-pointer rounded-sm"
-                        >
-                          {Array.from({length: groupCount}, (_,i)=>i+1).map(g => (
-                            <option key={g} value={g}>{g}그룹</option>
-                          ))}
-                        </select>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <h3 className="text-sm font-extrabold text-slate-900 uppercase tracking-widest mb-6">Step 3-3. Group ➡️ Cluster Mapping</h3>
-                  <div className="space-y-3">
-                    {Array.from({length: groupCount}, (_,i)=>i+1).map(gId => (
-                      <div key={gId} className="flex items-center justify-between border border-slate-200 bg-white p-3 shadow-sm rounded-sm">
-                        <span className="font-extrabold text-sm text-slate-800">Group #{gId}</span>
-                        <select 
-                          value={groupClusters[gId] || 1} 
-                          onChange={(e) => updateGroupCluster(gId, Number(e.target.value))}
-                          className="bg-slate-50 border border-slate-200 text-xs font-black text-purple-700 outline-none p-1.5 cursor-pointer rounded-sm"
-                        >
-                          {Array.from({length: clusterCount}, (_,i)=>i+1).map(c => (
-                            <option key={c} value={c}>Cluster #{c}</option>
-                          ))}
-                        </select>
-                      </div>
-                    ))}
+                  <div className="w-full border-b-[3px] border-slate-300 py-2 text-lg font-black text-slate-800 outline-none bg-transparent cursor-default">
+                    {topic || "등록된 주제 없음"}
                   </div>
                 </div>
               </div>
+            </div>
 
-              <div className="text-center pt-6">
-                 <button onClick={syncToDnd} className="border-2 border-teal-800 text-teal-900 bg-teal-50 px-10 py-4 font-black text-sm uppercase tracking-widest hover:bg-teal-800 hover:text-white transition-all">
-                     설정한 배정 내역을 하단 드래그 보드에 적용 ⬇️
-                 </button>
+            {/* Step 2. 채점표 버전 */}
+            <div className="border-t-[3px] border-teal-800 pt-6">
+              <h3 className="text-sm font-extrabold text-slate-900 uppercase tracking-widest mb-6">Step 2. Scoreboard Version</h3>
+              <div className="flex flex-wrap gap-4">
+                {availableVersions.map(v => (
+                  <button key={v} onClick={()=>setEvalVersion(v)} className={`px-10 py-4 font-black uppercase tracking-widest transition-all border-b-[3px] ${evalVersion === v ? 'text-teal-800 border-teal-800 scale-[1.02]' : 'text-slate-400 border-transparent hover:text-slate-600 hover:border-slate-300'}`}>
+                    {v} 버전
+                  </button>
+                ))}
               </div>
             </div>
 
-            {/* Step 4. 드래그 앤 드롭 순서 변경 */}
+            {/* Step 3. 드래그 앤 드롭 순서 변경 */}
             <div className="border-t-[3px] border-teal-800 pt-6">
               <div className="flex justify-between items-end mb-8">
-                <h3 className="text-sm font-extrabold text-slate-900 uppercase tracking-widest">Step 4. Order Control 🖐️</h3>
+                <h3 className="text-sm font-extrabold text-slate-900 uppercase tracking-widest">Step 3. Order Control 🖐️</h3>
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">드래그하여 발표 순서를 조정하세요</span>
               </div>
               
               <DragDropContext onDragEnd={onDragEnd}>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
-                  {uniqueClusters.length === 0 && <p className="col-span-full text-sm font-bold text-slate-400 py-6">세팅된 클러스터가 없습니다.</p>}
+                  {uniqueClusters.length === 0 && <p className="col-span-full text-sm font-bold text-slate-400 py-6 border-y border-slate-200 text-center">배정된 발표자가 없습니다. 대시보드를 확인하세요.</p>}
                   
                   {uniqueClusters.map(cId => {
                     const clusterItems = selectedItems.filter(item => item.cluster_id === cId);
@@ -621,7 +386,7 @@ export default function VoteSetup() {
             </div>
             
             <button onClick={handleSave} disabled={saving} className="w-full py-6 border-[3px] border-slate-900 text-slate-900 font-black text-xl uppercase tracking-widest hover:bg-slate-900 hover:text-white transition-all active:scale-95 mt-10">
-              {saving ? '최종 확정 및 저장 🏁' : '최종 확정 및 저장 🏁'}
+              {saving ? '저장 중...' : '최종 확정 및 저장 🏁'}
             </button>
           </div>
         </div>

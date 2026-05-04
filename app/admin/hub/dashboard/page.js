@@ -14,7 +14,7 @@ export default function DashboardManager() {
   const [totalWeeks, setTotalWeeks] = useState(12)
   const [weekTopics, setWeekTopics] = useState({}) 
 
-  // 🌟 2. 장소 즐겨찾기 관리 상태
+  // 2. 장소 즐겨찾기 관리 상태
   const [favoriteLocs, setFavoriteLocs] = useState([]) 
 
   // 3. 마감 시간 & 파일 현황 상태
@@ -119,7 +119,7 @@ export default function DashboardManager() {
     setLoading(false)
   }
 
-  // 🌟 주차별 설정 업데이트 핸들러 (안전한 방어 로직 추가)
+  // 🌟 주차별 설정 업데이트 핸들러
   const handleUpdateSetup = (key, val) => {
     setWeeklySetup(prev => {
       const current = prev[setupWeek] || {}
@@ -127,19 +127,12 @@ export default function DashboardManager() {
     })
   }
 
-  const handleUpdateMapping = (gId, cId) => {
+  // 🌟 이중 객체 (Mapping, Members) 범용 업데이트 핸들러
+  const handleUpdateSetupDeep = (mappingKey, id, val) => {
     setWeeklySetup(prev => {
       const current = prev[setupWeek] || {}
-      const currentMapping = current.groupToCluster || {}
-      return { ...prev, [setupWeek]: { ...current, groupToCluster: { ...currentMapping, [gId]: cId } } }
-    })
-  }
-
-  const handleMemberAssign = (name, val) => {
-    setWeeklySetup(prev => {
-      const current = prev[setupWeek] || {}
-      const currentMembers = current.members || {}
-      return { ...prev, [setupWeek]: { ...current, members: { ...currentMembers, [name]: val } } }
+      const currentMapping = current[mappingKey] || {}
+      return { ...prev, [setupWeek]: { ...current, [mappingKey]: { ...currentMapping, [id]: val } } }
     })
   }
 
@@ -167,7 +160,7 @@ export default function DashboardManager() {
     if (fav) {
       handleUpdateSetup('location', { lat: fav.lat, lng: fav.lng, radius: fav.radius });
     }
-    e.target.value = 'manual'; // 선택 후 초기화
+    e.target.value = 'manual'; 
   }
 
   // 전체 저장 로직
@@ -240,15 +233,34 @@ export default function DashboardManager() {
 
   if (loading) return <div className="min-h-screen flex justify-center items-center font-bold text-slate-400">데이터를 불러오는 중입니다... 🔄</div>
 
-  // 🌟 [핵심 해결] undefined 에러 방지를 위한 완벽한 Fallback 객체 생성
+  // 🌟 완벽한 Fallback 객체 생성 (개인/팀 모드 호환)
   const rawSetup = weeklySetup[setupWeek] || {};
   const currentSetup = {
+    evalMode: rawSetup.evalMode || 'individual', // 개인 단위가 기본값
+    
+    // 카운트
+    teamCount: rawSetup.teamCount || rawSetup.groupCount || 1,
     groupCount: rawSetup.groupCount || 1,
     clusterCount: rawSetup.clusterCount || 1,
-    groupToCluster: rawSetup.groupToCluster || {},
-    members: rawSetup.members || {},
+    
+    // 개인 단위일 때 쓰는 맵핑
+    members: rawSetup.members || {}, 
+    groupToCluster: rawSetup.groupToCluster || rawSetup.groupClusters || {},
+    
+    // 팀 단위일 때 쓰는 맵핑
+    memberTeams: rawSetup.memberTeams || rawSetup.members || {}, 
+    teamGroups: rawSetup.teamGroups || {}, 
+    groupClusters: rawSetup.groupClusters || rawSetup.groupToCluster || {},
+    
     location: rawSetup.location || { lat: '', lng: '', radius: 100 }
   };
+  
+  // 레거시 팀 매핑 마이그레이션 방어
+  if (currentSetup.evalMode === 'team' && Object.keys(currentSetup.teamGroups).length === 0 && rawSetup.members) {
+    Object.values(rawSetup.members).forEach(g => {
+      if(!isNaN(Number(g))) currentSetup.teamGroups[g] = g;
+    });
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans p-6 md:p-12 pb-32">
@@ -289,7 +301,7 @@ export default function DashboardManager() {
               </div>
             </section>
 
-            {/* 주차별 통합 세팅 보드 (Weekly Setup Dashboard) */}
+            {/* 주차별 통합 세팅 보드 */}
             <section className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-200">
               <div className="flex justify-between items-center mb-6 border-b border-slate-100 pb-4">
                 <div>
@@ -375,7 +387,7 @@ export default function DashboardManager() {
                       )}
                     </div>
 
-                    {/* 출석 시간 3단계 설정 */}
+                    {/* 출석 시간 설정 */}
                     <div className="space-y-3 bg-slate-50 p-5 rounded-2xl border border-slate-100">
                       <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest block mb-2 border-b border-slate-200 pb-2">출석 시간 세팅</span>
                       <DeadlineInput w={setupWeek} cat="attendance_start" label="🟢 출석체크 오픈" theme="text-emerald-600 bg-emerald-50 focus:border-emerald-400" deadlines={deadlines} onChange={(w, cat, val) => setDeadlines(prev => ({...prev, [w]: {...prev[w], [cat]: val}}))} />
@@ -404,14 +416,39 @@ export default function DashboardManager() {
                   </div>
                 </div>
 
-                {/* [D] 조 편성 및 멤버 할당 */}
+                {/* 🌟 [D] 동적 조원 및 클러스터 편성 (개인 vs 팀 전환 토글) */}
                 <div className="space-y-6">
-                  <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest flex items-center gap-2 border-b border-slate-100 pb-2"><span>👥</span> 조원 및 클러스터 편성</h3>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+                    <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest flex items-center gap-2"><span>👥</span> 조원 및 클러스터 편성</h3>
+                    
+                    {/* 평가 모드 선택 토글 */}
+                    <div className="flex gap-2 bg-slate-100 p-1.5 rounded-xl border border-slate-200 shadow-inner w-fit">
+                      <button 
+                        onClick={() => handleUpdateSetup('evalMode', 'individual')} 
+                        className={`px-5 py-2 rounded-lg text-xs font-black transition-all ${currentSetup.evalMode === 'individual' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                      >
+                        👤 개인 단위 발표
+                      </button>
+                      <button 
+                        onClick={() => handleUpdateSetup('evalMode', 'team')} 
+                        className={`px-5 py-2 rounded-lg text-xs font-black transition-all ${currentSetup.evalMode === 'team' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                      >
+                        👥 팀 단위 발표
+                      </button>
+                    </div>
+                  </div>
                   
+                  {/* 동적 카운트 입력부 */}
                   <div className="flex flex-col md:flex-row gap-6 bg-slate-50 p-5 rounded-2xl border border-slate-100">
+                    {currentSetup.evalMode === 'team' && (
+                      <div className="flex-1 space-y-2">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">총 팀 (Team) 개수</label>
+                        <input type="number" value={currentSetup.teamCount} onChange={e => handleUpdateSetup('teamCount', Number(e.target.value))} className="w-full bg-white p-3 rounded-xl font-black text-lg text-emerald-600 outline-none border border-slate-200 focus:border-emerald-400" />
+                      </div>
+                    )}
                     <div className="flex-1 space-y-2">
                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">총 조 (Group) 개수</label>
-                      <input type="number" value={currentSetup.groupCount} onChange={e => handleUpdateSetup('groupCount', Number(e.target.value))} className="w-full bg-white p-3 rounded-xl font-black text-lg text-emerald-600 outline-none border border-slate-200 focus:border-emerald-400" />
+                      <input type="number" value={currentSetup.groupCount} onChange={e => handleUpdateSetup('groupCount', Number(e.target.value))} className="w-full bg-white p-3 rounded-xl font-black text-lg text-blue-600 outline-none border border-slate-200 focus:border-blue-400" />
                     </div>
                     <div className="flex-1 space-y-2">
                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">평가 클러스터 개수</label>
@@ -419,25 +456,63 @@ export default function DashboardManager() {
                     </div>
                   </div>
 
-                  <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
-                    <label className="text-[10px] font-black text-purple-500 uppercase tracking-widest block border-b border-slate-100 pb-2">조 ➡️ 클러스터 매핑</label>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                      {Array.from({length: currentSetup.groupCount}, (_,i)=>i+1).map(gId => (
-                        <div key={gId} className="bg-slate-50 p-2.5 rounded-xl flex justify-between items-center border border-slate-100">
-                          <span className="text-xs font-black text-slate-700">{gId}조 ➡️</span>
-                          <select value={currentSetup.groupToCluster[gId] || 1} onChange={(e) => handleUpdateMapping(gId, Number(e.target.value))} className="bg-purple-100 text-purple-700 text-xs font-black p-1.5 rounded-lg outline-none cursor-pointer border-none">
-                            {Array.from({length: currentSetup.clusterCount}, (_,i)=>i+1).map(c => <option key={c} value={c}>{c}그룹</option>)}
-                          </select>
+                  {/* 동적 맵핑부 */}
+                  {currentSetup.evalMode === 'team' ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in fade-in">
+                      {/* 팀 -> 그룹 매핑 */}
+                      <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                        <label className="text-[10px] font-black text-blue-500 uppercase tracking-widest block border-b border-slate-100 pb-2">팀 ➡️ 그룹 매핑</label>
+                        <div className="grid grid-cols-2 gap-3">
+                          {Array.from({length: currentSetup.teamCount}, (_,i)=>i+1).map(tId => (
+                            <div key={`t-${tId}`} className="bg-slate-50 p-2.5 rounded-xl flex justify-between items-center border border-slate-100">
+                              <span className="text-xs font-black text-slate-700">{tId}팀 ➡️</span>
+                              <select value={currentSetup.teamGroups[tId] || 1} onChange={(e) => handleUpdateSetupDeep('teamGroups', tId, Number(e.target.value))} className="bg-blue-100 text-blue-700 text-xs font-black p-1.5 rounded-lg outline-none cursor-pointer border-none">
+                                {Array.from({length: currentSetup.groupCount}, (_,i)=>i+1).map(g => <option key={g} value={g}>{g}그룹</option>)}
+                              </select>
+                            </div>
+                          ))}
                         </div>
-                      ))}
-                    </div>
-                  </div>
+                      </div>
 
+                      {/* 그룹 -> 클러스터 매핑 */}
+                      <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                        <label className="text-[10px] font-black text-purple-500 uppercase tracking-widest block border-b border-slate-100 pb-2">그룹 ➡️ 클러스터 매핑</label>
+                        <div className="grid grid-cols-2 gap-3">
+                          {Array.from({length: currentSetup.groupCount}, (_,i)=>i+1).map(gId => (
+                            <div key={`g-${gId}`} className="bg-slate-50 p-2.5 rounded-xl flex justify-between items-center border border-slate-100">
+                              <span className="text-xs font-black text-slate-700">{gId}그룹 ➡️</span>
+                              <select value={currentSetup.groupClusters[gId] || 1} onChange={(e) => handleUpdateSetupDeep('groupClusters', gId, Number(e.target.value))} className="bg-purple-100 text-purple-700 text-xs font-black p-1.5 rounded-lg outline-none cursor-pointer border-none">
+                                {Array.from({length: currentSetup.clusterCount}, (_,i)=>i+1).map(c => <option key={c} value={c}>{c}클러스터</option>)}
+                              </select>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3 animate-in fade-in">
+                      <label className="text-[10px] font-black text-purple-500 uppercase tracking-widest block border-b border-slate-100 pb-2">조 ➡️ 클러스터 매핑</label>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                        {Array.from({length: currentSetup.groupCount}, (_,i)=>i+1).map(gId => (
+                          <div key={`g-${gId}`} className="bg-slate-50 p-2.5 rounded-xl flex justify-between items-center border border-slate-100">
+                            <span className="text-xs font-black text-slate-700">{gId}조 ➡️</span>
+                            <select value={currentSetup.groupToCluster[gId] || 1} onChange={(e) => handleUpdateSetupDeep('groupToCluster', gId, Number(e.target.value))} className="bg-purple-100 text-purple-700 text-xs font-black p-1.5 rounded-lg outline-none cursor-pointer border-none">
+                              {Array.from({length: currentSetup.clusterCount}, (_,i)=>i+1).map(c => <option key={c} value={c}>{c}클러스터</option>)}
+                            </select>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 동적 멤버 소속 설정 */}
                   <div className="space-y-3">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">멤버 소속 설정 (결석 처리 포함)</label>
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 max-h-[350px] overflow-y-auto pr-2 no-scrollbar p-2 bg-slate-50 rounded-2xl border border-slate-100">
                       {activeMembers.map(m => {
-                        const assignedVal = currentSetup.members[m.name] || '미정'
+                        const targetKey = currentSetup.evalMode === 'team' ? 'memberTeams' : 'members';
+                        const assignedVal = currentSetup[targetKey][m.name] || '미정';
+                        
                         return (
                           <div key={m.id} className={`p-3 rounded-xl border flex flex-col gap-2 transition-all ${assignedVal === '미정' ? 'bg-white border-slate-200' : assignedVal === '결석' ? 'bg-red-50 border-red-200' : 'bg-emerald-50 border-emerald-200 shadow-sm'}`}>
                             <span className="font-black text-sm text-slate-800 truncate">
@@ -445,12 +520,15 @@ export default function DashboardManager() {
                             </span>
                             <select 
                               value={assignedVal} 
-                              onChange={(e) => handleMemberAssign(m.name, e.target.value)} 
+                              onChange={(e) => handleUpdateSetupDeep(targetKey, m.name, e.target.value)} 
                               className={`w-full text-xs font-bold p-1.5 rounded-lg outline-none cursor-pointer shadow-sm ${assignedVal === '미정' ? 'bg-slate-100 text-slate-500' : assignedVal === '결석' ? 'bg-red-500 text-white' : 'bg-emerald-500 text-white'}`}
                             >
                               <option value="미정">미정</option>
                               <option value="결석">결석 🚨</option>
-                              {Array.from({length: currentSetup.groupCount}, (_,i)=>i+1).map(g => <option key={g} value={g}>{g}조 배정</option>)}
+                              {currentSetup.evalMode === 'team' 
+                                ? Array.from({length: currentSetup.teamCount}, (_,i)=>i+1).map(t => <option key={t} value={t}>{t}팀 배정</option>)
+                                : Array.from({length: currentSetup.groupCount}, (_,i)=>i+1).map(g => <option key={g} value={g}>{g}조 배정</option>)
+                              }
                             </select>
                           </div>
                         )
@@ -458,31 +536,78 @@ export default function DashboardManager() {
                     </div>
                   </div>
 
+                  {/* 🌟 동적 요약 현황판 */}
                   <div className="bg-slate-900 p-6 rounded-3xl space-y-4">
-                    <h3 className="text-xs font-black text-white uppercase tracking-widest border-b border-slate-700 pb-2 flex items-center gap-2"><span>📊</span> 요약: {setupWeek}주차 조 편성 현황판</h3>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {Array.from({length: currentSetup.groupCount}, (_,i)=>i+1).map(g => {
-                        const clusterNum = currentSetup.groupToCluster[g] || 1;
-                        const gMembers = activeMembers.filter(m => currentSetup.members[m.name] === String(g)).map(m => m.name);
-                        return (
-                          <div key={g} className="bg-slate-800 p-4 rounded-2xl border border-slate-700 hover:border-emerald-500 transition-colors">
-                            <div className="flex justify-between items-center mb-2">
-                              <span className="text-sm font-black text-emerald-400">{g}조</span>
-                              <span className="text-[10px] font-black bg-purple-900 text-purple-300 px-2 py-0.5 rounded">평가 {clusterNum}그룹</span>
+                    <h3 className="text-xs font-black text-white uppercase tracking-widest border-b border-slate-700 pb-2 flex items-center gap-2"><span>📊</span> 요약: {setupWeek}주차 조직도 현황판</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      
+                      {currentSetup.evalMode === 'team' ? (
+                        Array.from({length: currentSetup.groupCount}, (_,i)=>i+1).map(g => {
+                          const clusterNum = currentSetup.groupClusters[g] || 1;
+                          const teamsInGroup = Array.from({length: currentSetup.teamCount}, (_,i)=>i+1).filter(t => (currentSetup.teamGroups[t] || 1) === g);
+
+                          return (
+                            <div key={`summary-g-${g}`} className="bg-slate-800 p-4 rounded-2xl border border-slate-700 hover:border-blue-500 transition-colors">
+                              <div className="flex justify-between items-center mb-4">
+                                <span className="text-sm font-black text-blue-400">{g}그룹</span>
+                                <span className="text-[10px] font-black bg-purple-900 text-purple-300 px-2 py-0.5 rounded">클러스터 #{clusterNum}</span>
+                              </div>
+                              
+                              <div className="space-y-3">
+                                {teamsInGroup.length === 0 ? (
+                                  <p className="text-xs font-bold text-slate-500">배정된 팀 없음</p>
+                                ) : (
+                                  teamsInGroup.map(t => {
+                                    const tMembers = activeMembers.filter(m => String(currentSetup.memberTeams[m.name]) === String(t)).map(m => m.name);
+                                    return (
+                                      <div key={`summary-t-${t}`} className="pl-3 border-l-2 border-slate-600 flex flex-col gap-1">
+                                        <span className="text-xs font-black text-emerald-400">Team {t}</span>
+                                        <p className="text-[10px] font-bold text-slate-300 leading-tight">
+                                          {tMembers.length > 0 ? tMembers.join(', ') : '인원 없음'}
+                                        </p>
+                                      </div>
+                                    )
+                                  })
+                                )}
+                              </div>
                             </div>
-                            <p className="text-xs font-bold text-slate-300 leading-relaxed">
-                              {gMembers.length > 0 ? gMembers.join(', ') : '배정된 인원 없음'}
-                            </p>
-                          </div>
-                        )
-                      })}
+                          )
+                        })
+                      ) : (
+                        Array.from({length: currentSetup.groupCount}, (_,i)=>i+1).map(g => {
+                          const clusterNum = currentSetup.groupToCluster[g] || 1;
+                          const gMembers = activeMembers.filter(m => String(currentSetup.members[m.name]) === String(g)).map(m => m.name);
+                          
+                          return (
+                            <div key={`summary-ind-g-${g}`} className="bg-slate-800 p-4 rounded-2xl border border-slate-700 hover:border-emerald-500 transition-colors">
+                              <div className="flex justify-between items-center mb-2">
+                                <span className="text-sm font-black text-emerald-400">{g}조</span>
+                                <span className="text-[10px] font-black bg-purple-900 text-purple-300 px-2 py-0.5 rounded">클러스터 #{clusterNum}</span>
+                              </div>
+                              <p className="text-xs font-bold text-slate-300 leading-relaxed">
+                                {gMembers.length > 0 ? gMembers.join(', ') : '배정된 인원 없음'}
+                              </p>
+                            </div>
+                          )
+                        })
+                      )}
                       
                       <div className="bg-red-900/30 p-4 rounded-2xl border border-red-900/50 hover:border-red-500/50 transition-colors">
-                        <span className="text-sm font-black text-red-400 block mb-2">🚨 결석 및 미정 현황</span>
-                        <p className="text-xs font-bold text-red-200 leading-relaxed">
-                          [결석]: {activeMembers.filter(m => currentSetup.members[m.name] === '결석').map(m=>m.name).join(', ') || '없음'}
-                          <br/><span className="text-slate-400 mt-1 block">[미정]: {activeMembers.filter(m => !currentSetup.members[m.name] || currentSetup.members[m.name] === '미정').map(m=>m.name).join(', ') || '없음'}</span>
-                        </p>
+                        <span className="text-sm font-black text-red-400 block mb-3">🚨 결석 및 미정 현황</span>
+                        <div className="space-y-3">
+                          <div className="pl-3 border-l-2 border-red-800 flex flex-col gap-1">
+                            <span className="text-[10px] font-black text-red-300">결석 인원</span>
+                            <p className="text-[10px] font-bold text-slate-300 leading-tight">
+                              {activeMembers.filter(m => currentSetup[currentSetup.evalMode === 'team' ? 'memberTeams' : 'members'][m.name] === '결석').map(m=>m.name).join(', ') || '없음'}
+                            </p>
+                          </div>
+                          <div className="pl-3 border-l-2 border-slate-700 flex flex-col gap-1">
+                            <span className="text-[10px] font-black text-slate-400">미정 인원</span>
+                            <p className="text-[10px] font-bold text-slate-400 leading-tight">
+                              {activeMembers.filter(m => !currentSetup[currentSetup.evalMode === 'team' ? 'memberTeams' : 'members'][m.name] || currentSetup[currentSetup.evalMode === 'team' ? 'memberTeams' : 'members'][m.name] === '미정').map(m=>m.name).join(', ') || '없음'}
+                            </p>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>
