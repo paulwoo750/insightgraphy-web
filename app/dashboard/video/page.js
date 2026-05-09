@@ -101,30 +101,30 @@ export default function VideoRoom() {
     setTargetWeek(initialWeek)
   }
 
-  // 🌟 타겟 생성 로직 (주차 변경 시 팀/개인 구분)
+  // 🌟 타겟 생성 로직 (Dashboard 세팅의 evalMode 기반으로 팀/개인 렌더링)
   useEffect(() => {
     let targets = [];
     const setup = weeklySetup[targetWeek] || {};
+    const evalMode = setup.evalMode || 'individual'; // 대시보드에서 설정한 모드 (기본은 개인)
+    
     const mTeams = setup.memberTeams || setup.members || {};
-    const tGroups = setup.teamGroups || setup.groupToCluster || {};
+    const tGroups = setup.teamGroups || setup.groupToCluster || {}; // 개인일 땐 members 값이 조(group)
 
-    const teamMap = {};
-    const absentMembers = [];
+    if (evalMode === 'team') {
+      // 🌟 [팀 발표 모드]
+      const teamMap = {};
+      const absentMembers = [];
 
-    Object.keys(mTeams).forEach(name => {
-      const t = mTeams[name];
-      if (t === '결석') {
-        absentMembers.push(name);
-      } else if (t !== '미정' && !isNaN(Number(t))) {
-        if (!teamMap[t]) teamMap[t] = [];
-        teamMap[t].push(name);
-      }
-    });
+      Object.keys(mTeams).forEach(name => {
+        const t = mTeams[name];
+        if (t === '결석') {
+          absentMembers.push(name);
+        } else if (t !== '미정' && !isNaN(Number(t))) {
+          if (!teamMap[t]) teamMap[t] = [];
+          teamMap[t].push(name);
+        }
+      });
 
-    // 🌟 1명 이상인 팀이 하나라도 있으면 팀 발표 모드로 간주
-    const isTeamMode = Object.values(teamMap).some(members => members.length > 1);
-
-    if (isTeamMode) {
       Object.keys(teamMap).forEach(tId => {
         targets.push({
           id: `Team ${tId}`,
@@ -139,13 +139,16 @@ export default function VideoRoom() {
           group_id: null
         });
       });
+      
     } else {
+      // 🌟 [개인 발표 모드]
       Object.keys(mTeams).forEach(name => {
-        if (mTeams[name] !== '미정') {
+        const gId = mTeams[name];
+        if (gId !== '미정') {
           targets.push({
             id: name,
-            label: name + (mTeams[name] === '결석' ? ' (결석자 보강)' : ''),
-            group_id: tGroups[mTeams[name]] || null
+            label: name + (gId === '결석' ? ' (결석자 보강)' : ''),
+            group_id: gId === '결석' ? null : Number(gId)
           });
         }
       });
@@ -155,12 +158,10 @@ export default function VideoRoom() {
       targets = activeMembers.map(m => ({ id: m.name, label: m.name, group_id: null }));
     }
 
-    // 이름 순 및 팀 번호 순 정렬
     targets.sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
     setUploadTargets(targets);
     setSelectedTargetId('');
   }, [targetWeek, weeklySetup, activeMembers]);
-
 
   const formatDate = (dateStr) => {
     if (!dateStr) return '';
@@ -194,7 +195,6 @@ export default function VideoRoom() {
     }
   }
 
-  // 🌟 영상 등록 (타겟 ID 기반)
   const handleRegisterYoutube = async () => {
     if (!selectedTargetId || !ytUrl.trim()) return alert("업로드 대상과 유튜브 링크를 모두 입력해줘! 🔗")
     
@@ -202,7 +202,6 @@ export default function VideoRoom() {
     const currentTopic = weekTopics[targetWeek] || (targetWeek === 0 ? 'OT 및 자유 주제' : '자유 주제')
     const target = uploadTargets.find(t => t.id === selectedTargetId);
     
-    // ex) "5W (주제) Team 1 발표영상" 또는 "5W (주제) 홍길동 발표영상"
     const autoTitle = `${targetWeek}W (${currentTopic}) ${target.id} 발표영상`; 
     const myGroup = target.group_id;
 
@@ -215,7 +214,7 @@ export default function VideoRoom() {
       week: targetWeek,
       file_category: 'video', 
       is_archive: false, 
-      uploader: target.id, // 'Team 1' 또는 '홍길동'
+      uploader: target.id,
       storage_path: 'youtube',
       semester: currentSemester,
       is_late: isLate,
@@ -232,7 +231,6 @@ export default function VideoRoom() {
     setUploading(false)
   }
 
-  // 🌟 영상 권한 검증 및 데이터 호출
   const isVideoOwner = (file, userName) => {
     if (!file || !userName) return false;
     if (file.uploader === userName) return true;
@@ -261,7 +259,7 @@ export default function VideoRoom() {
       query = query.eq('presenter_name', file.uploader);
     }
 
-    const { data: pData } = await query.limit(1); // 다수일 경우 1개 대표 ID 사용
+    const { data: pData } = await query.limit(1); 
     if (pData && pData.length > 0) {
       const { data: myDraft } = await supabase.from('scores').select('*').eq('presentation_id', pData[0].id).eq('voter_name', userName).single();
       if (myDraft) setDraftFeedback(myDraft.details?.qualitative || null);
@@ -331,7 +329,6 @@ export default function VideoRoom() {
 
   if (!user) return <div className="p-8 text-center font-bold text-slate-500">데이터 로딩 중...</div>
 
-  // 🌟 피드백 필터링 로직 업그레이드
   const selfFeedbacks = comments.filter(c => isVideoOwner(viewingFile, c.user_name));
   const peerFeedbacks = comments.filter(c => !isVideoOwner(viewingFile, c.user_name));
   const loggedInUserName = user?.user_metadata?.name;
@@ -347,7 +344,6 @@ export default function VideoRoom() {
     maxGroup = Number(weeklySetup[selectedWeek].groupCount)
   }
 
-  // 🌟 Dynamic Group 파악
   const getDynamicGroup = (file) => {
     if (file.group_id) return file.group_id;
     const setup = weeklySetup[file.week] || {};
@@ -356,7 +352,7 @@ export default function VideoRoom() {
        return setup.teamGroups?.[tId] || null;
     } else {
        const tId = setup.memberTeams?.[file.uploader] || setup.members?.[file.uploader];
-       if (tId && !isNaN(Number(tId))) return setup.teamGroups?.[tId] || null;
+       if (tId && !isNaN(Number(tId))) return setup.teamGroups?.[tId] || tId; // 개인모드는 tId가 곧 gId
     }
     return null;
   }
@@ -382,7 +378,6 @@ export default function VideoRoom() {
 
   return (
     <div className="bg-white min-h-screen text-slate-900 font-sans pb-32">
-      {/* 최상단 GNB 스타일의 탭 네비게이션 */}
       <div className="border-b border-slate-200 bg-white sticky top-0 z-20">
         <div className="max-w-[1200px] mx-auto flex items-end px-6 md:px-8 pt-4 overflow-x-auto no-scrollbar">
           <Link href="/home" className="pb-4 pr-6 text-sm font-extrabold text-slate-400 hover:text-red-800 transition-colors flex items-center shrink-0">
@@ -407,7 +402,6 @@ export default function VideoRoom() {
           <p className="text-sm font-medium text-slate-500 mt-2">주차별 발표 영상을 확인하고 피드백을 진행합니다.</p>
         </div>
 
-        {/* 컨트롤 패널 */}
         <div className="border-y border-slate-200 py-6 flex flex-col xl:flex-row justify-between items-center gap-6">
           <div className="flex flex-col gap-2 w-full xl:w-auto">
             <div className="flex items-center gap-4">
@@ -470,9 +464,7 @@ export default function VideoRoom() {
         </div>
       </header>
 
-      {/* 레이아웃: 사이드바 + 리스트 보드 */}
       <div className="max-w-[1200px] mx-auto px-6 md:px-8 flex flex-col lg:flex-row gap-10 items-start">
-        
         <aside className="w-full lg:w-[200px] shrink-0 sticky top-24 hidden lg:flex flex-col">
           <h3 className="text-xs font-extrabold text-slate-400 uppercase tracking-widest mb-4 border-b border-slate-200 pb-2">Select Week</h3>
           <div className="flex flex-col gap-2 max-h-[60vh] overflow-y-auto no-scrollbar py-2">
@@ -565,7 +557,6 @@ export default function VideoRoom() {
         </main>
       </div>
 
-      {/* 파일 이름 수정 모달 */}
       {editItem && (
         <div className="fixed inset-0 bg-slate-900/60 flex items-center justify-center p-4 z-[110]">
           <div className="bg-white p-8 w-full max-w-sm shadow-xl border border-slate-300 rounded-sm">
@@ -579,7 +570,6 @@ export default function VideoRoom() {
         </div>
       )}
 
-      {/* 🌟 뷰어 모달 */}
       {viewingFile && (
         <div className="fixed inset-0 bg-white/95 backdrop-blur-sm flex items-center justify-center p-4 z-[100]">
           <div className="bg-white w-full max-w-[1500px] h-[90vh] flex flex-col lg:flex-row overflow-hidden relative shadow-2xl border border-slate-400 rounded-sm">
@@ -590,7 +580,6 @@ export default function VideoRoom() {
                 <iframe className="w-full h-full" src={`https://www.youtube.com/embed/${getYoutubeId(viewingFile.file_url)}?autoplay=1`} frameBorder="0" allowFullScreen></iframe>
               </div>
 
-              {/* 임시저장 노트 */}
               {draftFeedback && (
                 <div className="flex-1 overflow-y-auto p-8 bg-[#0f172a]">
                   <h3 className="text-sm font-extrabold text-emerald-400 uppercase tracking-widest mb-6 pb-2 border-b border-slate-700">
@@ -662,7 +651,6 @@ export default function VideoRoom() {
                 </div>
               </div>
 
-              {/* 작성 폼 */}
               <div className="p-6 border-t border-slate-300 bg-slate-50/50 max-h-[40vh] overflow-y-auto shrink-0">
                 <h4 className="text-sm font-extrabold text-slate-800 mb-4 border-l-4 border-red-700 pl-2">피드백 작성</h4>
                 <div className="space-y-5">
