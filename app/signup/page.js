@@ -11,12 +11,12 @@ export default function Signup() {
   const [name, setName] = useState('')
   const [studentId, setStudentId] = useState('')
   const [secretCode, setSecretCode] = useState('')
-  const [loading, setLoading] = useState(false) 
+  const [loading, setLoading] = useState(false)
   const router = useRouter()
 
   const handleSignup = async (e) => {
     e.preventDefault()
-    setLoading(true) 
+    setLoading(true)
 
     // 1. 학회원 전용 비밀 코드 확인
     if (secretCode !== "IG2012") {
@@ -49,10 +49,10 @@ export default function Signup() {
     const { error: profileError } = await supabase
       .from('profiles')
       .insert([
-        { 
-          id: data.user.id, 
-          name: name, 
-          student_id: studentId 
+        {
+          id: data.user.id,
+          name: name,
+          student_id: studentId
         }
       ])
 
@@ -62,50 +62,56 @@ export default function Signup() {
     } else {
       // 가입 성공 후 알림 및 로그인 페이지로 이동
       alert("인사이트그라피의 식구가 된 걸 환영해! 🎉 이메일함에서 인증 버튼을 누른 뒤 다시 로그인해줘.")
-      router.push('/login') 
+      router.push('/login')
     }
-    
-    setLoading(false) 
+
+    setLoading(false)
   }
 
+  const lineInput = "w-full border-b border-slate-300 py-2.5 text-sm font-bold outline-none focus:border-teal-700 bg-transparent transition-colors placeholder:font-medium placeholder:text-slate-300"
+
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center p-6 bg-slate-50 text-slate-900 font-sans">
-      <div className="w-full max-w-md bg-white p-10 rounded-[2.5rem] shadow-xl border border-slate-100">
-        <div className="text-center mb-10">
-          <h1 className="text-4xl font-black mb-3 text-blue-800 tracking-tight">IG 가입하기 🚀</h1>
-          <p className="text-slate-400 font-medium text-sm">인사이트그라피의 새로운 가족이 되어주세요.</p>
+    <div className="min-h-screen bg-white text-slate-900 font-sans flex items-center justify-center px-6 py-16">
+      <div className="w-full max-w-sm">
+
+        {/* 브랜드 */}
+        <div className="mb-12">
+          <Link href="/" className="text-2xl font-black text-teal-800 tracking-tighter">InsightGraphy</Link>
+          <div className="w-10 h-[3px] bg-teal-800 mt-3"></div>
+          <h1 className="text-xl font-extrabold text-slate-900 mt-8">회원가입</h1>
+          <p className="text-sm font-medium text-slate-400 mt-1">인사이트그라피의 새로운 가족이 되어주세요.</p>
         </div>
-        
-        <form onSubmit={handleSignup} className="flex flex-col gap-5">
-          <div className="space-y-3">
-            <label className="text-xs font-black text-slate-400 uppercase ml-1 tracking-widest">Account</label>
-            <input type="email" placeholder="이메일 주소" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full p-4 border-2 border-slate-50 bg-slate-50 rounded-2xl focus:bg-white focus:border-blue-500 outline-none transition-all" required />
-            <input type="password" placeholder="비밀번호" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full p-4 border-2 border-slate-50 bg-slate-50 rounded-2xl focus:bg-white focus:border-blue-500 outline-none transition-all" required />
+
+        <form onSubmit={handleSignup} className="flex flex-col gap-9">
+          <div className="flex flex-col gap-6">
+            <p className="text-[10px] font-black text-teal-700 uppercase tracking-widest border-b border-teal-800 pb-2">Account</p>
+            <input type="email" placeholder="이메일 주소" value={email} onChange={(e) => setEmail(e.target.value)} className={lineInput} required />
+            <input type="password" placeholder="비밀번호" value={password} onChange={(e) => setPassword(e.target.value)} className={lineInput} required />
           </div>
 
-          <div className="space-y-3">
-            <label className="text-xs font-black text-slate-400 uppercase ml-1 tracking-widest">Member Info</label>
-            <input type="text" placeholder="성함 (실명)" value={name} onChange={(e) => setName(e.target.value)} className="w-full p-4 border-2 border-slate-50 bg-slate-50 rounded-2xl focus:bg-white focus:border-blue-500 outline-none transition-all" required />
-            <input type="text" placeholder="기수 (예: 28기)" value={studentId} onChange={(e) => setStudentId(e.target.value)} className="w-full p-4 border-2 border-slate-50 bg-slate-50 rounded-2xl focus:bg-white focus:border-blue-500 outline-none transition-all" required />
+          <div className="flex flex-col gap-6">
+            <p className="text-[10px] font-black text-teal-700 uppercase tracking-widest border-b border-teal-800 pb-2">Member Info</p>
+            <input type="text" placeholder="성함 (실명)" value={name} onChange={(e) => setName(e.target.value)} className={lineInput} required />
+            <input type="text" placeholder="기수 (예: 28기)" value={studentId} onChange={(e) => setStudentId(e.target.value)} className={lineInput} required />
           </div>
 
-          <div className="space-y-3">
-            <label className="text-xs font-black text-red-400 uppercase ml-1 tracking-widest">Security Code</label>
-            <input type="text" placeholder="비밀 코드 입력" value={secretCode} onChange={(e) => setSecretCode(e.target.value)} className="w-full p-4 border-2 border-red-50 bg-red-50 rounded-2xl focus:bg-white focus:border-red-500 outline-none transition-all text-red-600 font-bold" required />
+          <div className="flex flex-col gap-6">
+            <p className="text-[10px] font-black text-red-500 uppercase tracking-widest border-b border-red-400 pb-2">Security Code</p>
+            <input type="text" placeholder="학회원 전용 비밀 코드" value={secretCode} onChange={(e) => setSecretCode(e.target.value)} className="w-full border-b border-red-300 py-2.5 text-sm font-bold text-red-600 outline-none focus:border-red-500 bg-transparent transition-colors placeholder:font-medium placeholder:text-red-200" required />
           </div>
-          
-          <button 
-            type="submit" 
+
+          <button
+            type="submit"
             disabled={loading}
-            className="mt-4 p-4 bg-blue-600 text-white rounded-2xl hover:bg-blue-700 font-black shadow-lg shadow-blue-100 transition-all active:scale-95 disabled:bg-slate-300"
+            className="mt-2 py-3.5 bg-teal-800 text-white font-bold text-sm tracking-wide hover:bg-teal-900 transition-colors disabled:bg-slate-300 active:scale-[0.99]"
           >
             {loading ? "가족이 되는 중..." : "인사이트그라피 시작하기"}
           </button>
         </form>
 
-        <div className="mt-10 pt-8 border-t border-slate-50 text-center text-sm text-slate-400">
+        <div className="mt-10 pt-6 border-t border-slate-200 text-center text-sm text-slate-400 font-medium">
           이미 식구이신가요?{' '}
-          <Link href="/login" className="text-blue-600 font-black hover:underline">
+          <Link href="/login" className="text-teal-800 font-bold hover:underline underline-offset-4">
             로그인 하러가기
           </Link>
         </div>

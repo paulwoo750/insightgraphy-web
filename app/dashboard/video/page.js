@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
+import InternalNav from '@/app/components/InternalNav'
 
 export default function VideoRoom() {
   const router = useRouter()
@@ -40,10 +41,28 @@ export default function VideoRoom() {
 
   const weeks = Array.from({ length: totalWeeks + 1 }, (_, i) => i)
 
+  // 🌟 방학학기: 정규세션/평일세션 모드
+  const [semesterType, setSemesterType] = useState('regular')
+  const [sessionMode, setSessionMode] = useState('regular') // 'regular' | 'weekday'
+  const fileCategory = sessionMode === 'weekday' ? 'weekday_video' : 'video'
+
+  // 🌟 유저가 배정된 조의 평일세션 진행 날짜 (YYYY-MM-DD)
+  const myWeekdayDate = (week) => {
+    const uploaderName = user?.user_metadata?.name
+    const g = weeklySetup[week]?.weekdayMembers?.[uploaderName] ?? weeklySetup[week]?.members?.[uploaderName]
+    const grp = (g && g !== '미정' && g !== '결석') ? Number(g) : null
+    return grp ? (weeklySetup[week]?.weekday?.[grp]?.date || null) : null
+  }
+  // 등록 마감: 평일=조 진행일 자정, 정규=영상 마감
+  const activeUploadDeadline = (week) => {
+    if (sessionMode === 'weekday') { const d = myWeekdayDate(week); return d ? `${d}T23:59` : null }
+    return deadlines[week]?.video || null
+  }
+
   useEffect(() => {
     const checkUser = async () => {
       const { data: { session } } = await supabase.auth.getSession()
-      if (!session) { router.push('/login') } 
+      if (!session) { router.push('/login') }
       else { setUser(session.user); fetchFiles(); fetchSystemData(); }
     }
     checkUser()
@@ -60,8 +79,10 @@ export default function VideoRoom() {
       const topics = configData.find(c => c.key === 'week_topics')?.value
       const wks = configData.find(c => c.key === 'total_weeks')?.value
       const setupStr = configData.find(c => c.key === 'weekly_setup')?.value
+      const sType = configData.find(c => c.key === 'semester_type')?.value
 
       if (sem) setCurrentSemester(sem)
+      if (sType) setSemesterType(sType)
       if (topics) setWeekTopics(JSON.parse(topics))
       if (wks) setTotalWeeks(Number(wks))
       if (setupStr) setWeeklySetup(JSON.parse(setupStr))
@@ -106,7 +127,25 @@ export default function VideoRoom() {
     let targets = [];
     const setup = weeklySetup[targetWeek] || {};
     const evalMode = setup.evalMode || 'individual'; // 대시보드에서 설정한 모드 (기본은 개인)
-    
+
+    // 🌟 평일세션 모드: 항상 개인 단위 + 평일 전용 조 편성 기준
+    if (sessionMode === 'weekday') {
+      const wdMembers = (setup.weekdayMembers && Object.keys(setup.weekdayMembers).length) ? setup.weekdayMembers : (setup.members || {});
+      Object.keys(wdMembers).forEach(name => {
+        const gId = wdMembers[name];
+        if (gId !== '미정') {
+          targets.push({ id: name, label: name + (gId === '결석' ? ' (불참)' : ` · ${gId}조`), group_id: gId === '결석' ? null : Number(gId) });
+        }
+      });
+      if (targets.length === 0 && activeMembers.length > 0) {
+        targets = activeMembers.map(m => ({ id: m.name, label: m.name, group_id: null }));
+      }
+      targets.sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
+      setUploadTargets(targets);
+      setSelectedTargetId('');
+      return;
+    }
+
     const mTeams = setup.memberTeams || setup.members || {};
     const tGroups = setup.teamGroups || setup.groupToCluster || {}; // 개인일 땐 members 값이 조(group)
 
@@ -161,7 +200,7 @@ export default function VideoRoom() {
     targets.sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
     setUploadTargets(targets);
     setSelectedTargetId('');
-  }, [targetWeek, weeklySetup, activeMembers]);
+  }, [targetWeek, weeklySetup, activeMembers, sessionMode]);
 
   const formatDate = (dateStr) => {
     if (!dateStr) return '';
@@ -181,7 +220,7 @@ export default function VideoRoom() {
   }
 
   const fetchFiles = async () => {
-    const { data } = await supabase.from('files_metadata').select('*').eq('file_category', 'video').order('created_at', { ascending: false })
+    const { data } = await supabase.from('files_metadata').select('*').in('file_category', ['video', 'weekday_video']).order('created_at', { ascending: false })
     if (data) setFiles(data)
   }
 
@@ -202,17 +241,18 @@ export default function VideoRoom() {
     const currentTopic = weekTopics[targetWeek] || (targetWeek === 0 ? 'OT 및 자유 주제' : '자유 주제')
     const target = uploadTargets.find(t => t.id === selectedTargetId);
     
-    const autoTitle = `${targetWeek}W (${currentTopic}) ${target.id} 발표영상`; 
+    const sessionTag = sessionMode === 'weekday' ? ' [평일세션]' : ''
+    const autoTitle = `${targetWeek}W${sessionTag} (${currentTopic}) ${target.id} 발표영상`;
     const myGroup = target.group_id;
 
-    const deadline = deadlines[targetWeek]?.video
+    const deadline = activeUploadDeadline(targetWeek)
     const isLate = deadline ? new Date() > new Date(deadline) : false
 
-    const { error } = await supabase.from('files_metadata').insert([{ 
-      file_name: autoTitle, 
-      file_url: ytUrl.trim(), 
+    const { error } = await supabase.from('files_metadata').insert([{
+      file_name: autoTitle,
+      file_url: ytUrl.trim(),
       week: targetWeek,
-      file_category: 'video', 
+      file_category: fileCategory,
       is_archive: false, 
       uploader: target.id,
       storage_path: 'youtube',
@@ -334,14 +374,30 @@ export default function VideoRoom() {
   const loggedInUserName = user?.user_metadata?.name;
   const isMeVideoOwner = isVideoOwner(viewingFile, loggedInUserName);
 
-  const getQualitativeDeadline = (weekNum) => deadlines[weekNum]?.vote_feedback || deadlines[weekNum]?.feedback;
+  const getQualitativeDeadline = (weekNum) => {
+    // 평일세션 정성 피드백 = 조 진행일 익일 자정 (자동 계산)
+    if (sessionMode === 'weekday') {
+      const d = myWeekdayDate(weekNum)
+      if (!d) return null
+      const nd = new Date(`${d}T23:59`); nd.setDate(nd.getDate() + 1)
+      return nd.toISOString()
+    }
+    return deadlines[weekNum]?.vote_feedback || deadlines[weekNum]?.feedback;
+  }
+  const getSelfDeadline = (weekNum) => {
+    if (sessionMode === 'weekday') return deadlines[weekNum]?.weekday_self;
+    return deadlines[weekNum]?.video_comment;
+  }
 
-  const filesThisWeek = files.filter(f => f.week === selectedWeek)
+  const filesThisWeek = files.filter(f => f.week === selectedWeek && (f.file_category || 'video') === fileCategory)
   const groupedFiles = {}
   
   let maxGroup = 0
-  if (weeklySetup[selectedWeek] && weeklySetup[selectedWeek].groupCount) {
-    maxGroup = Number(weeklySetup[selectedWeek].groupCount)
+  if (weeklySetup[selectedWeek]) {
+    const gc = sessionMode === 'weekday'
+      ? (weeklySetup[selectedWeek].weekdayGroupCount || weeklySetup[selectedWeek].groupCount)
+      : weeklySetup[selectedWeek].groupCount
+    if (gc) maxGroup = Number(gc)
   }
 
   const getDynamicGroup = (file) => {
@@ -378,28 +434,26 @@ export default function VideoRoom() {
 
   return (
     <div className="bg-white min-h-screen text-slate-900 font-sans pb-32">
-      <div className="border-b border-slate-200 bg-white sticky top-0 z-20">
-        <div className="max-w-[1200px] mx-auto flex items-end px-6 md:px-8 pt-4 overflow-x-auto no-scrollbar">
-          <Link href="/home" className="pb-4 pr-6 text-sm font-extrabold text-slate-400 hover:text-red-800 transition-colors flex items-center shrink-0">
-            HOME
-          </Link>
-          <div className="w-px h-4 bg-slate-300 mx-2 mb-4 shrink-0"></div>
-          <Link href="/dashboard/proposal" className="pb-4 px-6 text-sm font-semibold text-slate-400 hover:text-slate-800 transition-colors shrink-0">
-            기획서 📝
-          </Link>
-          <Link href="/dashboard/slide" className="pb-4 px-6 text-sm font-semibold text-slate-400 hover:text-slate-800 transition-colors shrink-0">
-            슬라이드 🖼️
-          </Link>
-          <Link href="/dashboard/video" className="pb-4 px-6 text-sm font-extrabold text-red-800 border-b-2 border-red-800 transition-colors shrink-0">
-            발표영상 🎬
-          </Link>
-        </div>
-      </div>
+      <InternalNav />
 
       <header className="max-w-[1200px] mx-auto px-6 md:px-8 mt-12 mb-10">
-        <div className="mb-8">
-          <h1 className="text-3xl font-extrabold text-red-800 tracking-tight">Video Board</h1>
-          <p className="text-sm font-medium text-slate-500 mt-2">주차별 발표 영상을 확인하고 피드백을 진행합니다.</p>
+        <div className="mb-8 flex flex-col md:flex-row md:items-end md:justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-extrabold text-teal-800 tracking-tight">Video Board</h1>
+            <p className="text-sm font-medium text-slate-500 mt-2">주차별 발표 영상을 확인하고 피드백을 진행합니다.</p>
+          </div>
+
+          {/* 🌟 방학학기: 정규/평일 세션 전환 */}
+          {semesterType === 'vacation' && (
+            <div className="flex border border-slate-300 w-fit">
+              <button onClick={() => setSessionMode('regular')} className={`px-5 py-2 text-xs font-bold transition-colors ${sessionMode === 'regular' ? 'bg-teal-800 text-white' : 'bg-white text-slate-500 hover:text-teal-800'}`}>
+                📚 정규세션
+              </button>
+              <button onClick={() => setSessionMode('weekday')} className={`px-5 py-2 text-xs font-bold transition-colors border-l border-slate-300 ${sessionMode === 'weekday' ? 'bg-teal-800 text-white' : 'bg-white text-slate-500 hover:text-teal-800'}`}>
+                🏖️ 평일세션
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="border-y border-slate-200 py-6 flex flex-col xl:flex-row justify-between items-center gap-6">
@@ -419,8 +473,8 @@ export default function VideoRoom() {
             
             <div className="flex flex-wrap gap-x-4 gap-y-2 mt-2">
               <p className="text-xs font-medium text-slate-500 flex items-center gap-1.5">
-                <span className="font-bold text-slate-400">등록 마감 |</span>
-                <span className="text-slate-800">{deadlines[targetWeek]?.video ? formatDate(deadlines[targetWeek].video) : '미설정'}</span>
+                <span className="font-bold text-slate-400">{sessionMode === 'weekday' ? '등록 마감 (내 조 진행일) |' : '등록 마감 |'}</span>
+                <span className="text-slate-800">{activeUploadDeadline(targetWeek) ? formatDate(activeUploadDeadline(targetWeek)) : '미설정'}</span>
               </p>
               <p className="text-xs font-medium text-slate-500 flex items-center gap-1.5">
                 <span className="font-bold text-slate-400">조원 평가 |</span>
@@ -428,8 +482,11 @@ export default function VideoRoom() {
               </p>
               <p className="text-xs font-medium text-slate-500 flex items-center gap-1.5">
                 <span className="font-bold text-slate-400">본인 평가 |</span>
-                <span className="text-slate-800">{deadlines[targetWeek]?.video_comment ? formatDate(deadlines[targetWeek].video_comment) : '미설정'}</span>
+                <span className="text-slate-800">{getSelfDeadline(targetWeek) ? formatDate(getSelfDeadline(targetWeek)) : '미설정'}</span>
               </p>
+              {sessionMode === 'weekday' && (
+                <p className="text-xs font-bold text-teal-700 w-full">평일세션 영상: 정량평가·베스트 프레젠터 없이 정성/셀프 피드백만 진행합니다.</p>
+              )}
             </div>
           </div>
 

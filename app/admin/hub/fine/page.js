@@ -35,13 +35,16 @@ export default function FineAdmin() {
       let currentPenalties = {}
       let weeklySetup = {}
       let totalWeeks = 12
+      let semesterType = 'regular'
       if (configData) {
         const penVal = configData.find(c => c.key === 'penalty_rules')?.value
         const wsVal = configData.find(c => c.key === 'weekly_setup')?.value
         const tWks = configData.find(c => c.key === 'total_weeks')?.value
+        const sType = configData.find(c => c.key === 'semester_type')?.value
         if (penVal) currentPenalties = JSON.parse(penVal)
         if (wsVal) weeklySetup = JSON.parse(wsVal)
         if (tWks) totalWeeks = Number(tWks)
+        if (sType) semesterType = sType
         setPenalties(currentPenalties)
       }
 
@@ -304,6 +307,82 @@ export default function FineAdmin() {
         }) 
       }
 
+      // 🌟 [평일세션 스캔] 방학학기 & 해당 주 평일세션 진행 시, 조별 진행일 자정 기준으로
+      // 발표자료(weekday_slide)·영상(weekday_video) 지각/미제출 벌금 부과 (슬라이드 규정 적용)
+      if (semesterType === 'vacation') {
+        for (let w = 1; w <= totalWeeks; w++) {
+          const wSetup = weeklySetup[w] || {}
+          const wdMembers = (wSetup.weekdayMembers && Object.keys(wSetup.weekdayMembers).length) ? wSetup.weekdayMembers : (wSetup.members || {})
+          const wd = wSetup.weekday || {}
+
+          const getGrp = (name) => { const g = wdMembers[name]; return (g && g !== '미정' && g !== '결석') ? Number(g) : null }
+
+          // 이번 주 평일세션 조별 로스터 { [조]: [이름...] }
+          const roster = {}
+          activeMembers.forEach(m => { const grp = getGrp(m.name); if (grp) (roster[grp] = roster[grp] || []).push(m.name) })
+
+          activeMembers.forEach(m => {
+            const userName = m.name
+            const clearAll = () => {
+              processFine(userName, w, '평일세션 발표자료 지각/미제출', 0, '')
+              processFine(userName, w, '평일세션 영상 지각/미제출', 0, '')
+              processFine(userName, w, '평일세션 정성 피드백 페널티', 0, '')
+            }
+
+            if (!wSetup.weekdaySession) return clearAll()
+
+            const grp = getGrp(userName)
+            const dateStr = grp ? wd[grp]?.date : null
+            if (!dateStr) return clearAll()
+
+            const dlTime = new Date(`${dateStr}T23:59`).getTime()      // 발표자료·영상 마감 = 진행일 자정
+            const fbDlTime = dlTime + 24 * 60 * 60 * 1000              // 정성 피드백 마감 = 익일 자정
+            if (dlTime >= now) return clearAll() // 아직 진행 전
+
+            const calcSlideLate = (fileTime) => {
+              const diffMin = Math.floor((fileTime - dlTime) / 60000)
+              return { fine: Math.min(currentPenalties.slideMax || 3000, (currentPenalties.slideInitial || 1000) + Math.floor(diffMin / 60) * (currentPenalties.slideHourly || 500)), diffMin }
+            }
+
+            // [A] 발표자료
+            const myS = files.find(f => f.week === w && f.file_category === 'weekday_slide' && f.uploader === userName)
+            let sFine = 0, sReason = ''
+            if (!myS) { sFine = currentPenalties.slideMiss || 10000; sReason = '평일세션 발표자료 미제출' }
+            else if (new Date(myS.created_at).getTime() > dlTime) { const r = calcSlideLate(new Date(myS.created_at).getTime()); sFine = r.fine; sReason = `평일세션 발표자료 ${r.diffMin}분 지각` }
+            processFine(userName, w, '평일세션 발표자료 지각/미제출', sFine, sReason)
+
+            // [B] 영상
+            const myV = files.find(f => f.week === w && f.file_category === 'weekday_video' && f.uploader === userName)
+            let vFine = 0, vReason = ''
+            if (!myV) { vFine = currentPenalties.slideMiss || 10000; vReason = '평일세션 영상 미제출' }
+            else if (new Date(myV.created_at).getTime() > dlTime) { const r = calcSlideLate(new Date(myV.created_at).getTime()); vFine = r.fine; vReason = `평일세션 영상 ${r.diffMin}분 지각` }
+            processFine(userName, w, '평일세션 영상 지각/미제출', vFine, vReason)
+
+            // [C] 조원 간 정성 피드백 (마감이 지났을 때만 판정)
+            let fbFine = 0, fbReason = ''
+            if (fbDlTime < now) {
+              const teammates = (roster[grp] || []).filter(n => n !== userName)
+              const targetVids = files.filter(f => f.week === w && f.file_category === 'weekday_video' && teammates.includes(f.uploader))
+              let missed = 0, maxLateMin = 0
+              targetVids.forEach(tv => {
+                const myComm = comments.find(c => c.file_id === tv.id && c.user_name === userName)
+                if (!myComm) missed++
+                else if (new Date(myComm.created_at).getTime() > fbDlTime) {
+                  const diffMin = Math.floor((new Date(myComm.created_at).getTime() - fbDlTime) / 60000)
+                  if (diffMin > maxLateMin) maxLateMin = diffMin
+                }
+              })
+              if (targetVids.length > 0 && missed > 0) { fbFine = currentPenalties.fbMiss || 3000; fbReason = `평일세션 정성 피드백 누락 (${missed}건 미제출)` }
+              else if (maxLateMin > 0) {
+                if (maxLateMin >= 60) { fbFine = currentPenalties.fbMiss || 3000; fbReason = '평일세션 정성 피드백 1시간 이상 지각' }
+                else { fbFine = (currentPenalties.fbInitial || 1000) + Math.floor(maxLateMin / 10) * (currentPenalties.fbPer10Min || 300); fbReason = `평일세션 정성 피드백 최대 ${maxLateMin}분 지각` }
+              }
+            }
+            processFine(userName, w, '평일세션 정성 피드백 페널티', fbFine, fbReason)
+          })
+        }
+      }
+
       const finalDeletes = [...new Set([...finesToDelete, ...duplicateIdsToDelete])]
       
       if (finalDeletes.length > 0) {
@@ -382,7 +461,7 @@ export default function FineAdmin() {
         
         <header className="border-b border-slate-200 pb-6 flex flex-col md:flex-row md:justify-between md:items-end gap-4">
           <div>
-            <Link href="/admin/hub" className="text-xs font-black text-slate-400 hover:text-blue-600 uppercase tracking-widest mb-2 block transition-colors">← Back to Hub</Link>
+            <Link href="/admin/hub" className="text-xs font-black text-slate-400 hover:text-teal-600 uppercase tracking-widest mb-2 block transition-colors">← Back to Hub</Link>
             <h1 className="text-4xl font-black uppercase tracking-tighter text-slate-800 flex items-center gap-3">
               <span className="text-4xl">📊</span> Attendance & Fines
             </h1>
@@ -390,11 +469,11 @@ export default function FineAdmin() {
           </div>
           
           <div className="flex items-center gap-3">
-            {isScanning && <div className="bg-blue-100 text-blue-600 px-4 py-2 rounded-xl text-xs font-black animate-pulse">자동 스캔 동기화 중... 🔍</div>}
+            {isScanning && <div className="bg-teal-100 text-teal-600 px-4 py-2 rounded-none text-xs font-black animate-pulse">자동 스캔 동기화 중... 🔍</div>}
             <button 
               onClick={fetchAndScanData} 
               disabled={isScanning} 
-              className="bg-slate-900 text-white px-6 py-3 rounded-xl text-sm font-black hover:bg-blue-600 transition-colors shadow-md disabled:opacity-50 flex items-center gap-2"
+              className="bg-slate-900 text-white px-6 py-3 rounded-none text-sm font-black hover:bg-teal-600 transition-colors shadow-sm disabled:opacity-50 flex items-center gap-2"
             >
               <span>조 편성 연동 새로고침</span> 🔄
             </button>
@@ -403,13 +482,13 @@ export default function FineAdmin() {
 
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_350px] gap-8 items-start">
           
-          <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-200 overflow-hidden">
+          <div className="bg-white p-8 rounded-none shadow-sm border border-slate-200 overflow-hidden">
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-xl font-black text-slate-800">📋 통합 벌금 대장 (Excel View)</h2>
-              <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-3 py-1 rounded-lg">전체 활동 학회원: {members.length}명</span>
+              <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-3 py-1 rounded-none">전체 활동 학회원: {members.length}명</span>
             </div>
             
-            <div className="overflow-x-auto rounded-2xl border border-slate-200 shadow-inner">
+            <div className="overflow-x-auto rounded-none border border-slate-200 shadow-inner">
               <table className="w-full text-left border-collapse min-w-[850px]">
                 <thead className="bg-slate-100 text-slate-600 text-[11px] uppercase font-black tracking-widest border-b-2 border-slate-300">
                   <tr>
@@ -430,7 +509,7 @@ export default function FineAdmin() {
                       
                       <td className="p-4 border-r border-slate-200 text-center align-top pt-6 font-black">
                         {user.total > 0 ? (
-                          <span className="text-red-600 bg-red-100 px-3 py-1.5 rounded-lg text-lg tracking-tighter">₩{user.total.toLocaleString()}</span>
+                          <span className="text-red-600 bg-red-100 px-3 py-1.5 rounded-none text-lg tracking-tighter">₩{user.total.toLocaleString()}</span>
                         ) : (
                           <span className="text-slate-300">₩0</span>
                         )}
@@ -442,7 +521,7 @@ export default function FineAdmin() {
                         ) : (
                           <div className="space-y-2">
                             {user.details.map(f => (
-                              <div key={f.id} className={`flex flex-col xl:flex-row xl:justify-between xl:items-center p-3 rounded-xl border shadow-sm text-xs transition-all gap-3 ${f.is_paid ? 'bg-slate-50 border-slate-100 opacity-60' : 'bg-white border-red-100'}`}>
+                              <div key={f.id} className={`flex flex-col xl:flex-row xl:justify-between xl:items-center p-3 rounded-none border shadow-sm text-xs transition-all gap-3 ${f.is_paid ? 'bg-slate-50 border-slate-100 opacity-60' : 'bg-white border-red-100'}`}>
                                 <div className="flex items-center gap-3">
                                   <span className={`px-2 py-1 rounded font-black text-[10px] ${f.is_paid ? 'bg-slate-200 text-slate-500' : 'bg-slate-800 text-white'}`}>W{f.week}</span>
                                   <div className="flex flex-col">
@@ -451,22 +530,22 @@ export default function FineAdmin() {
                                   </div>
                                 </div>
                                 <div className="flex items-center justify-end gap-4 mt-2 xl:mt-0">
-                                  <span className={`font-black text-sm ${f.is_paid && f.amount === 0 ? 'text-blue-500' : f.is_paid ? 'text-slate-400 line-through' : 'text-red-500'}`}>
+                                  <span className={`font-black text-sm ${f.is_paid && f.amount === 0 ? 'text-teal-500' : f.is_paid ? 'text-slate-400 line-through' : 'text-red-500'}`}>
                                     ₩{f.amount.toLocaleString()}
                                   </span>
                                   
                                   {!f.is_paid ? (
                                     <div className="flex gap-1.5 shrink-0">
-                                      <button onClick={() => handleDeleteFine(f)} className="bg-white hover:bg-slate-800 hover:text-white text-slate-400 px-3 py-1.5 rounded-lg font-black text-[10px] transition-colors border border-slate-200 hover:border-slate-800" title="화면에서 완전히 지우기">
+                                      <button onClick={() => handleDeleteFine(f)} className="bg-white hover:bg-slate-800 hover:text-white text-slate-400 px-3 py-1.5 rounded-none font-black text-[10px] transition-colors border border-slate-200 hover:border-slate-800" title="화면에서 완전히 지우기">
                                         삭제 🗑️
                                       </button>
-                                      <button onClick={() => handleMarkAsPaid(f.id)} className="bg-red-50 hover:bg-emerald-500 hover:text-white text-red-600 px-3 py-1.5 rounded-lg font-black text-[10px] transition-colors border border-red-200 hover:border-emerald-500">
+                                      <button onClick={() => handleMarkAsPaid(f.id)} className="bg-red-50 hover:bg-emerald-500 hover:text-white text-red-600 px-3 py-1.5 rounded-none font-black text-[10px] transition-colors border border-red-200 hover:border-emerald-500">
                                         납부 ✓
                                       </button>
                                     </div>
                                   ) : (
                                     <div className="flex items-center gap-2 shrink-0">
-                                      <span className={`text-[10px] font-black px-2 py-1 rounded-md ${f.amount === 0 ? 'bg-blue-100 text-blue-500' : 'bg-emerald-100 text-emerald-600'}`}>
+                                      <span className={`text-[10px] font-black px-2 py-1 rounded-none ${f.amount === 0 ? 'bg-teal-100 text-teal-500' : 'bg-emerald-100 text-emerald-600'}`}>
                                         {f.amount === 0 ? '면제됨' : '완납'}
                                       </span>
                                       <button onClick={() => handleDeleteFine(f)} className="text-[10px] font-black text-slate-300 hover:text-red-500 px-1" title="기록 영구 삭제">
@@ -485,7 +564,7 @@ export default function FineAdmin() {
                         <button 
                           onClick={() => handlePayAll(user.name)} 
                           disabled={user.total === 0} 
-                          className="bg-slate-800 text-white px-3 py-2 rounded-xl text-[10px] font-black hover:bg-slate-700 disabled:opacity-20 disabled:cursor-not-allowed transition-all shadow-sm w-full"
+                          className="bg-slate-800 text-white px-3 py-2 rounded-none text-[10px] font-black hover:bg-slate-700 disabled:opacity-20 disabled:cursor-not-allowed transition-all shadow-sm w-full"
                         >
                           전액 납부
                         </button>
@@ -498,7 +577,7 @@ export default function FineAdmin() {
           </div>
 
           <div className="space-y-6 sticky top-8">
-            <div className="bg-slate-900 p-8 rounded-[2.5rem] shadow-xl border border-slate-800 text-white">
+            <div className="bg-slate-900 p-8 rounded-none shadow-sm border border-slate-800 text-white">
               <h2 className="text-lg font-black mb-6 border-b border-slate-700 pb-3 flex items-center gap-2">
                 <span>✍️</span> 수동 벌금 부과
               </h2>
@@ -507,25 +586,25 @@ export default function FineAdmin() {
               </p>
               <div className="space-y-3">
                 <div className="flex gap-2">
-                  <select value={manualFine.user_name} onChange={e => setManualFine({...manualFine, user_name: e.target.value})} className="flex-1 bg-slate-800 p-3 rounded-xl text-xs font-bold outline-none border border-slate-700 cursor-pointer">
+                  <select value={manualFine.user_name} onChange={e => setManualFine({...manualFine, user_name: e.target.value})} className="flex-1 bg-slate-800 p-3 rounded-none text-xs font-bold outline-none border border-slate-700 cursor-pointer">
                     <option value="">대상자 선택</option>
                     {members.map(m => <option key={m.id} value={m.name}>{m.name}</option>)}
                   </select>
-                  <select value={manualFine.week} onChange={e => setManualFine({...manualFine, week: Number(e.target.value)})} className="w-24 bg-slate-800 p-3 rounded-xl text-xs font-bold outline-none border border-slate-700 cursor-pointer text-center">
+                  <select value={manualFine.week} onChange={e => setManualFine({...manualFine, week: Number(e.target.value)})} className="w-24 bg-slate-800 p-3 rounded-none text-xs font-bold outline-none border border-slate-700 cursor-pointer text-center">
                     {Array.from({length: 13}, (_, i) => <option key={i} value={i}>{i}주차</option>)}
                   </select>
                 </div>
-                <select value={manualFine.category} onChange={e => setManualFine({...manualFine, category: e.target.value})} className="w-full bg-slate-800 p-3 rounded-xl text-xs font-bold outline-none border border-slate-700 cursor-pointer">
+                <select value={manualFine.category} onChange={e => setManualFine({...manualFine, category: e.target.value})} className="w-full bg-slate-800 p-3 rounded-none text-xs font-bold outline-none border border-slate-700 cursor-pointer">
                   <option value="세션 지각">세션 지각</option>
                   <option value="무단 결석">무단 결석</option>
                   <option value="기타 벌금">기타 벌금</option>
                 </select>
-                <input type="text" placeholder="상세 사유 (예: 13:25 도착, 5분 지각)" value={manualFine.reason} onChange={e => setManualFine({...manualFine, reason: e.target.value})} className="w-full bg-slate-800 p-3 rounded-xl text-xs font-bold outline-none border border-slate-700 focus:border-red-500 transition-colors" />
+                <input type="text" placeholder="상세 사유 (예: 13:25 도착, 5분 지각)" value={manualFine.reason} onChange={e => setManualFine({...manualFine, reason: e.target.value})} className="w-full bg-slate-800 p-3 rounded-none text-xs font-bold outline-none border border-slate-700 focus:border-red-500 transition-colors" />
                 <div className="flex items-center gap-2">
-                  <input type="number" placeholder="금액 (숫자만)" value={manualFine.amount} onChange={e => setManualFine({...manualFine, amount: e.target.value})} className="flex-1 bg-slate-800 p-3 rounded-xl text-sm font-black outline-none border border-slate-700 focus:border-red-500 text-red-400" />
+                  <input type="number" placeholder="금액 (숫자만)" value={manualFine.amount} onChange={e => setManualFine({...manualFine, amount: e.target.value})} className="flex-1 bg-slate-800 p-3 rounded-none text-sm font-black outline-none border border-slate-700 focus:border-red-500 text-red-400" />
                   <span className="text-xs font-black text-slate-500 pr-2">원</span>
                 </div>
-                <button onClick={handleAddManualFine} className="w-full py-4 bg-red-600 text-white rounded-xl font-black text-sm hover:bg-red-700 active:scale-95 transition-all shadow-md mt-4">
+                <button onClick={handleAddManualFine} className="w-full py-4 bg-red-600 text-white rounded-none font-black text-sm hover:bg-red-700 active:scale-95 transition-all shadow-sm mt-4">
                   부과하기 💥
                 </button>
               </div>

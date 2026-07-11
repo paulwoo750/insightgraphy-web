@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
+import InternalNav from '@/app/components/InternalNav'
 
 export default function HomeHub() {
   const router = useRouter()
@@ -74,6 +75,10 @@ export default function HomeHub() {
       case 'vote_feedback': return '정성 피드백';
       case 'video_comment': return '셀프 피드백';
       case 'absence': return '사유서 제출';
+      case 'weekday_upload': return '평일세션 자료·영상';
+      case 'weekday_feedback': return '평일세션 정성 피드백';
+      case 'weekday_self': return '평일세션 셀프 피드백';
+      case 'weekday_absence': return '평일세션 불참 사유서';
       default: return `${category} 마감`;
     }
   }
@@ -96,74 +101,7 @@ export default function HomeHub() {
   return (
     <div className="min-h-screen bg-white flex flex-col font-sans relative pb-20">
       
-      {/* 🌟 GNB (진한 청록색 포인트 적용) */}
-      <header className="border-b border-slate-200 bg-white sticky top-0 z-50">
-        <div className="max-w-[1200px] mx-auto flex flex-col md:flex-row items-center justify-between px-6 h-auto md:h-[72px]">
-          
-          <div className="flex items-center gap-3 py-4 md:py-0 w-full md:w-auto justify-between md:justify-start">
-            <span className="text-xl font-black text-teal-800 tracking-tighter cursor-default">InsightGraphy</span>
-          </div>
-
-          <nav className="flex items-center gap-8 w-full md:w-auto h-full overflow-visible">
-            <Link href="/home" className="text-sm font-extrabold text-teal-800 border-b-[3px] border-teal-800 h-full flex items-center shrink-0">
-              소개 / 홈
-            </Link>
-
-            {/* 주차별 자료실 드롭다운 */}
-            <div className="relative group h-full flex items-center shrink-0">
-              <div className="text-sm font-bold text-slate-600 group-hover:text-teal-800 transition-colors cursor-default h-full flex items-center gap-1 border-b-[3px] border-transparent group-hover:border-teal-800">
-                주차별 자료실 <span className="text-[9px] mt-0.5">▼</span>
-              </div>
-              
-              <div className="absolute top-full left-0 w-44 bg-[#0a1526] flex-col hidden group-hover:flex z-50 shadow-2xl border-t-2 border-teal-600">
-                <Link href="/dashboard/proposal" className="px-5 py-3.5 text-xs font-bold text-slate-200 hover:bg-teal-700 hover:text-white border-b border-white/5 transition-colors">
-                  기획서 제출
-                </Link>
-                <Link href="/dashboard/slide" className="px-5 py-3.5 text-xs font-bold text-slate-200 hover:bg-teal-700 hover:text-white border-b border-white/5 transition-colors">
-                  슬라이드 제출
-                </Link>
-                <Link href="/dashboard/video" className="px-5 py-3.5 text-xs font-bold text-slate-200 hover:bg-teal-700 hover:text-white transition-colors">
-                  발표영상 확인
-                </Link>
-              </div>
-            </div>
-
-            <Link href="/archive" className="text-sm font-bold text-slate-600 hover:text-teal-800 transition-colors h-full flex items-center border-b-[3px] border-transparent hover:border-teal-800 shrink-0">
-              아카이브
-            </Link>
-
-            {/* 🌟 실시간 투표 드롭다운 추가 */}
-            <div className="relative group h-full flex items-center shrink-0">
-              <div className="text-sm font-bold text-slate-600 group-hover:text-teal-800 transition-colors cursor-default h-full flex items-center gap-1 border-b-[3px] border-transparent group-hover:border-teal-800">
-                실시간 투표 <span className="text-[9px] mt-0.5">▼</span>
-              </div>
-              
-              <div className="absolute top-full left-0 w-[180px] bg-[#0a1526] flex-col hidden group-hover:flex z-50 shadow-2xl border-t-2 border-teal-600">
-                <Link href="/vote/score" className="px-5 py-3.5 text-xs font-bold text-slate-200 hover:bg-teal-700 hover:text-white border-b border-white/5 transition-colors">
-                  발표 채점
-                </Link>
-                <Link href="/vote/feedback" className="px-5 py-3.5 text-xs font-bold text-slate-200 hover:bg-teal-700 hover:text-white border-b border-white/5 transition-colors">
-                  임시저장 피드백
-                </Link>
-                <Link href="/vote/results/my" className="px-5 py-3.5 text-xs font-bold text-slate-200 hover:bg-teal-700 hover:text-white border-b border-white/5 transition-colors">
-                  결과 확인
-                </Link>
-                <Link href="/vote/results/arxiv" className="px-5 py-3.5 text-xs font-bold text-slate-200 hover:bg-teal-700 hover:text-white border-b border-white/5 transition-colors">
-                  피드백 확인
-                </Link>
-                <Link href="/vote/results/ranking" className="px-5 py-3.5 text-xs font-bold text-slate-200 hover:bg-teal-700 hover:text-white transition-colors">
-                  베스트 프레젠터 확인
-                </Link>
-              </div>
-            </div>
-
-          </nav>
-        </div>
-      </header>
-
-      <Link href="/admin" className="fixed bottom-8 right-8 md:bottom-10 md:right-10 w-12 h-12 flex items-center justify-center bg-slate-900 text-white rounded-none hover:bg-teal-800 transition-all opacity-30 hover:opacity-100 shadow-xl z-[100] border border-slate-800">
-        <span className="text-xl">⚙️</span>
-      </Link>
+      <InternalNav />
 
       <div className="max-w-[1200px] w-full mx-auto grid grid-cols-1 xl:grid-cols-[1fr_350px] gap-12 mt-12 px-6">
         
@@ -229,7 +167,7 @@ export default function HomeHub() {
               <Tile href="/vote/results/ranking" icon="🏆" title="결과 & 랭킹" desc="내 점수와 랭킹 확인" iconColor="text-amber-500" hoverText="group-hover:text-teal-800" />
               <Tile href="/archive" icon="📚" title="아카이브" desc="과거 자료 열람" iconColor="text-slate-700" hoverText="group-hover:text-teal-800" />
               <Tile href="/archive/absence" icon="📝" title="사유서" desc="결석/지각/조퇴 제출" iconColor="text-rose-600" hoverText="group-hover:text-teal-800" />
-              <Tile href="#" icon="⚙️" title="마이페이지" desc="내 정보 (준비 중)" iconColor="text-slate-400" hoverText="group-hover:text-teal-800" />
+              <Tile href="/mypage" icon="👤" title="마이페이지" desc="출석·벌금·평가 기록" iconColor="text-teal-600" hoverText="group-hover:text-teal-800" />
             </div>
           </div>
         </div>

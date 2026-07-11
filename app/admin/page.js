@@ -7,7 +7,7 @@ import Link from 'next/link'
 export default function AdminAuthPage() {
   const router = useRouter()
   const [user, setUser] = useState(null)
-  
+
   const [passcode, setPasscode] = useState('')
   const [errorMsg, setErrorMsg] = useState('')
 
@@ -37,46 +37,44 @@ export default function AdminAuthPage() {
     }
   }
 
-  if (!user) return <div className="p-8 text-center font-bold text-slate-500">보안 연결 중... 🔒</div>
+  if (!user) return <div className="min-h-screen bg-white flex items-center justify-center font-bold text-slate-400">보안 연결 중... 🔒</div>
 
   return (
-    <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6 text-white font-sans selection:bg-[#32a4a1] selection:text-white">
-      <div className="max-w-md w-full bg-slate-800 p-10 rounded-[3rem] shadow-2xl border border-slate-700 relative overflow-hidden">
-        {/* 배경 장식 */}
-        <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-blue-500 to-[#32a4a1]" />
-        
-        <div className="text-center mb-8">
-          <div className="w-16 h-16 bg-slate-900 rounded-full flex items-center justify-center text-3xl mx-auto mb-4 shadow-inner border border-slate-700">
-            🛡️
-          </div>
-          <h1 className="text-2xl font-black uppercase tracking-widest mb-2">Admin Access</h1>
-          <p className="text-xs text-slate-400 font-bold">InsightGraphy 관리자 전용 구역입니다.<br/>비밀 코드를 입력해주세요.</p>
+    <div className="min-h-screen bg-white text-slate-900 font-sans flex items-center justify-center px-6">
+      <div className="w-full max-w-sm">
+
+        {/* 브랜드 */}
+        <div className="mb-12">
+          <Link href="/home" className="text-2xl font-black text-teal-800 tracking-tighter">InsightGraphy</Link>
+          <div className="w-10 h-[3px] bg-teal-800 mt-3"></div>
+          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-8">Admin Access</p>
+          <h1 className="text-xl font-extrabold text-slate-900 mt-2">관리자 인증</h1>
+          <p className="text-sm font-medium text-slate-400 mt-1">관리자 전용 구역입니다. 보안 코드를 입력해주세요.</p>
         </div>
 
-        <form onSubmit={handleVerify} className="space-y-6">
+        <form onSubmit={handleVerify} className="flex flex-col gap-7">
           <div>
-            <input 
-              type="password" 
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Secret Code</label>
+            <input
+              type="password"
               value={passcode}
               onChange={(e) => setPasscode(e.target.value)}
-              placeholder="Enter Secret Code"
-              className="w-full bg-slate-900 border border-slate-700 p-4 rounded-2xl text-center text-xl font-black tracking-widest text-white outline-none focus:border-[#32a4a1] transition-colors placeholder:text-slate-600 placeholder:text-sm"
+              placeholder="보안 코드 입력"
+              className="w-full border-b border-slate-300 py-2.5 text-sm font-bold tracking-widest outline-none focus:border-teal-700 bg-transparent transition-colors placeholder:font-medium placeholder:tracking-normal placeholder:text-slate-300"
               autoFocus
             />
-            {errorMsg && <p className="text-red-400 text-xs font-bold text-center mt-3 animate-pulse">{errorMsg}</p>}
+            {errorMsg && <p className="text-red-500 text-xs font-bold mt-3">{errorMsg}</p>}
           </div>
-          <button 
+          <button
             type="submit"
-            className="w-full bg-[#32a4a1] hover:bg-[#258582] text-white py-4 rounded-2xl font-black uppercase tracking-widest text-sm transition-all shadow-lg active:scale-95"
+            className="mt-3 py-3.5 bg-teal-800 text-white font-bold text-sm tracking-wide hover:bg-teal-900 transition-colors active:scale-[0.99]"
           >
-            Verify & Enter
+            인증하고 입장하기
           </button>
         </form>
 
-        <div className="mt-8 text-center">
-          <Link href="/home" className="text-slate-500 hover:text-white text-xs font-bold transition-colors underline underline-offset-4">
-            일반 홈으로 돌아가기
-          </Link>
+        <div className="mt-10 pt-6 border-t border-slate-200 text-sm text-slate-400 font-medium">
+          <Link href="/home" className="text-teal-800 font-bold hover:underline underline-offset-4">← 일반 홈으로 돌아가기</Link>
         </div>
       </div>
     </div>

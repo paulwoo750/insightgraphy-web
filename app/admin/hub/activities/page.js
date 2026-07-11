@@ -33,11 +33,11 @@ export default function IntegratedActivitiesManager() {
 
         <div className="flex flex-col lg:flex-row gap-8">
           <aside className="w-full lg:w-64 shrink-0">
-            <div className="bg-white p-4 rounded-[2.5rem] shadow-sm border border-slate-100 flex flex-col gap-2 sticky top-8">
+            <div className="bg-white p-4 rounded-none shadow-sm border border-slate-100 flex flex-col gap-2 sticky top-8">
               {tabs.map((tab) => (
                 <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-                  className={`flex items-center gap-3 w-full px-5 py-4 rounded-2xl font-black text-sm transition-all ${
-                    activeTab === tab.id ? 'bg-slate-900 text-white shadow-lg' : 'bg-transparent text-slate-400 hover:bg-slate-50'
+                  className={`flex items-center gap-3 w-full px-5 py-4 rounded-none font-black text-sm transition-all ${
+                    activeTab === tab.id ? 'bg-slate-900 text-white shadow-sm' : 'bg-transparent text-slate-400 hover:bg-slate-50'
                   }`}>
                   <span className="text-xl">{tab.icon}</span> {tab.name}
                 </button>
@@ -168,29 +168,29 @@ function RegularManager() {
     <div className="space-y-8">
       
       {/* 파트 1. 헤더 수정 (실제 UI 톤 반영) */}
-      <div className="bg-white p-8 rounded-[3rem] shadow-sm border border-slate-100">
+      <div className="bg-white p-8 rounded-none shadow-sm border border-slate-100">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-xl font-black text-slate-800">1. 세션 소개 (Header)</h2>
-          <button onClick={() => handleSaveContent('header')} className="bg-[#1a1a1a] text-white px-5 py-2 rounded-xl text-xs font-black">Save</button>
+          <button onClick={() => handleSaveContent('header')} className="bg-[#1a1a1a] text-white px-5 py-2 rounded-none text-xs font-black">Save</button>
         </div>
-        <div className="space-y-4 text-center p-8 bg-slate-50 rounded-[2rem]">
-          <div className="inline-block bg-[#32a4a1]/10 text-[#32a4a1] px-4 py-1 rounded-full text-[10px] font-black uppercase tracking-widest mb-2">Activity 01</div>
+        <div className="space-y-4 text-center p-8 bg-slate-50 rounded-none">
+          <div className="inline-block bg-[#32a4a1]/10 text-[#32a4a1] px-4 py-1 rounded-none text-[10px] font-black uppercase tracking-widest mb-2">Activity 01</div>
           <input type="text" value={headerData.title} onChange={e => setHeaderData({...headerData, title: e.target.value})} className="w-full bg-transparent text-center text-3xl font-black outline-none border-b border-slate-200 focus:border-[#32a4a1] pb-2 mb-4" placeholder="메인 제목 (Regular Session)" />
-          <textarea rows="3" value={headerData.desc} onChange={e => setHeaderData({...headerData, desc: e.target.value})} className="w-full bg-white p-4 rounded-xl font-medium text-slate-600 outline-none shadow-sm resize-none" placeholder="세션 상세 설명"></textarea>
+          <textarea rows="3" value={headerData.desc} onChange={e => setHeaderData({...headerData, desc: e.target.value})} className="w-full bg-white p-4 rounded-none font-medium text-slate-600 outline-none shadow-sm resize-none" placeholder="세션 상세 설명"></textarea>
         </div>
       </div>
 
       {/* 파트 2. 일주일 루틴 수정 */}
-      <div className="bg-white p-8 rounded-[3rem] shadow-sm border border-slate-100">
+      <div className="bg-white p-8 rounded-none shadow-sm border border-slate-100">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-xl font-black text-slate-800">2. IGer의 일주일 (Routine)</h2>
-          <button onClick={handleSaveRoutines} className="bg-blue-600 text-white px-5 py-2 rounded-xl text-xs font-black">Save</button>
+          <button onClick={handleSaveRoutines} className="bg-teal-600 text-white px-5 py-2 rounded-none text-xs font-black">Save</button>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 bg-slate-50 p-6 rounded-[2rem]">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 bg-slate-50 p-6 rounded-none">
           {routines.map((routine, idx) => (
-            <div key={idx} className={`bg-white p-4 rounded-2xl border-2 transition-all ${routine.day.includes("토") ? "border-[#32a4a1]" : "border-transparent shadow-sm"}`}>
+            <div key={idx} className={`bg-white p-4 rounded-none border-2 transition-all ${routine.day.includes("토") ? "border-[#32a4a1]" : "border-transparent shadow-sm"}`}>
               <div className="flex justify-between items-center mb-2">
-                <input type="text" value={routine.icon} onChange={e => {let newR = [...routines]; newR[idx].icon = e.target.value; setRoutines(newR)}} className="w-10 h-10 text-center text-lg bg-slate-50 rounded-lg outline-none" />
+                <input type="text" value={routine.icon} onChange={e => {let newR = [...routines]; newR[idx].icon = e.target.value; setRoutines(newR)}} className="w-10 h-10 text-center text-lg bg-slate-50 rounded-none outline-none" />
                 <span className={`text-xs font-black ${routine.day.includes("토") ? "text-[#32a4a1]" : "text-slate-400"}`}>{routine.day}</span>
               </div>
               <input type="text" value={routine.action} onChange={e => {let newR = [...routines]; newR[idx].action = e.target.value; setRoutines(newR)}} className="w-full mb-1 text-sm font-black outline-none border-b border-transparent focus:border-slate-300" placeholder="활동명" />
@@ -201,43 +201,43 @@ function RegularManager() {
       </div>
 
       {/* 파트 3. 세부 규정 수정 */}
-      <div className="bg-white p-8 rounded-[3rem] shadow-sm border border-slate-100 border-l-4 border-l-[#32a4a1]">
+      <div className="bg-white p-8 rounded-none shadow-sm border border-slate-100 border-l-4 border-l-[#32a4a1]">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-xl font-black text-slate-800">3. 기획서 & 피드백 규정 (Rules)</h2>
-          <button onClick={() => handleSaveContent('rules')} className="bg-[#32a4a1] text-white px-5 py-2 rounded-xl text-xs font-black">Save</button>
+          <button onClick={() => handleSaveContent('rules')} className="bg-[#32a4a1] text-white px-5 py-2 rounded-none text-xs font-black">Save</button>
         </div>
         {/* 기존 입력칸 유지 */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          <div className="space-y-3 bg-slate-50 p-6 rounded-2xl">
+          <div className="space-y-3 bg-slate-50 p-6 rounded-none">
             <h3 className="font-black text-[#32a4a1] mb-2">📝 기획서 업로드 규정</h3>
-            <input type="text" value={rulesData.planDeadline} onChange={e => setRulesData({...rulesData, planDeadline: e.target.value})} placeholder="마감 기한 (예: 매주 수요일 23:59)" className="w-full p-3 rounded-xl text-sm" />
-            <input type="text" value={rulesData.planFiles} onChange={e => setRulesData({...rulesData, planFiles: e.target.value})} placeholder="필수 파일 (예: .docx 및 캡처본)" className="w-full p-3 rounded-xl text-sm" />
-            <input type="text" value={rulesData.planNaming} onChange={e => setRulesData({...rulesData, planNaming: e.target.value})} placeholder="파일명 양식 (예: [연도_학기_주차_이름])" className="w-full p-3 rounded-xl text-sm" />
-            <input type="text" value={rulesData.planNamingEx} onChange={e => setRulesData({...rulesData, planNamingEx: e.target.value})} placeholder="파일명 예시" className="w-full p-3 rounded-xl text-xs text-slate-500" />
+            <input type="text" value={rulesData.planDeadline} onChange={e => setRulesData({...rulesData, planDeadline: e.target.value})} placeholder="마감 기한 (예: 매주 수요일 23:59)" className="w-full p-3 rounded-none text-sm" />
+            <input type="text" value={rulesData.planFiles} onChange={e => setRulesData({...rulesData, planFiles: e.target.value})} placeholder="필수 파일 (예: .docx 및 캡처본)" className="w-full p-3 rounded-none text-sm" />
+            <input type="text" value={rulesData.planNaming} onChange={e => setRulesData({...rulesData, planNaming: e.target.value})} placeholder="파일명 양식 (예: [연도_학기_주차_이름])" className="w-full p-3 rounded-none text-sm" />
+            <input type="text" value={rulesData.planNamingEx} onChange={e => setRulesData({...rulesData, planNamingEx: e.target.value})} placeholder="파일명 예시" className="w-full p-3 rounded-none text-xs text-slate-500" />
           </div>
-          <div className="space-y-3 bg-slate-50 p-6 rounded-2xl">
+          <div className="space-y-3 bg-slate-50 p-6 rounded-none">
             <h3 className="font-black text-slate-800 mb-2">💬 피드백 규정</h3>
-            <input type="text" value={rulesData.fbDeadlineDay} onChange={e => setRulesData({...rulesData, fbDeadlineDay: e.target.value})} placeholder="마감 요일 (예: 매주 목요일)" className="w-full p-3 rounded-xl text-sm" />
-            <input type="text" value={rulesData.fbDeadlineTime} onChange={e => setRulesData({...rulesData, fbDeadlineTime: e.target.value})} placeholder="마감 시간 (예: 23:59 PM)" className="w-full p-3 rounded-xl text-sm" />
-            <input type="text" value={rulesData.fbPolicy} onChange={e => setRulesData({...rulesData, fbPolicy: e.target.value})} placeholder="정책 (예: 조원 기획서 댓글 피드백)" className="w-full p-3 rounded-xl text-sm" />
-            <textarea value={rulesData.fbDesc} onChange={e => setRulesData({...rulesData, fbDesc: e.target.value})} placeholder="피드백 지향점 설명" className="w-full p-3 rounded-xl text-xs text-slate-500 resize-none"></textarea>
+            <input type="text" value={rulesData.fbDeadlineDay} onChange={e => setRulesData({...rulesData, fbDeadlineDay: e.target.value})} placeholder="마감 요일 (예: 매주 목요일)" className="w-full p-3 rounded-none text-sm" />
+            <input type="text" value={rulesData.fbDeadlineTime} onChange={e => setRulesData({...rulesData, fbDeadlineTime: e.target.value})} placeholder="마감 시간 (예: 23:59 PM)" className="w-full p-3 rounded-none text-sm" />
+            <input type="text" value={rulesData.fbPolicy} onChange={e => setRulesData({...rulesData, fbPolicy: e.target.value})} placeholder="정책 (예: 조원 기획서 댓글 피드백)" className="w-full p-3 rounded-none text-sm" />
+            <textarea value={rulesData.fbDesc} onChange={e => setRulesData({...rulesData, fbDesc: e.target.value})} placeholder="피드백 지향점 설명" className="w-full p-3 rounded-none text-xs text-slate-500 resize-none"></textarea>
           </div>
         </div>
       </div>
 
       {/* 파트 4. 3-Way 피드백 시스템 수정 (미리보기 UI 적용) */}
-      <div className="bg-[#1a1a1a] text-white p-8 rounded-[3rem] shadow-xl">
+      <div className="bg-[#1a1a1a] text-white p-8 rounded-none shadow-sm">
         <div className="flex justify-between items-center mb-8 border-b border-white/10 pb-6">
           <h2 className="text-xl font-black text-[#a8d0cd]">4. 3-Way Feedback System</h2>
-          <button onClick={() => handleSaveContent('feedback')} className="bg-white text-black px-5 py-2 rounded-xl text-xs font-black hover:bg-[#a8d0cd]">Save</button>
+          <button onClick={() => handleSaveContent('feedback')} className="bg-white text-black px-5 py-2 rounded-none text-xs font-black hover:bg-[#a8d0cd]">Save</button>
         </div>
         
         <div className="space-y-12">
           {/* 정량 */}
           <div>
             <span className="text-[#32a4a1] font-black tracking-[0.3em] uppercase text-xs mb-2 block">01. Quantitative</span>
-            <textarea value={feedbackData.quantDesc} onChange={e => setFeedbackData({...feedbackData, quantDesc: e.target.value})} className="w-full bg-white/5 p-4 rounded-xl text-sm text-slate-300 mb-4 outline-none border border-transparent focus:border-[#32a4a1]" placeholder="정량 피드백 설명 본문"></textarea>
-            <div className="bg-white/5 p-4 rounded-xl mb-4">
+            <textarea value={feedbackData.quantDesc} onChange={e => setFeedbackData({...feedbackData, quantDesc: e.target.value})} className="w-full bg-white/5 p-4 rounded-none text-sm text-slate-300 mb-4 outline-none border border-transparent focus:border-[#32a4a1]" placeholder="정량 피드백 설명 본문"></textarea>
+            <div className="bg-white/5 p-4 rounded-none mb-4">
               <p className="text-xs font-black text-slate-400 mb-2">체크리스트 수정</p>
               {[0, 1, 2].map(i => (
                 <div key={i} className="flex items-center gap-2 mb-2">
@@ -246,9 +246,9 @@ function RegularManager() {
                 </div>
               ))}
             </div>
-            <div className="flex gap-4 items-center bg-white/5 p-4 rounded-xl">
+            <div className="flex gap-4 items-center bg-white/5 p-4 rounded-none">
               <span className="text-xs font-black text-slate-400">대표 이미지</span>
-              <input type="file" accept="image/*" onChange={e => setQuantImageFile(e.target.files[0])} className="text-xs text-slate-400 file:rounded-full file:border-0 file:bg-white/10 file:text-white file:px-4 file:py-2" />
+              <input type="file" accept="image/*" onChange={e => setQuantImageFile(e.target.files[0])} className="text-xs text-slate-400 file:rounded-none file:border-0 file:bg-white/10 file:text-white file:px-4 file:py-2" />
               {feedbackData.quantImgUrl && <span className="text-xs text-green-400 font-bold">✓ 업로드 완료</span>}
             </div>
           </div>
@@ -256,8 +256,8 @@ function RegularManager() {
           {/* 정성 */}
           <div className="pt-8 border-t border-white/10">
             <span className="text-[#32a4a1] font-black tracking-[0.3em] uppercase text-xs mb-2 block">02. Qualitative</span>
-            <textarea value={feedbackData.qualDesc} onChange={e => setFeedbackData({...feedbackData, qualDesc: e.target.value})} className="w-full bg-white/5 p-4 rounded-xl text-sm text-slate-300 mb-4 outline-none border border-transparent focus:border-[#32a4a1]" placeholder="정성 피드백 설명 본문"></textarea>
-            <div className="bg-white/5 p-4 rounded-xl mb-6">
+            <textarea value={feedbackData.qualDesc} onChange={e => setFeedbackData({...feedbackData, qualDesc: e.target.value})} className="w-full bg-white/5 p-4 rounded-none text-sm text-slate-300 mb-4 outline-none border border-transparent focus:border-[#32a4a1]" placeholder="정성 피드백 설명 본문"></textarea>
+            <div className="bg-white/5 p-4 rounded-none mb-6">
               <p className="text-xs font-black text-slate-400 mb-2">체크리스트 수정</p>
               {[0, 1, 2].map(i => (
                 <div key={i} className="flex items-center gap-2 mb-2">
@@ -267,16 +267,16 @@ function RegularManager() {
               ))}
             </div>
             <p className="text-xs font-black text-slate-400 mb-3">화면 예시 코멘트 수정 (미리보기형)</p>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-[#f8f9fa] p-6 rounded-2xl">
-              <div className="bg-white p-4 rounded-xl shadow-sm border-l-4 border-[#32a4a1]">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-[#f8f9fa] p-6 rounded-none">
+              <div className="bg-white p-4 rounded-none shadow-sm border-l-4 border-[#32a4a1]">
                 <p className="text-[10px] font-black text-slate-400 uppercase mb-1">Insight</p>
                 <textarea value={feedbackData.qualInsight} onChange={e => setFeedbackData({...feedbackData, qualInsight: e.target.value})} className="w-full bg-transparent text-sm font-bold text-black outline-none resize-none" rows="3" placeholder="Insight 예시문"></textarea>
               </div>
-              <div className="bg-white p-4 rounded-xl shadow-sm border-l-4 border-[#1a1a1a]">
+              <div className="bg-white p-4 rounded-none shadow-sm border-l-4 border-[#1a1a1a]">
                 <p className="text-[10px] font-black text-slate-400 uppercase mb-1">Graphic</p>
                 <textarea value={feedbackData.qualGraphic} onChange={e => setFeedbackData({...feedbackData, qualGraphic: e.target.value})} className="w-full bg-transparent text-sm font-bold text-black outline-none resize-none" rows="3" placeholder="Graphic 예시문"></textarea>
               </div>
-              <div className="bg-white p-4 rounded-xl shadow-sm border-l-4 border-[#a8d0cd]">
+              <div className="bg-white p-4 rounded-none shadow-sm border-l-4 border-[#a8d0cd]">
                 <p className="text-[10px] font-black text-slate-400 uppercase mb-1">Delivery</p>
                 <textarea value={feedbackData.qualDelivery} onChange={e => setFeedbackData({...feedbackData, qualDelivery: e.target.value})} className="w-full bg-transparent text-sm font-bold text-black outline-none resize-none" rows="3" placeholder="Delivery 예시문"></textarea>
               </div>
@@ -286,8 +286,8 @@ function RegularManager() {
           {/* 셀프 */}
           <div className="pt-8 border-t border-white/10">
             <span className="text-[#32a4a1] font-black tracking-[0.3em] uppercase text-xs mb-2 block">03. Self Feedback</span>
-            <textarea value={feedbackData.selfDesc} onChange={e => setFeedbackData({...feedbackData, selfDesc: e.target.value})} className="w-full bg-white/5 p-4 rounded-xl text-sm text-slate-300 mb-4 outline-none border border-transparent focus:border-[#32a4a1]" placeholder="셀프 피드백 설명 본문"></textarea>
-            <div className="bg-white/5 p-4 rounded-xl mb-6">
+            <textarea value={feedbackData.selfDesc} onChange={e => setFeedbackData({...feedbackData, selfDesc: e.target.value})} className="w-full bg-white/5 p-4 rounded-none text-sm text-slate-300 mb-4 outline-none border border-transparent focus:border-[#32a4a1]" placeholder="셀프 피드백 설명 본문"></textarea>
+            <div className="bg-white/5 p-4 rounded-none mb-6">
               <p className="text-xs font-black text-slate-400 mb-2">체크리스트 수정</p>
               {[0, 1, 2].map(i => (
                 <div key={i} className="flex items-center gap-2 mb-2">
@@ -297,16 +297,16 @@ function RegularManager() {
               ))}
             </div>
             <p className="text-xs font-black text-slate-400 mb-3">KPT 회고 예시문 수정 (미리보기형)</p>
-            <div className="bg-[#f8f9fa] p-6 rounded-2xl space-y-3">
-              <div className="bg-slate-50 p-3 rounded-xl border-l-4 border-blue-400 flex flex-col">
+            <div className="bg-[#f8f9fa] p-6 rounded-none space-y-3">
+              <div className="bg-slate-50 p-3 rounded-none border-l-4 border-teal-400 flex flex-col">
                 <span className="text-xs font-black text-slate-500 mb-1">잘한 점 (Keep)</span>
                 <input type="text" value={feedbackData.selfKeep} onChange={e => setFeedbackData({...feedbackData, selfKeep: e.target.value})} className="w-full bg-transparent text-sm font-bold text-black outline-none" placeholder="Keep 예시" />
               </div>
-              <div className="bg-slate-50 p-3 rounded-xl border-l-4 border-red-400 flex flex-col">
+              <div className="bg-slate-50 p-3 rounded-none border-l-4 border-red-400 flex flex-col">
                 <span className="text-xs font-black text-slate-500 mb-1">아쉬운 점 (Problem)</span>
                 <input type="text" value={feedbackData.selfProblem} onChange={e => setFeedbackData({...feedbackData, selfProblem: e.target.value})} className="w-full bg-transparent text-sm font-bold text-black outline-none" placeholder="Problem 예시" />
               </div>
-              <div className="bg-slate-50 p-3 rounded-xl border-l-4 border-green-400 flex flex-col">
+              <div className="bg-slate-50 p-3 rounded-none border-l-4 border-green-400 flex flex-col">
                 <span className="text-xs font-black text-slate-500 mb-1">개선 계획 (Try)</span>
                 <input type="text" value={feedbackData.selfTry} onChange={e => setFeedbackData({...feedbackData, selfTry: e.target.value})} className="w-full bg-transparent text-sm font-bold text-black outline-none" placeholder="Try 예시" />
               </div>
@@ -316,19 +316,19 @@ function RegularManager() {
       </div>
 
       {/* 파트 5. 하단 안내 (Footer) 추가 */}
-      <div className="bg-white p-8 rounded-[3rem] shadow-sm border border-slate-100">
+      <div className="bg-white p-8 rounded-none shadow-sm border border-slate-100">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-xl font-black text-slate-800">5. 하단 안내 & 링크 (Footer)</h2>
-          <button onClick={() => handleSaveContent('footer')} className="bg-[#1a1a1a] text-white px-5 py-2 rounded-xl text-xs font-black">Save</button>
+          <button onClick={() => handleSaveContent('footer')} className="bg-[#1a1a1a] text-white px-5 py-2 rounded-none text-xs font-black">Save</button>
         </div>
-        <div className="space-y-4 bg-slate-50 p-6 rounded-2xl">
+        <div className="space-y-4 bg-slate-50 p-6 rounded-none">
           <div>
             <label className="text-[10px] font-black text-slate-400 uppercase mb-2 block">안내 문구</label>
-            <input type="text" value={footerData.text} onChange={e => setFooterData({...footerData, text: e.target.value})} className="w-full p-3 rounded-xl text-sm font-bold outline-none" placeholder="예: 발표 주제 예시는 인스타그램에서 확인하세요." />
+            <input type="text" value={footerData.text} onChange={e => setFooterData({...footerData, text: e.target.value})} className="w-full p-3 rounded-none text-sm font-bold outline-none" placeholder="예: 발표 주제 예시는 인스타그램에서 확인하세요." />
           </div>
           <div>
             <label className="text-[10px] font-black text-slate-400 uppercase mb-2 block">버튼 이동 링크 (URL)</label>
-            <input type="text" value={footerData.link} onChange={e => setFooterData({...footerData, link: e.target.value})} className="w-full p-3 rounded-xl text-sm text-blue-500 outline-none" placeholder="https://instagram.com/..." />
+            <input type="text" value={footerData.link} onChange={e => setFooterData({...footerData, link: e.target.value})} className="w-full p-3 rounded-none text-sm text-teal-500 outline-none" placeholder="https://instagram.com/..." />
           </div>
         </div>
       </div>
@@ -471,27 +471,27 @@ function EducationManager() {
   return (
     <div className="space-y-8">
       {/* 1. 상단 컨트롤 바 */}
-      <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 flex justify-between items-center sticky top-24 z-10">
+      <div className="bg-white p-6 rounded-none shadow-sm border border-slate-100 flex justify-between items-center sticky top-24 z-10">
         <div>
           <h2 className="text-xl font-black text-slate-800">📚 교육 세션 전체 관리</h2>
           <p className="text-xs font-bold text-slate-400 mt-1">수정 후 반드시 우측의 Save All 버튼을 눌러주세요.</p>
         </div>
-        <button onClick={handleSaveAll} disabled={saving} className="bg-[#32a4a1] text-white px-8 py-3 rounded-xl font-black uppercase hover:bg-[#238986] transition-all shadow-lg hover:scale-105">
+        <button onClick={handleSaveAll} disabled={saving} className="bg-[#32a4a1] text-white px-8 py-3 rounded-none font-black uppercase hover:bg-[#238986] transition-all shadow-sm hover:scale-105">
           {saving ? 'Saving...' : 'Save All 💾'}
         </button>
       </div>
 
       {/* 2. 헤더 소개 */}
-      <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100">
+      <div className="bg-white p-8 rounded-none shadow-sm border border-slate-100">
         <h3 className="font-black text-[#32a4a1] mb-4 uppercase text-sm tracking-widest">01. Header Description</h3>
         <div className="space-y-4">
-          <input type="text" value={headerData.title} onChange={e => setHeaderData({...headerData, title: e.target.value})} className="w-full bg-slate-50 p-4 rounded-xl font-black text-2xl outline-none focus:border-[#32a4a1] border border-transparent" placeholder="제목 (Education Session)" />
-          <textarea rows="3" value={headerData.desc} onChange={e => setHeaderData({...headerData, desc: e.target.value})} className="w-full bg-slate-50 p-4 rounded-xl font-medium text-slate-600 outline-none focus:border-[#32a4a1] border border-transparent resize-none" placeholder="세션 상세 설명"></textarea>
+          <input type="text" value={headerData.title} onChange={e => setHeaderData({...headerData, title: e.target.value})} className="w-full bg-slate-50 p-4 rounded-none font-black text-2xl outline-none focus:border-[#32a4a1] border border-transparent" placeholder="제목 (Education Session)" />
+          <textarea rows="3" value={headerData.desc} onChange={e => setHeaderData({...headerData, desc: e.target.value})} className="w-full bg-slate-50 p-4 rounded-none font-medium text-slate-600 outline-none focus:border-[#32a4a1] border border-transparent resize-none" placeholder="세션 상세 설명"></textarea>
         </div>
       </div>
 
       {/* 3. 3대 커리큘럼 에디터 */}
-      <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100">
+      <div className="bg-white p-8 rounded-none shadow-sm border border-slate-100">
         <h3 className="font-black text-[#32a4a1] mb-6 uppercase text-sm tracking-widest">02. IGD Curriculum</h3>
         
         {['insight', 'graphic', 'delivery'].map(category => (
@@ -503,7 +503,7 @@ function EducationManager() {
               
               {/* Basic / Advanced 렌더링 */}
               {['basic', 'advanced'].map(type => (
-                <div key={type} className={`p-6 rounded-2xl ${type === 'basic' ? 'bg-slate-50' : 'bg-slate-50 border-t-4 border-[#32a4a1]'}`}>
+                <div key={type} className={`p-6 rounded-none ${type === 'basic' ? 'bg-slate-50' : 'bg-slate-50 border-t-4 border-[#32a4a1]'}`}>
                   <p className="text-[#32a4a1] font-black text-[10px] uppercase tracking-widest mb-2">{type} Course</p>
                   <input type="text" value={curriculum[`${category}_${type}`].title} onChange={e => handleCurriculumChange(category, type, 'title', e.target.value)} className="w-full bg-transparent text-lg font-black outline-none border-b border-slate-200 focus:border-[#32a4a1] pb-1 mb-4" placeholder="과정 제목 (예: 기획의 원칙)" />
                   
@@ -512,11 +512,11 @@ function EducationManager() {
                     {curriculum[`${category}_${type}`].items.map((item, idx) => (
                       <div key={idx} className="flex items-center gap-2">
                         <span className="text-slate-400 text-xs">•</span>
-                        <input type="text" value={item} onChange={e => handleCurItemChange(category, type, idx, e.target.value)} className="flex-1 bg-white p-2 rounded-lg text-sm outline-none border border-slate-200 focus:border-[#32a4a1]" placeholder="세부 내용" />
+                        <input type="text" value={item} onChange={e => handleCurItemChange(category, type, idx, e.target.value)} className="flex-1 bg-white p-2 rounded-none text-sm outline-none border border-slate-200 focus:border-[#32a4a1]" placeholder="세부 내용" />
                         <button onClick={() => removeCurItem(category, type, idx)} className="text-red-400 hover:text-red-600 text-xs font-black px-2">X</button>
                       </div>
                     ))}
-                    <button onClick={() => addCurItem(category, type)} className="w-full py-2 border-2 border-dashed border-slate-200 text-slate-400 rounded-lg text-xs font-black hover:border-[#32a4a1] hover:text-[#32a4a1] transition-colors">+ 항목 추가</button>
+                    <button onClick={() => addCurItem(category, type)} className="w-full py-2 border-2 border-dashed border-slate-200 text-slate-400 rounded-none text-xs font-black hover:border-[#32a4a1] hover:text-[#32a4a1] transition-colors">+ 항목 추가</button>
                   </div>
                 </div>
               ))}
@@ -530,14 +530,14 @@ function EducationManager() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         
         {/* 특강 관리 */}
-        <div className="bg-[#1a1a1a] text-white p-8 rounded-[2rem] shadow-xl">
+        <div className="bg-[#1a1a1a] text-white p-8 rounded-none shadow-sm">
           <div className="flex justify-between items-center mb-6">
             <h3 className="font-black text-[#a8d0cd] uppercase text-sm tracking-widest">03. Guest Speakers</h3>
-            <button onClick={addSpeaker} className="bg-white/10 px-3 py-1 rounded-lg text-xs font-black hover:bg-white/20 transition-all">+ 강사 추가</button>
+            <button onClick={addSpeaker} className="bg-white/10 px-3 py-1 rounded-none text-xs font-black hover:bg-white/20 transition-all">+ 강사 추가</button>
           </div>
           <div className="space-y-4">
             {speakers.map((speaker, idx) => (
-              <div key={idx} className="bg-white/5 p-4 rounded-xl border border-white/10 relative">
+              <div key={idx} className="bg-white/5 p-4 rounded-none border border-white/10 relative">
                 <button onClick={() => removeSpeaker(idx)} className="absolute top-4 right-4 text-red-400 hover:text-red-600 text-xs font-black">X</button>
                 <p className="text-[#32a4a1] font-black text-[10px] mb-2">Speaker {String(idx + 1).padStart(2, '0')}</p>
                 <input type="text" value={speaker.name} onChange={e => handleSpeakerChange(idx, 'name', e.target.value)} className="w-full bg-transparent text-lg font-black outline-none border-b border-white/20 focus:border-[#32a4a1] pb-1 mb-2" placeholder="이름 및 소속" />
@@ -549,16 +549,16 @@ function EducationManager() {
         </div>
 
         {/* 시스템 안내 관리 */}
-        <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100">
+        <div className="bg-white p-8 rounded-none shadow-sm border border-slate-100">
           <h3 className="font-black text-[#32a4a1] mb-6 uppercase text-sm tracking-widest">04. Systems</h3>
           <div className="space-y-6">
-            <div className="bg-slate-50 p-6 rounded-2xl">
+            <div className="bg-slate-50 p-6 rounded-none">
               <h4 className="font-black text-slate-800 mb-2">1:1 맞춤형 멘토링</h4>
-              <textarea rows="3" value={systemData.mentoring_desc} onChange={e => setSystemData({...systemData, mentoring_desc: e.target.value})} className="w-full bg-white p-3 rounded-xl text-sm font-medium outline-none resize-none border border-slate-200 focus:border-[#32a4a1]" placeholder="멘토링 설명"></textarea>
+              <textarea rows="3" value={systemData.mentoring_desc} onChange={e => setSystemData({...systemData, mentoring_desc: e.target.value})} className="w-full bg-white p-3 rounded-none text-sm font-medium outline-none resize-none border border-slate-200 focus:border-[#32a4a1]" placeholder="멘토링 설명"></textarea>
             </div>
-            <div className="bg-slate-50 p-6 rounded-2xl">
+            <div className="bg-slate-50 p-6 rounded-none">
               <h4 className="font-black text-slate-800 mb-2">알럼나이 피드백</h4>
-              <textarea rows="3" value={systemData.alumni_desc} onChange={e => setSystemData({...systemData, alumni_desc: e.target.value})} className="w-full bg-white p-3 rounded-xl text-sm font-medium outline-none resize-none border border-slate-200 focus:border-[#32a4a1]" placeholder="알럼나이 피드백 설명"></textarea>
+              <textarea rows="3" value={systemData.alumni_desc} onChange={e => setSystemData({...systemData, alumni_desc: e.target.value})} className="w-full bg-white p-3 rounded-none text-sm font-medium outline-none resize-none border border-slate-200 focus:border-[#32a4a1]" placeholder="알럼나이 피드백 설명"></textarea>
             </div>
           </div>
         </div>
@@ -691,22 +691,22 @@ function UnionManager() {
   return (
     <div className="space-y-8">
       {/* 1. 상단 컨트롤 바 */}
-      <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 flex justify-between items-center sticky top-24 z-10">
+      <div className="bg-white p-6 rounded-none shadow-sm border border-slate-100 flex justify-between items-center sticky top-24 z-10">
         <div>
           <h2 className="text-xl font-black text-slate-800">✨ 연합 세션 전체 관리</h2>
           <p className="text-xs font-bold text-slate-400 mt-1">학기별 프로젝트와 활동 사진을 관리하세요.</p>
         </div>
-        <button onClick={handleSaveAll} disabled={saving} className="bg-[#32a4a1] text-white px-8 py-3 rounded-xl font-black uppercase hover:bg-[#238986] transition-all shadow-lg hover:scale-105">
+        <button onClick={handleSaveAll} disabled={saving} className="bg-[#32a4a1] text-white px-8 py-3 rounded-none font-black uppercase hover:bg-[#238986] transition-all shadow-sm hover:scale-105">
           {saving ? 'Saving...' : 'Save All 💾'}
         </button>
       </div>
 
       {/* 2. 헤더 소개 */}
-      <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100">
+      <div className="bg-white p-8 rounded-none shadow-sm border border-slate-100">
         <h3 className="font-black text-[#32a4a1] mb-4 uppercase text-sm tracking-widest">01. Header Description</h3>
         <div className="space-y-4">
-          <input type="text" value={headerData.title} onChange={e => setHeaderData({...headerData, title: e.target.value})} className="w-full bg-slate-50 p-4 rounded-xl font-black text-2xl outline-none focus:border-[#32a4a1] border border-transparent" placeholder="제목 (Union Session)" />
-          <textarea rows="3" value={headerData.desc} onChange={e => setHeaderData({...headerData, desc: e.target.value})} className="w-full bg-slate-50 p-4 rounded-xl font-medium text-slate-600 outline-none focus:border-[#32a4a1] border border-transparent resize-none" placeholder="세션 상세 설명 (서울대 C!SL 연합...)"></textarea>
+          <input type="text" value={headerData.title} onChange={e => setHeaderData({...headerData, title: e.target.value})} className="w-full bg-slate-50 p-4 rounded-none font-black text-2xl outline-none focus:border-[#32a4a1] border border-transparent" placeholder="제목 (Union Session)" />
+          <textarea rows="3" value={headerData.desc} onChange={e => setHeaderData({...headerData, desc: e.target.value})} className="w-full bg-slate-50 p-4 rounded-none font-medium text-slate-600 outline-none focus:border-[#32a4a1] border border-transparent resize-none" placeholder="세션 상세 설명 (서울대 C!SL 연합...)"></textarea>
         </div>
       </div>
 
@@ -714,11 +714,11 @@ function UnionManager() {
       <div className="space-y-6">
         <div className="flex justify-between items-end mb-2 px-2">
           <h3 className="font-black text-slate-800 text-xl">02. Project Archives</h3>
-          <button onClick={addProject} className="bg-slate-900 text-white px-4 py-2 rounded-lg text-xs font-black hover:bg-[#32a4a1] transition-colors">+ 새 프로젝트 추가</button>
+          <button onClick={addProject} className="bg-slate-900 text-white px-4 py-2 rounded-none text-xs font-black hover:bg-[#32a4a1] transition-colors">+ 새 프로젝트 추가</button>
         </div>
 
         {projects.map((proj, pIdx) => (
-          <div key={pIdx} className={`p-8 rounded-[2.5rem] shadow-sm border-2 relative transition-all ${proj.theme === 'dark' ? 'bg-slate-900 border-slate-800 text-white' : 'bg-white border-slate-100'}`}>
+          <div key={pIdx} className={`p-8 rounded-none shadow-sm border-2 relative transition-all ${proj.theme === 'dark' ? 'bg-slate-900 border-slate-800 text-white' : 'bg-white border-slate-100'}`}>
             <button onClick={() => removeProject(pIdx)} className="absolute top-6 right-6 text-red-400 hover:text-red-600 font-black text-xl">✕</button>
             <div className="flex gap-4 mb-6">
               <label className="flex items-center gap-2 text-xs font-black cursor-pointer">
@@ -732,7 +732,7 @@ function UnionManager() {
               <div className="space-y-4">
                 <input type="text" value={proj.semester} onChange={e => handleProjectChange(pIdx, 'semester', e.target.value)} className="w-full bg-transparent text-[#32a4a1] font-black text-sm uppercase tracking-widest outline-none border-b border-white/20 focus:border-[#32a4a1] pb-1" placeholder="학기명 (예: 2025 Autumn Semester)" />
                 <input type="text" value={proj.title} onChange={e => handleProjectChange(pIdx, 'title', e.target.value)} className="w-full bg-transparent text-3xl font-black outline-none border-b border-white/20 focus:border-[#32a4a1] pb-1" placeholder="프로젝트 타이틀" />
-                <textarea rows="3" value={proj.description} onChange={e => handleProjectChange(pIdx, 'description', e.target.value)} className="w-full bg-transparent text-sm font-medium opacity-80 outline-none border border-white/20 rounded-xl p-3 resize-none focus:border-[#32a4a1]" placeholder="프로젝트 상세 설명"></textarea>
+                <textarea rows="3" value={proj.description} onChange={e => handleProjectChange(pIdx, 'description', e.target.value)} className="w-full bg-transparent text-sm font-medium opacity-80 outline-none border border-white/20 rounded-none p-3 resize-none focus:border-[#32a4a1]" placeholder="프로젝트 상세 설명"></textarea>
                 <div className="pt-4">
                   <p className="text-xs font-black opacity-50 mb-2">세부 키워드 리스트</p>
                   <div className="space-y-2">
@@ -740,7 +740,7 @@ function UnionManager() {
                       let itemObj = {t:'', d:''};
                       try { itemObj = typeof itemStr === 'string' ? JSON.parse(itemStr) : itemStr } catch(e){}
                       return (
-                        <div key={iIdx} className="flex items-start gap-2 bg-white/5 p-2 rounded-xl">
+                        <div key={iIdx} className="flex items-start gap-2 bg-white/5 p-2 rounded-none">
                           <span className="text-[#32a4a1] font-black mt-2">0{iIdx+1}</span>
                           <div className="flex-1 space-y-1">
                             <input type="text" value={itemObj.t} onChange={e => handleSubItemChange(pIdx, iIdx, 't', e.target.value)} className="w-full bg-transparent text-sm font-black outline-none" placeholder="소제목 (예: 세대 갈등)" />
@@ -755,13 +755,13 @@ function UnionManager() {
                 </div>
               </div>
               <div className="flex flex-col gap-4">
-                <div className="relative w-full aspect-video bg-white/5 rounded-2xl border-2 border-dashed border-white/20 flex flex-col items-center justify-center overflow-hidden">
+                <div className="relative w-full aspect-video bg-white/5 rounded-none border-2 border-dashed border-white/20 flex flex-col items-center justify-center overflow-hidden">
                   {proj.image_url ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={proj.image_url} alt="preview" className="w-full h-full object-cover" />
                   ) : <span className="text-sm font-bold opacity-50">대표 이미지를 업로드하세요</span>}
                 </div>
-                <input type="file" accept="image/*" onChange={e => handleProjectImageUpload(pIdx, e.target.files[0])} className="text-xs file:rounded-full file:border-0 file:bg-[#32a4a1]/10 file:text-[#32a4a1] file:px-4 file:py-2 file:font-black" />
+                <input type="file" accept="image/*" onChange={e => handleProjectImageUpload(pIdx, e.target.files[0])} className="text-xs file:rounded-none file:border-0 file:bg-[#32a4a1]/10 file:text-[#32a4a1] file:px-4 file:py-2 file:font-black" />
               </div>
             </div>
           </div>
@@ -769,26 +769,26 @@ function UnionManager() {
       </div>
 
       {/* 4. 📸 활동 스케치 (갤러리) 관리 파트 신규 추가 */}
-      <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100">
+      <div className="bg-white p-8 rounded-none shadow-sm border border-slate-100">
         <div className="flex justify-between items-center mb-6">
           <h3 className="font-black text-[#32a4a1] uppercase text-sm tracking-widest">03. Activity Sketch (Gallery)</h3>
           
           {/* 다중 업로드 지원 버튼 */}
-          <label className="bg-slate-900 text-white px-4 py-2 rounded-lg text-xs font-black cursor-pointer hover:bg-[#32a4a1] transition-colors shadow-md">
+          <label className="bg-slate-900 text-white px-4 py-2 rounded-none text-xs font-black cursor-pointer hover:bg-[#32a4a1] transition-colors shadow-sm">
             + 사진 추가 (여러 장 가능)
             <input type="file" multiple accept="image/*" className="hidden" onChange={handleGalleryUpload} disabled={saving} />
           </label>
         </div>
         
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 bg-slate-50 p-6 rounded-2xl">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 bg-slate-50 p-6 rounded-none">
           {galleryUrls.map((url, idx) => (
-            <div key={idx} className="relative aspect-video rounded-xl overflow-hidden shadow-sm group">
+            <div key={idx} className="relative aspect-video rounded-none overflow-hidden shadow-sm group">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={url} alt={`gallery-${idx}`} className="w-full h-full object-cover" />
               {/* 호버 시 나타나는 X 삭제 버튼 */}
               <button 
                 onClick={() => removeGalleryImage(idx)} 
-                className="absolute top-2 right-2 bg-red-500/80 hover:bg-red-600 text-white w-8 h-8 rounded-full flex items-center justify-center font-black text-sm opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-sm"
+                className="absolute top-2 right-2 bg-red-500/80 hover:bg-red-600 text-white w-8 h-8 rounded-none flex items-center justify-center font-black text-sm opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-sm"
               >
                 X
               </button>
@@ -966,40 +966,40 @@ function CorporateManager() {
   return (
     <div className="space-y-8">
       {/* 1. 상단 컨트롤 바 */}
-      <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 flex justify-between items-center sticky top-24 z-10">
+      <div className="bg-white p-6 rounded-none shadow-sm border border-slate-100 flex justify-between items-center sticky top-24 z-10">
         <div>
           <h2 className="text-xl font-black text-slate-800">🤝 기업 세션 전체 관리</h2>
           <p className="text-xs font-bold text-slate-400 mt-1">파트너사와 케이스 스터디를 관리하세요.</p>
         </div>
-        <button onClick={handleSaveAll} disabled={saving} className="bg-[#32a4a1] text-white px-8 py-3 rounded-xl font-black uppercase hover:bg-[#238986] transition-all shadow-lg hover:scale-105">
+        <button onClick={handleSaveAll} disabled={saving} className="bg-[#32a4a1] text-white px-8 py-3 rounded-none font-black uppercase hover:bg-[#238986] transition-all shadow-sm hover:scale-105">
           {saving ? 'Saving...' : 'Save All 💾'}
         </button>
       </div>
 
       {/* 2. 헤더 소개 */}
-      <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100">
+      <div className="bg-white p-8 rounded-none shadow-sm border border-slate-100">
         <h3 className="font-black text-[#32a4a1] mb-4 uppercase text-sm tracking-widest">01. Header Description</h3>
         <div className="space-y-4">
-          <input type="text" value={headerData.title} onChange={e => setHeaderData({...headerData, title: e.target.value})} className="w-full bg-slate-50 p-4 rounded-xl font-black text-2xl outline-none focus:border-[#32a4a1] border border-transparent" placeholder="제목 (Corporate Session)" />
-          <textarea rows="3" value={headerData.desc} onChange={e => setHeaderData({...headerData, desc: e.target.value})} className="w-full bg-slate-50 p-4 rounded-xl font-medium text-slate-600 outline-none focus:border-[#32a4a1] border border-transparent resize-none" placeholder="세션 상세 설명"></textarea>
+          <input type="text" value={headerData.title} onChange={e => setHeaderData({...headerData, title: e.target.value})} className="w-full bg-slate-50 p-4 rounded-none font-black text-2xl outline-none focus:border-[#32a4a1] border border-transparent" placeholder="제목 (Corporate Session)" />
+          <textarea rows="3" value={headerData.desc} onChange={e => setHeaderData({...headerData, desc: e.target.value})} className="w-full bg-slate-50 p-4 rounded-none font-medium text-slate-600 outline-none focus:border-[#32a4a1] border border-transparent resize-none" placeholder="세션 상세 설명"></textarea>
         </div>
       </div>
 
       {/* 3. 파트너사 로고 관리 */}
-      <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100">
+      <div className="bg-white p-8 rounded-none shadow-sm border border-slate-100">
         <div className="flex justify-between items-center mb-6">
           <h3 className="font-black text-[#32a4a1] uppercase text-sm tracking-widest">02. Partner Logos</h3>
-          <label className="bg-slate-900 text-white px-4 py-2 rounded-lg text-xs font-black cursor-pointer hover:bg-[#32a4a1] transition-colors">
+          <label className="bg-slate-900 text-white px-4 py-2 rounded-none text-xs font-black cursor-pointer hover:bg-[#32a4a1] transition-colors">
             + 로고 업로드 (다중 선택)
             <input type="file" multiple accept="image/*" className="hidden" onChange={handlePartnerUpload} />
           </label>
         </div>
-        <div className="grid grid-cols-3 md:grid-cols-5 gap-4 bg-slate-50 p-6 rounded-2xl">
+        <div className="grid grid-cols-3 md:grid-cols-5 gap-4 bg-slate-50 p-6 rounded-none">
           {partners.map((partner, idx) => (
-            <div key={idx} className="relative h-20 bg-white rounded-xl shadow-sm border border-slate-100 flex items-center justify-center p-2 group">
+            <div key={idx} className="relative h-20 bg-white rounded-none shadow-sm border border-slate-100 flex items-center justify-center p-2 group">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={partner.image_url} alt={partner.name} className="max-w-full max-h-full object-contain" />
-              <button onClick={() => removePartner(idx)} className="absolute -top-2 -right-2 bg-red-500 text-white w-6 h-6 rounded-full font-black text-xs opacity-0 group-hover:opacity-100 transition-opacity">X</button>
+              <button onClick={() => removePartner(idx)} className="absolute -top-2 -right-2 bg-red-500 text-white w-6 h-6 rounded-none font-black text-xs opacity-0 group-hover:opacity-100 transition-opacity">X</button>
             </div>
           ))}
           {partners.length === 0 && <p className="col-span-full text-center text-xs text-slate-400 py-4">등록된 파트너 로고가 없습니다.</p>}
@@ -1007,16 +1007,16 @@ function CorporateManager() {
       </div>
 
       {/* 4. 메인 케이스 스터디 (트리플래닛) */}
-      <div className="bg-[#1a1a1a] text-white p-8 rounded-[2.5rem] shadow-xl">
+      <div className="bg-[#1a1a1a] text-white p-8 rounded-none shadow-sm">
         <h3 className="font-black text-[#a8d0cd] mb-6 uppercase text-sm tracking-widest">03. Special Case Study</h3>
         
         <div className="space-y-6">
           <div className="flex flex-col md:flex-row gap-6">
             <div className="flex-1 space-y-4">
-              <input type="text" value={caseStudy.title} onChange={e => setCaseStudy({...caseStudy, title: e.target.value})} className="w-full bg-white/5 p-4 rounded-xl font-black text-xl outline-none focus:border-[#32a4a1] border border-white/10" placeholder="메인 타이틀 (예: 26기 & 27기 기업세션)" />
-              <input type="text" value={caseStudy.corp_name} onChange={e => setCaseStudy({...caseStudy, corp_name: e.target.value})} className="w-full bg-white/5 p-4 rounded-xl font-black text-xl outline-none focus:border-[#32a4a1] border border-white/10" placeholder="기업명 (예: 트리플래닛 X IG)" />
+              <input type="text" value={caseStudy.title} onChange={e => setCaseStudy({...caseStudy, title: e.target.value})} className="w-full bg-white/5 p-4 rounded-none font-black text-xl outline-none focus:border-[#32a4a1] border border-white/10" placeholder="메인 타이틀 (예: 26기 & 27기 기업세션)" />
+              <input type="text" value={caseStudy.corp_name} onChange={e => setCaseStudy({...caseStudy, corp_name: e.target.value})} className="w-full bg-white/5 p-4 rounded-none font-black text-xl outline-none focus:border-[#32a4a1] border border-white/10" placeholder="기업명 (예: 트리플래닛 X IG)" />
             </div>
-            <div className="w-48 bg-white/5 rounded-xl border border-white/10 flex flex-col items-center justify-center p-4">
+            <div className="w-48 bg-white/5 rounded-none border border-white/10 flex flex-col items-center justify-center p-4">
               <span className="text-xs font-bold text-slate-400 mb-2">기업 로고 업로드</span>
               <input type="file" accept="image/*" onChange={e => setLogoFile(e.target.files[0])} className="text-[10px] w-full" />
               {caseStudy.corp_logo_url && <span className="text-[10px] text-green-400 mt-2">✓ 기존 로고 있음</span>}
@@ -1030,7 +1030,7 @@ function CorporateManager() {
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {caseStudy.sections.map((sec, idx) => (
-                <div key={idx} className="bg-white/5 p-4 rounded-2xl relative" style={{ borderLeft: `4px solid ${sec.color}` }}>
+                <div key={idx} className="bg-white/5 p-4 rounded-none relative" style={{ borderLeft: `4px solid ${sec.color}` }}>
                   <button onClick={() => removeSection(idx)} className="absolute top-4 right-4 text-red-400 hover:text-red-500 font-black text-xs">X</button>
                   <div className="flex gap-2 mb-3">
                     <input type="text" value={sec.icon} onChange={e => handleSectionChange(idx, 'icon', e.target.value)} className="w-10 bg-transparent text-center outline-none border-b border-white/20" placeholder="♻️" />
@@ -1049,24 +1049,24 @@ function CorporateManager() {
       </div>
 
       {/* 5. 연계 활동 (Post Activities) */}
-      <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100">
+      <div className="bg-white p-8 rounded-none shadow-sm border border-slate-100">
         <div className="flex justify-between items-center mb-6">
           <h3 className="font-black text-[#32a4a1] uppercase text-sm tracking-widest">04. Post-Session Activities</h3>
-          <button onClick={addPostActivity} className="bg-slate-900 text-white px-3 py-1 rounded-lg text-xs font-black hover:bg-[#32a4a1] transition-colors">+ 활동 추가</button>
+          <button onClick={addPostActivity} className="bg-slate-900 text-white px-3 py-1 rounded-none text-xs font-black hover:bg-[#32a4a1] transition-colors">+ 활동 추가</button>
         </div>
         
         <div className="space-y-6">
           {postActivities.map((post, idx) => (
-            <div key={idx} className="bg-slate-50 p-6 rounded-2xl border border-slate-200 relative">
+            <div key={idx} className="bg-slate-50 p-6 rounded-none border border-slate-200 relative">
               <button onClick={() => removePostActivity(idx)} className="absolute top-4 right-4 text-red-400 hover:text-red-600 font-black text-xs">X 삭제</button>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-3">
                   <div className="flex gap-2">
-                    <input type="text" value={post.icon} onChange={e => handlePostChange(idx, 'icon', e.target.value)} className="w-10 text-center bg-white rounded-lg border border-slate-200" placeholder="🌲" />
-                    <input type="text" value={post.title} onChange={e => handlePostChange(idx, 'title', e.target.value)} className="flex-1 bg-white p-2 rounded-lg font-black border border-slate-200" placeholder="활동 제목 (예: 안동 현장 답사)" />
+                    <input type="text" value={post.icon} onChange={e => handlePostChange(idx, 'icon', e.target.value)} className="w-10 text-center bg-white rounded-none border border-slate-200" placeholder="🌲" />
+                    <input type="text" value={post.title} onChange={e => handlePostChange(idx, 'title', e.target.value)} className="flex-1 bg-white p-2 rounded-none font-black border border-slate-200" placeholder="활동 제목 (예: 안동 현장 답사)" />
                   </div>
-                  <textarea rows="4" value={post.desc} onChange={e => handlePostChange(idx, 'desc', e.target.value)} className="w-full bg-white p-3 rounded-lg text-sm border border-slate-200 resize-none" placeholder="활동 상세 설명"></textarea>
+                  <textarea rows="4" value={post.desc} onChange={e => handlePostChange(idx, 'desc', e.target.value)} className="w-full bg-white p-3 rounded-none text-sm border border-slate-200 resize-none" placeholder="활동 상세 설명"></textarea>
                   <div className="flex items-center gap-2">
                      <span className="text-[10px] font-black text-slate-400">포인트 컬러:</span>
                      <input type="color" value={post.bg_color} onChange={e => handlePostChange(idx, 'bg_color', e.target.value)} className="w-8 h-8 rounded cursor-pointer" />
@@ -1078,13 +1078,13 @@ function CorporateManager() {
                   <input type="file" multiple accept="image/*" onChange={(e) => handlePostImageUpload(idx, e)} className="text-xs w-full mb-3" />
                   <div className="grid grid-cols-2 gap-2">
                     {(post.image_urls || []).map((url, imgIdx) => (
-                      <div key={imgIdx} className="relative aspect-video rounded-lg overflow-hidden bg-slate-200">
+                      <div key={imgIdx} className="relative aspect-video rounded-none overflow-hidden bg-slate-200">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img src={url} alt="post-img" className="w-full h-full object-cover" />
                         <button onClick={() => {
                           const newUrls = post.image_urls.filter((_, i) => i !== imgIdx);
                           handlePostChange(idx, 'image_urls', newUrls);
-                        }} className="absolute top-1 right-1 bg-red-500 text-white w-5 h-5 rounded-full text-[10px] font-black">X</button>
+                        }} className="absolute top-1 right-1 bg-red-500 text-white w-5 h-5 rounded-none text-[10px] font-black">X</button>
                       </div>
                     ))}
                   </div>

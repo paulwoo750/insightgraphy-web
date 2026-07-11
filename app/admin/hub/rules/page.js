@@ -106,17 +106,17 @@ export default function RulesAdmin() {
         
         <header className="flex flex-col md:flex-row md:justify-between md:items-end border-b border-slate-200 pb-6 gap-4">
           <div>
-            <Link href="/admin/hub" className="text-xs font-black text-slate-400 hover:text-purple-600 uppercase tracking-widest mb-2 block transition-colors">← Back to Hub</Link>
+            <Link href="/admin/hub" className="text-xs font-black text-slate-400 hover:text-teal-600 uppercase tracking-widest mb-2 block transition-colors">← Back to Hub</Link>
             <h1 className="text-4xl font-black uppercase tracking-tighter text-slate-800 flex items-center gap-3">
               <span className="text-4xl">📜</span> Society Rules
             </h1>
             <p className="text-xs font-bold text-slate-500 mt-2">각 과제별 상세 지각/미제출 벌금 규정을 설정합니다.</p>
           </div>
           <div className="flex flex-col md:flex-row items-center gap-3">
-            <div className="bg-purple-50 text-purple-700 px-6 py-3 rounded-xl font-black text-sm uppercase shadow-sm border border-purple-100">
+            <div className="bg-teal-50 text-teal-700 px-6 py-3 rounded-none font-black text-sm uppercase shadow-sm border border-teal-100">
               현재 학기: {currentSemester} ({totalWeeks}주)
             </div>
-            <button onClick={handleSave} disabled={saving} className="bg-purple-600 text-white px-8 py-3 rounded-xl font-black text-sm uppercase tracking-widest hover:bg-purple-700 transition-colors shadow-lg active:scale-95">
+            <button onClick={handleSave} disabled={saving} className="bg-teal-600 text-white px-8 py-3 rounded-none font-black text-sm uppercase tracking-widest hover:bg-teal-700 transition-colors shadow-sm active:scale-95">
               {saving ? '저장 중...' : '규정 저장하기 💾'}
             </button>
           </div>
@@ -126,13 +126,13 @@ export default function RulesAdmin() {
           
           {/* 🌟 좌측: 세션 규정 */}
           <div className="space-y-8">
-            <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-200">
+            <div className="bg-white p-8 rounded-none shadow-sm border border-slate-200">
               <div className="flex justify-between items-center border-b border-slate-100 pb-4 mb-6">
                 <h2 className="text-xl font-black text-slate-800 flex items-center gap-2"><span>🏫</span> 세션 출결 규정</h2>
               </div>
               
               <div className="space-y-6">
-                <div className="bg-red-50 p-5 rounded-2xl border border-red-100">
+                <div className="bg-red-50 p-5 rounded-none border border-red-100">
                   <h3 className="text-xs font-black text-red-600 uppercase tracking-widest mb-3 flex justify-between">
                     <span>• 사유서 지각 (사전 공지 미준수)</span>
                     <span className="text-[9px] bg-red-200 text-red-700 px-2 py-0.5 rounded">무단결석 자동 처리</span>
@@ -142,14 +142,14 @@ export default function RulesAdmin() {
                       type="text" 
                       value={penalties.absenceLate ? penalties.absenceLate.toLocaleString() : ''} 
                       onChange={(e) => handlePenaltyChange('absenceLate', e.target.value)} 
-                      className="flex-1 p-3 rounded-xl font-black text-lg text-red-600 outline-none focus:ring-2 ring-red-200 bg-white text-right shadow-sm" 
+                      className="flex-1 p-3 rounded-none font-black text-lg text-red-600 outline-none focus:ring-2 ring-red-200 bg-white text-right shadow-sm" 
                       placeholder="0"
                     />
                     <span className="font-black text-slate-400">원</span>
                   </div>
                 </div>
 
-                <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 space-y-4">
+                <div className="bg-slate-50 p-6 rounded-none border border-slate-100 space-y-4">
                   <h3 className="text-xs font-black text-slate-600 uppercase tracking-widest border-b border-slate-200 pb-2">세션 지각 벌금</h3>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <PenaltyInput title="13:20 이전 (1분당)" val={penalties.sessionLatePerMin} onChange={(v) => handlePenaltyChange('sessionLatePerMin', v)} />
@@ -158,7 +158,7 @@ export default function RulesAdmin() {
                   </div>
                 </div>
 
-                <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 space-y-4">
+                <div className="bg-slate-50 p-6 rounded-none border border-slate-100 space-y-4">
                   <h3 className="text-xs font-black text-slate-600 uppercase tracking-widest border-b border-slate-200 pb-2">세션 조퇴 벌금</h3>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <PenaltyInput title="1시간 이하 조퇴" val={penalties.sessionLeaveUnder1h} onChange={(v) => handlePenaltyChange('sessionLeaveUnder1h', v)} />
@@ -172,7 +172,7 @@ export default function RulesAdmin() {
           {/* 🌟 우측: 과제 및 피드백 지각 규정 */}
           <div className="space-y-8">
             
-            <div className="bg-slate-900 p-8 rounded-[2.5rem] shadow-xl border border-slate-800">
+            <div className="bg-slate-900 p-8 rounded-none shadow-sm border border-slate-800">
               <h2 className="text-xl font-black text-white mb-6 border-b border-slate-700 pb-4 flex items-center gap-2"><span>📄</span> 기획서 제출 규정</h2>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                 <PenaltyInput title="최초 지각" val={penalties.proposalInitial} onChange={(v) => handlePenaltyChange('proposalInitial', v)} isDark />
@@ -183,7 +183,7 @@ export default function RulesAdmin() {
               </div>
             </div>
 
-            <div className="bg-slate-800 p-8 rounded-[2.5rem] shadow-xl border border-slate-700">
+            <div className="bg-slate-800 p-8 rounded-none shadow-sm border border-slate-700">
               <h2 className="text-xl font-black text-white mb-6 border-b border-slate-600 pb-4 flex items-center gap-2"><span>🖼️</span> 발표 슬라이드 제출 규정</h2>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                 <PenaltyInput title="최초 지각" val={penalties.slideInitial} onChange={(v) => handlePenaltyChange('slideInitial', v)} isDark />
@@ -194,7 +194,7 @@ export default function RulesAdmin() {
               </div>
             </div>
 
-            <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-200">
+            <div className="bg-white p-8 rounded-none shadow-sm border border-slate-200">
               <div className="mb-6 border-b border-slate-100 pb-4">
                 <h2 className="text-xl font-black text-slate-800 flex items-center gap-2"><span>💬</span> 각종 피드백 제출 규정</h2>
                 <p className="text-[10px] font-bold text-slate-400 mt-2">기획서 피드백, 카톡 피드백, 영상 정성 피드백, 영상 셀프 피드백에 공통 적용됩니다.</p>
@@ -216,7 +216,7 @@ export default function RulesAdmin() {
 
 function PenaltyInput({ title, val, onChange, isDark = false, highlight = false }) {
   return (
-    <div className={`${isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-100'} p-4 rounded-2xl border flex flex-col gap-2 shadow-sm`}>
+    <div className={`${isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-100'} p-4 rounded-none border flex flex-col gap-2 shadow-sm`}>
       <label className={`text-[10px] font-black uppercase tracking-widest ${isDark ? 'text-slate-400' : 'text-slate-500'} ${highlight ? 'text-red-400' : ''}`}>
         • {title}
       </label>
@@ -226,10 +226,10 @@ function PenaltyInput({ title, val, onChange, isDark = false, highlight = false 
           value={val ? Number(val).toLocaleString() : ''} 
           onChange={(e) => onChange(e.target.value)} 
           placeholder="0"
-          className={`w-full p-2.5 rounded-xl font-black text-sm outline-none transition-all text-right ${
+          className={`w-full p-2.5 rounded-none font-black text-sm outline-none transition-all text-right ${
             isDark 
-              ? 'bg-slate-900 text-white border border-slate-600 focus:border-blue-500' 
-              : 'bg-white text-slate-800 border border-slate-200 focus:border-blue-400'
+              ? 'bg-slate-900 text-white border border-slate-600 focus:border-teal-500' 
+              : 'bg-white text-slate-800 border border-slate-200 focus:border-teal-400'
           } ${highlight ? 'text-red-400 border-red-500/50' : ''}`} 
         />
         <span className={`font-black text-xs ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>원</span>

@@ -17,9 +17,9 @@ export default function AboutManager() {
 
   // 2. 3대 핵심 가치
   const [coreValues, setCoreValues] = useState([
-    { icon: '📄', title: '기획', desc: '매주 시의적인 주제에 대해 창의적으로 문제 정의 및 해결', color: 'border-[#3b82f6]', bg: 'bg-[#2d3e50]' },
+    { icon: '📄', title: '기획', desc: '매주 시의적인 주제에 대해 창의적으로 문제 정의 및 해결', color: 'border-[#238986]', bg: 'bg-[#2d3e50]' },
     { icon: '📢', title: '발표', desc: '도출한 해결책을 자신만의 컨텐츠로 공유', color: 'border-[#22c55e]', bg: 'bg-[#2d3d33]' },
-    { icon: '👯', title: '소통', desc: '피드백을 통해 성숙한 기획자 및 프레젠터로 성장', color: 'border-[#eab308]', bg: 'bg-[#4d452e]' }
+    { icon: '👯', title: '소통', desc: '피드백을 통해 성숙한 기획자 및 프레젠터로 성장', color: 'border-[#238986]', bg: 'bg-[#4d452e]' }
   ])
 
   // 3. IGD 역량
@@ -161,33 +161,33 @@ export default function AboutManager() {
               <span className="text-4xl">🏛️</span> About Manager
             </h1>
           </div>
-          <button onClick={handleSaveAll} disabled={saving} className="bg-[#32a4a1] text-white px-8 py-3 rounded-xl font-black uppercase tracking-widest hover:bg-[#238986] transition-all shadow-lg hover:scale-105">
+          <button onClick={handleSaveAll} disabled={saving} className="bg-[#32a4a1] text-white px-8 py-3 rounded-none font-black uppercase tracking-widest hover:bg-[#238986] transition-all shadow-sm hover:scale-105">
             {saving ? 'Saving...' : 'Save All 💾'}
           </button>
         </header>
 
         {/* 1. 비전 관리 */}
-        <section className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100">
+        <section className="bg-white p-8 rounded-none shadow-sm border border-slate-100">
           <h2 className="text-[#32a4a1] font-black uppercase tracking-widest text-sm mb-6">01. Our Vision</h2>
           <div className="space-y-6">
             <div>
               <label className="text-[10px] font-black text-slate-400 uppercase mb-2 block">슬로건 (줄바꿈 허용)</label>
-              <textarea rows="2" value={vision.subtitle} onChange={e => setVision({...vision, subtitle: e.target.value})} className="w-full bg-slate-50 p-4 rounded-xl font-black text-2xl text-center outline-none focus:border-[#32a4a1] border border-transparent resize-none leading-tight" placeholder="Precision in Vision..."></textarea>
+              <textarea rows="2" value={vision.subtitle} onChange={e => setVision({...vision, subtitle: e.target.value})} className="w-full bg-slate-50 p-4 rounded-none font-black text-2xl text-center outline-none focus:border-[#32a4a1] border border-transparent resize-none leading-tight" placeholder="Precision in Vision..."></textarea>
             </div>
             <div>
               <label className="text-[10px] font-black text-slate-400 uppercase mb-2 block">상세 설명 (줄바꿈 허용)</label>
-              <textarea rows="6" value={vision.desc} onChange={e => setVision({...vision, desc: e.target.value})} className="w-full bg-slate-50 p-5 rounded-xl font-medium text-slate-600 outline-none focus:border-[#32a4a1] border border-transparent resize-y leading-relaxed" placeholder="InsightGraphy는 2012년 설립된..."></textarea>
+              <textarea rows="6" value={vision.desc} onChange={e => setVision({...vision, desc: e.target.value})} className="w-full bg-slate-50 p-5 rounded-none font-medium text-slate-600 outline-none focus:border-[#32a4a1] border border-transparent resize-y leading-relaxed" placeholder="InsightGraphy는 2012년 설립된..."></textarea>
             </div>
           </div>
         </section>
 
         {/* 2. 3대 핵심 가치 관리 */}
-        <section className="bg-[#111111] p-8 rounded-[2rem] shadow-xl text-white">
+        <section className="bg-[#111111] p-8 rounded-none shadow-sm text-white">
           <h2 className="text-slate-500 font-black uppercase tracking-widest text-sm mb-6">02. 3 Core Values</h2>
           <div className="space-y-4">
             {coreValues.map((val, idx) => (
-              <div key={idx} className={`${val.bg} p-6 rounded-2xl flex items-center gap-4 ${val.color} border-l-8`}>
-                <input type="text" value={val.icon} onChange={e => updateArrayItem(setCoreValues, coreValues, idx, 'icon', e.target.value)} className="w-12 h-12 bg-black/20 text-center text-2xl rounded-xl outline-none" />
+              <div key={idx} className={`${val.bg} p-6 rounded-none flex items-center gap-4 ${val.color} border-l-8`}>
+                <input type="text" value={val.icon} onChange={e => updateArrayItem(setCoreValues, coreValues, idx, 'icon', e.target.value)} className="w-12 h-12 bg-black/20 text-center text-2xl rounded-none outline-none" />
                 <div className="flex-1 space-y-2">
                   <input type="text" value={val.title} onChange={e => updateArrayItem(setCoreValues, coreValues, idx, 'title', e.target.value)} className="w-full bg-transparent font-black text-xl outline-none" placeholder="타이틀 (기획)" />
                   <input type="text" value={val.desc} onChange={e => updateArrayItem(setCoreValues, coreValues, idx, 'desc', e.target.value)} className="w-full bg-transparent font-medium text-sm opacity-80 outline-none" placeholder="설명 (매주 시의적인 주제에 대해...)" />
@@ -198,12 +198,12 @@ export default function AboutManager() {
         </section>
 
         {/* 3. IGD 역량 관리 */}
-        <section className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100">
+        <section className="bg-white p-8 rounded-none shadow-sm border border-slate-100">
           <h2 className="text-[#32a4a1] font-black uppercase tracking-widest text-sm mb-6">03. IGD Core Competency</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {igdValues.map((igd, idx) => (
-              <div key={idx} className={`${igd.bg} p-6 rounded-[2rem] text-white flex flex-col items-center text-center shadow-lg`}>
-                <input type="text" value={igd.icon} onChange={e => updateArrayItem(setIgdValues, igdValues, idx, 'icon', e.target.value)} className="w-12 h-12 bg-white/10 text-center text-2xl rounded-xl mb-4 outline-none" />
+              <div key={idx} className={`${igd.bg} p-6 rounded-none text-white flex flex-col items-center text-center shadow-sm`}>
+                <input type="text" value={igd.icon} onChange={e => updateArrayItem(setIgdValues, igdValues, idx, 'icon', e.target.value)} className="w-12 h-12 bg-white/10 text-center text-2xl rounded-none mb-4 outline-none" />
                 <input type="text" value={igd.title} onChange={e => updateArrayItem(setIgdValues, igdValues, idx, 'title', e.target.value)} className="w-full bg-transparent font-black text-xl text-[#a8d0cd] uppercase text-center mb-2 outline-none" placeholder="Insight" />
                 <textarea rows="2" value={igd.desc} onChange={e => updateArrayItem(setIgdValues, igdValues, idx, 'desc', e.target.value)} className="w-full bg-transparent font-bold text-sm opacity-90 text-center resize-none outline-none" placeholder="설명문"></textarea>
               </div>
@@ -212,17 +212,17 @@ export default function AboutManager() {
         </section>
 
         {/* 🌟 4. 알럼나이 관리 (순서 변경 기능 추가) 🌟 */}
-        <section className="bg-slate-50 p-8 rounded-[2rem] border border-slate-200">
+        <section className="bg-slate-50 p-8 rounded-none border border-slate-200">
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-[#32a4a1] font-black uppercase tracking-widest text-sm">04. Alumni Interview</h2>
-            <button onClick={addAlumnus} className="bg-slate-900 text-white px-3 py-1.5 rounded-lg text-[10px] font-black hover:bg-[#32a4a1] transition-colors">+ 선배님 추가</button>
+            <button onClick={addAlumnus} className="bg-slate-900 text-white px-3 py-1.5 rounded-none text-[10px] font-black hover:bg-[#32a4a1] transition-colors">+ 선배님 추가</button>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {alumni.map((alum, idx) => (
-              <div key={idx} className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 relative group flex flex-col justify-between hover:border-[#32a4a1] transition-colors">
+              <div key={idx} className="bg-white p-6 rounded-none shadow-sm border border-slate-100 relative group flex flex-col justify-between hover:border-[#32a4a1] transition-colors">
                 
                 {/* 🌟 순서 변경 및 삭제 컨트롤 패널 */}
-                <div className="absolute top-4 right-4 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-white p-1 rounded-lg shadow-sm border border-slate-100">
+                <div className="absolute top-4 right-4 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-white p-1 rounded-none shadow-sm border border-slate-100">
                   <button onClick={() => moveAlumnus(idx, 'up')} disabled={idx === 0} className="w-6 h-6 flex items-center justify-center text-slate-400 hover:text-[#32a4a1] hover:bg-slate-50 rounded disabled:opacity-20 transition-colors">◀</button>
                   <button onClick={() => moveAlumnus(idx, 'down')} disabled={idx === alumni.length - 1} className="w-6 h-6 flex items-center justify-center text-slate-400 hover:text-[#32a4a1] hover:bg-slate-50 rounded disabled:opacity-20 transition-colors">▶</button>
                   <div className="w-[1px] h-4 bg-slate-200 mx-1"></div>
@@ -231,19 +231,19 @@ export default function AboutManager() {
                 
                 <div className="space-y-3 mb-4 mt-2">
                   <div className="flex gap-2">
-                    <input type="text" value={alum.generation} onChange={e => handleAlumniChange(idx, 'generation', e.target.value)} className="w-14 bg-slate-50 text-[#32a4a1] font-black text-xs p-2 rounded-lg outline-none text-center" placeholder="기수" />
-                    <input type="text" value={alum.name} onChange={e => handleAlumniChange(idx, 'name', e.target.value)} className="flex-1 bg-slate-50 text-slate-800 font-black text-xs p-2 rounded-lg outline-none pr-20" placeholder="이름 (예: 홍길동)" />
+                    <input type="text" value={alum.generation} onChange={e => handleAlumniChange(idx, 'generation', e.target.value)} className="w-14 bg-slate-50 text-[#32a4a1] font-black text-xs p-2 rounded-none outline-none text-center" placeholder="기수" />
+                    <input type="text" value={alum.name} onChange={e => handleAlumniChange(idx, 'name', e.target.value)} className="flex-1 bg-slate-50 text-slate-800 font-black text-xs p-2 rounded-none outline-none pr-20" placeholder="이름 (예: 홍길동)" />
                   </div>
                   <div className="flex gap-2">
-                    <input type="text" value={alum.university} onChange={e => handleAlumniChange(idx, 'university', e.target.value)} className="w-24 bg-slate-50 text-slate-500 font-bold text-xs p-2 rounded-lg outline-none" placeholder="대학 (예: 서울대)" />
-                    <input type="text" value={alum.dept} onChange={e => handleAlumniChange(idx, 'dept', e.target.value)} className="flex-1 bg-slate-50 text-slate-500 font-bold text-xs p-2 rounded-lg outline-none" placeholder="소속 (예: 산업공학과)" />
+                    <input type="text" value={alum.university} onChange={e => handleAlumniChange(idx, 'university', e.target.value)} className="w-24 bg-slate-50 text-slate-500 font-bold text-xs p-2 rounded-none outline-none" placeholder="대학 (예: 서울대)" />
+                    <input type="text" value={alum.dept} onChange={e => handleAlumniChange(idx, 'dept', e.target.value)} className="flex-1 bg-slate-50 text-slate-500 font-bold text-xs p-2 rounded-none outline-none" placeholder="소속 (예: 산업공학과)" />
                   </div>
-                  <textarea rows="2" value={alum.short_quote} onChange={e => handleAlumniChange(idx, 'short_quote', e.target.value)} className="w-full bg-slate-50 font-medium text-xs text-slate-600 p-3 rounded-xl outline-none resize-none" placeholder="인용구 한 줄"></textarea>
+                  <textarea rows="2" value={alum.short_quote} onChange={e => handleAlumniChange(idx, 'short_quote', e.target.value)} className="w-full bg-slate-50 font-medium text-xs text-slate-600 p-3 rounded-none outline-none resize-none" placeholder="인용구 한 줄"></textarea>
                 </div>
 
                 <button 
                   onClick={() => setEditingAlumniIdx(idx)}
-                  className="w-full bg-[#32a4a1]/10 text-[#32a4a1] py-2 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-[#32a4a1] hover:text-white transition-colors"
+                  className="w-full bg-[#32a4a1]/10 text-[#32a4a1] py-2 rounded-none font-black text-[10px] uppercase tracking-widest hover:bg-[#32a4a1] hover:text-white transition-colors"
                 >
                   인터뷰 내용 편집 ✏️ ({(alum.qna_json || []).length}개 문답)
                 </button>
@@ -254,9 +254,9 @@ export default function AboutManager() {
         </section>
 
         {/* 5. 하단 환영 문구 */}
-        <section className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100">
+        <section className="bg-white p-8 rounded-none shadow-sm border border-slate-100">
           <h2 className="text-[#32a4a1] font-black uppercase tracking-widest text-sm mb-6">05. Welcome Message</h2>
-          <textarea rows="2" value={welcomeMsg} onChange={e => setWelcomeMsg(e.target.value)} className="w-full bg-slate-50 p-6 rounded-2xl font-black text-xl text-center text-slate-800 outline-none focus:border-[#32a4a1] border border-transparent resize-none leading-relaxed" placeholder="자신의 창의적인 아이디어를..."></textarea>
+          <textarea rows="2" value={welcomeMsg} onChange={e => setWelcomeMsg(e.target.value)} className="w-full bg-slate-50 p-6 rounded-none font-black text-xl text-center text-slate-800 outline-none focus:border-[#32a4a1] border border-transparent resize-none leading-relaxed" placeholder="자신의 창의적인 아이디어를..."></textarea>
         </section>
 
       </div>
@@ -264,33 +264,33 @@ export default function AboutManager() {
       {/* Q&A 편집 모달 (팝업창) */}
       {editingAlumniIdx !== null && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 md:p-8">
-          <div className="bg-white w-full max-w-4xl h-[90vh] rounded-[3rem] shadow-2xl flex flex-col overflow-hidden border border-slate-200">
+          <div className="bg-white w-full max-w-4xl h-[90vh] rounded-none shadow-sm flex flex-col overflow-hidden border border-slate-200">
             
             <div className="bg-slate-50 px-10 py-6 border-b border-slate-200 flex justify-between items-center shrink-0">
               <div>
                 <p className="text-[#32a4a1] font-black text-[10px] uppercase tracking-widest mb-1">Interview Editor</p>
                 <h2 className="text-2xl font-black text-slate-800">{alumni[editingAlumniIdx].name || '이름 없음'} 선배님 인터뷰</h2>
               </div>
-              <button onClick={() => setEditingAlumniIdx(null)} className="bg-slate-900 text-white px-6 py-2.5 rounded-xl text-sm font-black hover:bg-slate-800 transition-colors">
+              <button onClick={() => setEditingAlumniIdx(null)} className="bg-slate-900 text-white px-6 py-2.5 rounded-none text-sm font-black hover:bg-slate-800 transition-colors">
                 완료 및 닫기
               </button>
             </div>
 
             <div className="flex-1 overflow-y-auto p-10 space-y-8 bg-[#f8f9fa]">
               {(alumni[editingAlumniIdx].qna_json || []).map((qna, qIdx) => (
-                <div key={qIdx} className="bg-white p-8 rounded-3xl shadow-sm border border-slate-100 relative group">
+                <div key={qIdx} className="bg-white p-8 rounded-none shadow-sm border border-slate-100 relative group">
                   <button onClick={() => removeQnA(qIdx)} className="absolute top-6 right-6 text-red-400 hover:text-red-600 font-black text-sm">삭제 X</button>
                   <div className="flex gap-4 mb-6">
                     <span className="text-2xl font-black text-[#32a4a1] opacity-50 mt-1">Q.</span>
-                    <textarea rows="2" value={qna.question} onChange={e => handleQnAChange(qIdx, 'question', e.target.value)} className="flex-1 bg-slate-50 p-4 rounded-2xl font-black text-lg outline-none focus:border-[#32a4a1] border border-transparent resize-none" placeholder="질문을 입력하세요."></textarea>
+                    <textarea rows="2" value={qna.question} onChange={e => handleQnAChange(qIdx, 'question', e.target.value)} className="flex-1 bg-slate-50 p-4 rounded-none font-black text-lg outline-none focus:border-[#32a4a1] border border-transparent resize-none" placeholder="질문을 입력하세요."></textarea>
                   </div>
                   <div className="flex gap-4 pl-10">
                     <span className="text-2xl font-black text-slate-300 mt-1">A.</span>
-                    <textarea rows="5" value={qna.answer} onChange={e => handleQnAChange(qIdx, 'answer', e.target.value)} className="flex-1 bg-white p-4 rounded-2xl font-medium text-slate-600 outline-none border border-slate-200 focus:border-[#32a4a1] resize-y leading-loose" placeholder="답변을 입력하세요. (줄바꿈 허용)"></textarea>
+                    <textarea rows="5" value={qna.answer} onChange={e => handleQnAChange(qIdx, 'answer', e.target.value)} className="flex-1 bg-white p-4 rounded-none font-medium text-slate-600 outline-none border border-slate-200 focus:border-[#32a4a1] resize-y leading-loose" placeholder="답변을 입력하세요. (줄바꿈 허용)"></textarea>
                   </div>
                 </div>
               ))}
-              <button onClick={addQnA} className="w-full py-6 border-2 border-dashed border-[#32a4a1]/30 text-[#32a4a1] rounded-[2rem] font-black hover:bg-[#32a4a1]/5 transition-colors">
+              <button onClick={addQnA} className="w-full py-6 border-2 border-dashed border-[#32a4a1]/30 text-[#32a4a1] rounded-none font-black hover:bg-[#32a4a1]/5 transition-colors">
                 + 새로운 질문 & 답변 추가하기
               </button>
             </div>

@@ -282,7 +282,7 @@ export default function VoteSetup() {
                 </div>
                 <div className="w-full md:w-[20%]">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Eval Mode</label>
-                  <div className={`w-full border-b-[3px] py-2 text-lg font-black bg-transparent outline-none cursor-default ${evalMode === 'team' ? 'border-teal-800 text-teal-800' : 'border-blue-800 text-blue-800'}`}>
+                  <div className={`w-full border-b-[3px] py-2 text-lg font-black bg-transparent outline-none cursor-default ${evalMode === 'team' ? 'border-teal-800 text-teal-800' : 'border-teal-800 text-teal-800'}`}>
                     {evalMode === 'team' ? '👥 팀 단위 평가' : '👤 개인 단위 평가'}
                   </div>
                 </div>
@@ -334,7 +334,7 @@ export default function VoteSetup() {
                               {clusterItems.map((item, idx) => (
                                 <Draggable key={item.id} draggableId={String(item.id)} index={idx}>
                                   {(provided, snapshot) => (
-                                    <div ref={provided.innerRef} {...provided.draggableProps} {...provided.dragHandleProps} className={`bg-white p-4 flex flex-col gap-3 transition-all border-l-4 ${snapshot.isDragging ? 'border border-teal-600 shadow-xl scale-105 z-50 border-l-teal-600' : 'border border-slate-200 hover:border-slate-300 shadow-sm border-l-teal-800'}`}>
+                                    <div ref={provided.innerRef} {...provided.draggableProps} {...provided.dragHandleProps} className={`bg-white p-4 flex flex-col gap-3 transition-all border-l-4 ${snapshot.isDragging ? 'border border-teal-600 shadow-sm scale-105 z-50 border-l-teal-600' : 'border border-slate-200 hover:border-slate-300 shadow-sm border-l-teal-800'}`}>
                                       
                                       {/* 개인 모드 */}
                                       {item.type === 'individual' && (
@@ -344,7 +344,7 @@ export default function VoteSetup() {
                                             <p className="font-extrabold text-sm text-slate-900">{item.name}</p>
                                           </div>
                                           <div className="flex gap-1">
-                                            <span className="text-[9px] font-bold text-blue-600 border border-blue-200 bg-blue-50 px-1.5 py-0.5 rounded uppercase">G#{item.group_id}</span>
+                                            <span className="text-[9px] font-bold text-teal-600 border border-teal-200 bg-teal-50 px-1.5 py-0.5 rounded uppercase">G#{item.group_id}</span>
                                           </div>
                                         </div>
                                       )}
@@ -358,7 +358,7 @@ export default function VoteSetup() {
                                               <p className="font-extrabold text-sm text-teal-900">Team {item.team_id}</p>
                                             </div>
                                             <div className="flex items-center gap-2">
-                                              <span className="text-[9px] font-bold text-blue-600 border border-blue-200 bg-blue-50 px-1.5 py-0.5 rounded uppercase">G#{item.group_id}</span>
+                                              <span className="text-[9px] font-bold text-teal-600 border border-teal-200 bg-teal-50 px-1.5 py-0.5 rounded uppercase">G#{item.group_id}</span>
                                               <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{item.members.length}명</span>
                                             </div>
                                           </div>
@@ -405,7 +405,7 @@ export default function VoteSetup() {
                     <p className="text-sm font-extrabold text-slate-800 mb-2">{p.presenter_name}</p>
                     <div className="flex gap-2 mb-3">
                       <span className="text-[9px] font-bold text-slate-500 border border-slate-300 px-1.5 py-0.5 uppercase tracking-widest">C#{p.cluster_id}</span>
-                      <span className="text-[9px] font-bold text-blue-600 border border-blue-200 bg-blue-50 px-1.5 py-0.5 uppercase tracking-widest">G#{p.group_id}</span>
+                      <span className="text-[9px] font-bold text-teal-600 border border-teal-200 bg-teal-50 px-1.5 py-0.5 uppercase tracking-widest">G#{p.group_id}</span>
                       {evalMode === 'team' && (
                         <span className="text-[9px] font-bold text-teal-700 bg-teal-50 border border-teal-200 px-1.5 py-0.5 uppercase tracking-widest">T#{p.team_id}</span>
                       )}
@@ -428,7 +428,7 @@ function DetailStatusLine({ label, done, names }) {
     <div className="space-y-1.5">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <div className={`w-1.5 h-1.5 rounded-full ${done ? 'bg-teal-500' : 'bg-red-500 animate-pulse'}`}></div>
+          <div className={`w-1.5 h-1.5 rounded-none ${done ? 'bg-teal-500' : 'bg-red-500 animate-pulse'}`}></div>
           <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest">{label}</span>
         </div>
         <span className={`text-[10px] font-black tracking-widest ${done ? 'text-teal-600' : 'text-red-500'}`}>{done ? 'DONE' : 'WAIT'}</span>

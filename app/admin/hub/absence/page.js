@@ -182,7 +182,7 @@ export default function AbsenceAdmin() {
         
         <header className="border-b border-slate-200 pb-6 flex flex-col md:flex-row md:justify-between md:items-end gap-4">
           <div>
-            <Link href="/admin/hub" className="text-xs font-black text-slate-400 hover:text-purple-600 uppercase tracking-widest mb-2 block transition-colors">← Back to Hub</Link>
+            <Link href="/admin/hub" className="text-xs font-black text-slate-400 hover:text-teal-600 uppercase tracking-widest mb-2 block transition-colors">← Back to Hub</Link>
             <h1 className="text-4xl font-black uppercase tracking-tighter text-slate-800">
               📝 Absence Form Manager
             </h1>
@@ -193,24 +193,24 @@ export default function AbsenceAdmin() {
         <div className="grid grid-cols-1 xl:grid-cols-[400px_1fr] gap-8 items-start">
           
           {/* 좌측: 마감 기한 설정 */}
-          <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-200 sticky top-8">
+          <div className="bg-white p-8 rounded-none shadow-sm border border-slate-200 sticky top-8">
             <div className="flex justify-between items-center mb-6 border-b border-slate-100 pb-4">
               <h2 className="text-xl font-black text-slate-800">⏰ 주차별 마감 기한</h2>
-              <button onClick={handleSaveDeadlines} disabled={saving} className="bg-slate-900 text-white px-4 py-2 rounded-xl font-black text-xs hover:bg-purple-600 transition-colors shadow-sm active:scale-95">
+              <button onClick={handleSaveDeadlines} disabled={saving} className="bg-slate-900 text-white px-4 py-2 rounded-none font-black text-xs hover:bg-teal-600 transition-colors shadow-sm active:scale-95">
                 {saving ? '저장 중...' : '마감일 저장 💾'}
               </button>
             </div>
 
             <div className="space-y-3 max-h-[600px] overflow-y-auto pr-2 no-scrollbar">
               {weeks.map(w => (
-                <div key={w} className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                <div key={w} className="bg-slate-50 p-4 rounded-none border border-slate-100">
                   <div className="flex justify-between items-center mb-2">
-                    <label className="text-[10px] font-black text-purple-600 uppercase tracking-widest bg-purple-100 px-2 py-0.5 rounded">
+                    <label className="text-[10px] font-black text-teal-600 uppercase tracking-widest bg-teal-100 px-2 py-0.5 rounded">
                       Week {w} 마감
                     </label>
                     <button 
                       onClick={() => handleDeadlineChange(w, '')} 
-                      className="text-[9px] font-bold text-slate-400 hover:text-red-500 bg-white px-2 py-0.5 rounded-md border border-slate-200 transition-colors shadow-sm"
+                      className="text-[9px] font-bold text-slate-400 hover:text-red-500 bg-white px-2 py-0.5 rounded-none border border-slate-200 transition-colors shadow-sm"
                       title="날짜 지우기"
                     >
                       초기화 ❌
@@ -220,7 +220,7 @@ export default function AbsenceAdmin() {
                     type="datetime-local" 
                     value={absenceDeadlines[w] || ''} 
                     onChange={(e) => handleDeadlineChange(w, e.target.value)} 
-                    className="w-full bg-white p-2.5 rounded-xl font-bold text-sm text-slate-700 outline-none border border-slate-200 focus:border-purple-400 transition-colors cursor-pointer" 
+                    className="w-full bg-white p-2.5 rounded-none font-bold text-sm text-slate-700 outline-none border border-slate-200 focus:border-teal-400 transition-colors cursor-pointer" 
                   />
                 </div>
               ))}
@@ -228,10 +228,10 @@ export default function AbsenceAdmin() {
           </div>
 
           {/* 우측: 사유서 결재 리스트 */}
-          <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-200">
+          <div className="bg-white p-8 rounded-none shadow-sm border border-slate-200">
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-xl font-black text-slate-800">📬 사유서 결재함</h2>
-              <span className="text-[10px] font-black bg-slate-100 text-slate-500 px-3 py-1 rounded-lg">
+              <span className="text-[10px] font-black bg-slate-100 text-slate-500 px-3 py-1 rounded-none">
                 폴더 내 {filteredAbsences.length}건
               </span>
             </div>
@@ -239,7 +239,7 @@ export default function AbsenceAdmin() {
             <div className="flex gap-2 mb-6 overflow-x-auto pb-4 no-scrollbar border-b border-slate-100">
               <button 
                 onClick={() => setSelectedFolder('all')} 
-                className={`px-4 py-2.5 rounded-xl text-xs font-black shrink-0 transition-all border ${selectedFolder === 'all' ? 'bg-slate-800 text-white border-slate-800 shadow-md' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}
+                className={`px-4 py-2.5 rounded-none text-xs font-black shrink-0 transition-all border ${selectedFolder === 'all' ? 'bg-slate-800 text-white border-slate-800 shadow-sm' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}
               >
                 전체 보기 📂
               </button>
@@ -247,14 +247,14 @@ export default function AbsenceAdmin() {
                 <button 
                   key={w} 
                   onClick={() => setSelectedFolder(w)} 
-                  className={`px-4 py-2.5 rounded-xl text-xs font-black shrink-0 transition-all border ${selectedFolder === w ? 'bg-purple-600 text-white border-purple-600 shadow-md' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}
+                  className={`px-4 py-2.5 rounded-none text-xs font-black shrink-0 transition-all border ${selectedFolder === w ? 'bg-teal-600 text-white border-teal-600 shadow-sm' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}
                 >
                   W{w} 사유서
                 </button>
               ))}
               <button 
                 onClick={() => setSelectedFolder('null')} 
-                className={`px-4 py-2.5 rounded-xl text-xs font-black shrink-0 transition-all border ${selectedFolder === 'null' ? 'bg-slate-400 text-white border-slate-400 shadow-md' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}
+                className={`px-4 py-2.5 rounded-none text-xs font-black shrink-0 transition-all border ${selectedFolder === 'null' ? 'bg-slate-400 text-white border-slate-400 shadow-sm' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}
               >
                 미지정 (이전 데이터)
               </button>
@@ -262,18 +262,19 @@ export default function AbsenceAdmin() {
 
             <div className="space-y-6">
               {filteredAbsences.length === 0 ? (
-                <p className="text-slate-400 font-bold text-center py-10 border-2 border-dashed border-slate-100 rounded-3xl">해당 폴더에 제출된 사유서가 없습니다. 👏</p>
+                <p className="text-slate-400 font-bold text-center py-10 border-2 border-dashed border-slate-100 rounded-none">해당 폴더에 제출된 사유서가 없습니다. 👏</p>
               ) : filteredAbsences.map(abs => (
-                <div key={abs.id} className={`p-6 rounded-3xl border transition-all ${abs.status === '대기' ? 'bg-slate-50 border-blue-200 shadow-sm' : 'bg-white border-slate-100 opacity-70 hover:opacity-100'} flex flex-col lg:flex-row justify-between gap-6`}>
+                <div key={abs.id} className={`p-6 rounded-none border transition-all ${abs.status === '대기' ? 'bg-slate-50 border-teal-200 shadow-sm' : 'bg-white border-slate-100 opacity-70 hover:opacity-100'} flex flex-col lg:flex-row justify-between gap-6`}>
                   
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-3">
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest ${abs.status === '대기' ? 'bg-blue-600 text-white' : abs.status.includes('완전인정') ? 'bg-emerald-500 text-white' : abs.status.includes('부분인정') ? 'bg-teal-500 text-white' : 'bg-red-500 text-white'}`}>
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest ${abs.status === '대기' ? 'bg-teal-600 text-white' : abs.status.includes('완전인정') ? 'bg-emerald-500 text-white' : abs.status.includes('부분인정') ? 'bg-teal-500 text-white' : 'bg-red-500 text-white'}`}>
                         {abs.status === '대기' ? '대기중' : abs.status}
                       </span>
-                      <span className="bg-purple-100 text-purple-600 px-2 py-0.5 rounded text-[10px] font-black uppercase">
+                      <span className="bg-teal-100 text-teal-600 px-2 py-0.5 rounded text-[10px] font-black uppercase">
                         {abs.week !== null && abs.week !== undefined ? `W${abs.week}` : '미지정'}
                       </span>
+                      {abs.session_type === 'weekday' && <span className="bg-teal-800 text-white px-2 py-0.5 rounded text-[10px] font-black uppercase">평일세션</span>}
                       <span className="bg-slate-800 text-white px-2 py-0.5 rounded text-[10px] font-black uppercase">{abs.type}</span>
                       <span className="text-xs font-black text-slate-500">{abs.user_name} | {abs.target_date}</span>
                     </div>
@@ -281,13 +282,13 @@ export default function AbsenceAdmin() {
                     <p className="text-sm font-bold text-slate-700 whitespace-pre-wrap leading-relaxed">{abs.reason}</p>
                     
                     {abs.proof_url && (
-                      <a href={abs.proof_url} target="_blank" rel="noopener noreferrer" className="inline-block mt-3 px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-[10px] font-black hover:bg-blue-100 transition-colors border border-blue-100">
+                      <a href={abs.proof_url} target="_blank" rel="noopener noreferrer" className="inline-block mt-3 px-3 py-1.5 bg-teal-50 text-teal-600 rounded-none text-[10px] font-black hover:bg-teal-100 transition-colors border border-teal-100">
                         🔗 첨부된 증빙자료 열람하기
                       </a>
                     )}
 
                     {abs.status !== '대기' && abs.admin_comment && (
-                      <div className="mt-4 p-3 bg-slate-100 rounded-xl border border-slate-200">
+                      <div className="mt-4 p-3 bg-slate-100 rounded-none border border-slate-200">
                         <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">운영진 코멘트 (결과)</p>
                         <p className="text-xs font-bold text-slate-600 whitespace-pre-wrap">{abs.admin_comment}</p>
                       </div>
@@ -295,16 +296,16 @@ export default function AbsenceAdmin() {
                   </div>
                   
                   {/* 🌟 결재 컨트롤 패널 */}
-                  <div className="flex flex-col gap-2 min-w-[300px] shrink-0 bg-white p-4 rounded-2xl border border-slate-100 h-fit">
+                  <div className="flex flex-col gap-2 min-w-[300px] shrink-0 bg-white p-4 rounded-none border border-slate-100 h-fit">
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 text-center border-b border-slate-100 pb-2">결재 처리</p>
                     
-                    <button onClick={() => handleAbsenceApproval(abs.id, abs.user_name, 'full', abs.week)} className="bg-emerald-500 text-white py-2.5 rounded-xl font-black text-xs hover:bg-emerald-600 transition-colors shadow-sm">
+                    <button onClick={() => handleAbsenceApproval(abs.id, abs.user_name, 'full', abs.week)} className="bg-emerald-500 text-white py-2.5 rounded-none font-black text-xs hover:bg-emerald-600 transition-colors shadow-sm">
                       완전 인정 (벌금 면제)
                     </button>
                     
                     {/* 🌟 부분 인정 패널 업그레이드 */}
                     <div className="flex flex-col gap-2 mt-2 pt-2 border-t border-slate-100">
-                      <div className="flex justify-between items-center bg-teal-50 px-3 py-2 rounded-xl border border-teal-100">
+                      <div className="flex justify-between items-center bg-teal-50 px-3 py-2 rounded-none border border-teal-100">
                         <span className="text-[10px] font-black text-teal-700">대체 과제 부여</span>
                         <label className="relative inline-flex items-center cursor-pointer">
                           <input 
@@ -313,7 +314,7 @@ export default function AbsenceAdmin() {
                             onChange={(e) => setPartialTasks(prev => ({...prev, [abs.id]: e.target.checked}))} 
                             className="sr-only peer" 
                           />
-                          <div className="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-teal-500"></div>
+                          <div className="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-none peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-none after:h-4 after:w-4 after:transition-all peer-checked:bg-teal-500"></div>
                         </label>
                       </div>
                       
@@ -323,9 +324,9 @@ export default function AbsenceAdmin() {
                         placeholder={partialTasks[abs.id] ? "예) 1. 관련 아티클 3개 요약 (A4 1장)\n2. 다음 주 월요일 18:00까지 제출" : "대체 과제를 체크하면 입력할 수 있습니다."}
                         value={partialInputs[abs.id] || ''}
                         onChange={(e) => setPartialInputs(prev => ({...prev, [abs.id]: e.target.value}))}
-                        className={`w-full border border-slate-200 rounded-xl p-3 text-xs font-bold outline-none focus:border-teal-400 transition-colors resize-none h-20 ${!partialTasks[abs.id] ? 'bg-slate-100 text-slate-400 opacity-50' : 'bg-white'}`}
+                        className={`w-full border border-slate-200 rounded-none p-3 text-xs font-bold outline-none focus:border-teal-400 transition-colors resize-none h-20 ${!partialTasks[abs.id] ? 'bg-slate-100 text-slate-400 opacity-50' : 'bg-white'}`}
                       />
-                      <button onClick={() => handleAbsenceApproval(abs.id, abs.user_name, 'partial', abs.week)} className="bg-teal-500 text-white py-2.5 rounded-xl font-black text-xs hover:bg-teal-600 transition-colors shadow-sm mt-1">
+                      <button onClick={() => handleAbsenceApproval(abs.id, abs.user_name, 'partial', abs.week)} className="bg-teal-500 text-white py-2.5 rounded-none font-black text-xs hover:bg-teal-600 transition-colors shadow-sm mt-1">
                         부분 인정 처리하기
                       </button>
                     </div>
@@ -336,9 +337,9 @@ export default function AbsenceAdmin() {
                         placeholder="불허(반려) 사유 입력..." 
                         value={rejectReasons[abs.id] || ''} 
                         onChange={e => setRejectReasons(prev => ({...prev, [abs.id]: e.target.value}))} 
-                        className="w-full border border-slate-200 rounded-xl p-2.5 text-xs font-bold outline-none focus:border-red-400 bg-slate-50 transition-colors" 
+                        className="w-full border border-slate-200 rounded-none p-2.5 text-xs font-bold outline-none focus:border-red-400 bg-slate-50 transition-colors" 
                       />
-                      <button onClick={() => handleAbsenceApproval(abs.id, abs.user_name, 'reject', abs.week)} className="w-full bg-red-500 text-white py-2.5 rounded-xl font-black text-xs hover:bg-red-600 transition-colors shadow-sm">
+                      <button onClick={() => handleAbsenceApproval(abs.id, abs.user_name, 'reject', abs.week)} className="w-full bg-red-500 text-white py-2.5 rounded-none font-black text-xs hover:bg-red-600 transition-colors shadow-sm">
                         불허 (벌금 ₩{absenceLateFine.toLocaleString()} 부과)
                       </button>
                     </div>

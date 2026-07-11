@@ -24,44 +24,58 @@ export default function Login() {
     } else {
       alert("반가워요! 로그인 성공 🎊")
       // ★ 이 부분을 /dashboard에서 /home으로 변경함!
-      router.push('/home') 
+      router.push('/home')
     }
     setLoading(false)
   }
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center p-24 bg-white text-black">
-      <h1 className="text-4xl font-bold mb-2 text-blue-800">IG 로그인 🔑</h1>
-      <p className="text-gray-500 mb-8">인사이트그라피의 문이 열립니다.</p>
-      
-      <form onSubmit={handleLogin} className="flex flex-col gap-4 w-full max-w-md">
-        <input 
-          type="email" 
-          placeholder="이메일 주소" 
-          value={email} 
-          onChange={(e) => setEmail(e.target.value)} 
-          className="p-3 border rounded-lg border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500" 
-          required 
-        />
-        <input 
-          type="password" 
-          placeholder="비밀번호" 
-          value={password} 
-          onChange={(e) => setPassword(e.target.value)} 
-          className="p-3 border rounded-lg border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500" 
-          required 
-        />
-        <button 
-          type="submit" 
-          disabled={loading}
-          className="p-3 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 transition-colors disabled:bg-gray-400"
-        >
-          {loading ? "로그인 중..." : "로그인하기"}
-        </button>
-      </form>
+    <div className="min-h-screen bg-white text-slate-900 font-sans flex items-center justify-center px-6">
+      <div className="w-full max-w-sm">
 
-      <div className="mt-6 text-sm text-gray-500">
-        계정이 없으신가요? <Link href="/signup" className="text-blue-600 font-bold hover:underline">회원가입 하러가기</Link>
+        {/* 브랜드 */}
+        <div className="mb-12">
+          <Link href="/" className="text-2xl font-black text-teal-800 tracking-tighter">InsightGraphy</Link>
+          <div className="w-10 h-[3px] bg-teal-800 mt-3"></div>
+          <h1 className="text-xl font-extrabold text-slate-900 mt-8">로그인</h1>
+          <p className="text-sm font-medium text-slate-400 mt-1">인사이트그라피 회원 공간에 입장합니다.</p>
+        </div>
+
+        <form onSubmit={handleLogin} className="flex flex-col gap-7">
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Email</label>
+            <input
+              type="email"
+              placeholder="이메일 주소"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full border-b border-slate-300 py-2.5 text-sm font-bold outline-none focus:border-teal-700 bg-transparent transition-colors placeholder:font-medium placeholder:text-slate-300"
+              required
+            />
+          </div>
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Password</label>
+            <input
+              type="password"
+              placeholder="비밀번호"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full border-b border-slate-300 py-2.5 text-sm font-bold outline-none focus:border-teal-700 bg-transparent transition-colors placeholder:font-medium placeholder:text-slate-300"
+              required
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={loading}
+            className="mt-3 py-3.5 bg-teal-800 text-white font-bold text-sm tracking-wide hover:bg-teal-900 transition-colors disabled:bg-slate-300 active:scale-[0.99]"
+          >
+            {loading ? "로그인 중..." : "로그인하기"}
+          </button>
+        </form>
+
+        <div className="mt-10 pt-6 border-t border-slate-200 text-sm text-slate-400 font-medium">
+          계정이 없으신가요? <Link href="/signup" className="text-teal-800 font-bold hover:underline underline-offset-4">회원가입 하러가기</Link>
+        </div>
       </div>
     </div>
   )

@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import InternalNav from '@/app/components/InternalNav'
 
 export default function AttendancePage() {
   const router = useRouter()
@@ -16,7 +17,14 @@ export default function AttendancePage() {
   const [attendanceRecord, setAttendanceRecord] = useState(null)
 
   const [timeConfig, setTimeConfig] = useState({ start: null, session: null, end: null })
-  const [timeStatus, setTimeStatus] = useState('loading') 
+  const [timeStatus, setTimeStatus] = useState('loading')
+
+  // 🌟 방학학기 평일세션(조별 일정) 지원
+  const [semesterType, setSemesterType] = useState('regular')
+  const [sessionMode, setSessionMode] = useState('regular') // 'regular' | 'weekday'
+  const [regularConfig, setRegularConfig] = useState({ start: null, session: null, end: null, location: null })
+  const [weekdayConfig, setWeekdayConfig] = useState(null) // null이면 이번 주 평일세션 없음
+  const [myGroup, setMyGroup] = useState(null)
 
   useEffect(() => {
     const init = async () => {
@@ -98,38 +106,81 @@ export default function AttendancePage() {
     }
 
     setCurrentWeek(targetWeek)
-    setTimeConfig(tConfig)
-    checkTimeStatus(tConfig)
+
+    const userName = currentUser?.user_metadata?.name
+
+    // 🌟 설정: 학기 유형 + 주차별 세팅(장소/조/평일 조별 일정)
+    let rConfig = { ...tConfig, location: null }
+    let wConfig = null
+    let grp = null
 
     const { data: configData } = await supabase.from('pr_config').select('*')
     if (configData) {
+      const sType = configData.find(c => c.key === 'semester_type')?.value || 'regular'
+      setSemesterType(sType)
+
       const wsStr = configData.find(c => c.key === 'weekly_setup')?.value
       if (wsStr) {
-        const weeklySetup = JSON.parse(wsStr)
-        if (weeklySetup[targetWeek] && weeklySetup[targetWeek].location) {
-          setSessionLoc(weeklySetup[targetWeek].location)
+        const ws = JSON.parse(wsStr)
+        const wk = ws[targetWeek] || {}
+        if (wk.location) rConfig.location = wk.location
+
+        // 유저가 이번 주에 배정된 평일세션 조 찾기 (평일 전용 편성 우선, 없으면 정규 조)
+        const gRaw = wk.weekdayMembers?.[userName] ?? wk.members?.[userName]
+        if (gRaw && gRaw !== '미정' && gRaw !== '결석') grp = Number(gRaw)
+
+        // 평일세션이 켜져 있고, 내 조의 진행 일정이 설정돼 있으면 평일 config 생성
+        if (sType === 'vacation' && wk.weekdaySession && grp && wk.weekday?.[grp]?.date) {
+          const t = wk.weekday[grp]
+          const mk = (time) => time ? new Date(`${t.date}T${time}`).toISOString() : null
+          wConfig = {
+            start: mk(t.attOpen),
+            session: mk(t.sessionStart),
+            end: mk(t.attEnd),
+            location: (t.lat && t.lng) ? { lat: Number(t.lat), lng: Number(t.lng), radius: t.radius || 100 } : null,
+            date: t.date
+          }
         }
       }
     }
 
-    if (currentUser?.user_metadata?.name) {
+    setMyGroup(grp)
+    setRegularConfig(rConfig)
+    setWeekdayConfig(wConfig)
+
+    // 정규 일정이 없고 평일 일정만 있으면 평일 모드를 기본으로
+    const defaultMode = (!rConfig.start && wConfig) ? 'weekday' : 'regular'
+    setSessionMode(defaultMode)
+    await applyMode(defaultMode, rConfig, wConfig, targetWeek, userName)
+
+    setLoading(false)
+  }
+
+  // 🌟 모드(정규/평일)에 맞는 시간·장소·출석기록 적용
+  const applyMode = async (mode, rConfig, wConfig, week, userName) => {
+    const cfg = mode === 'weekday' ? wConfig : rConfig
+    const tc = { start: cfg?.start || null, session: cfg?.session || null, end: cfg?.end || null }
+    setTimeConfig(tc)
+    setSessionLoc(cfg?.location || null)
+    checkTimeStatus(tc)
+
+    if (userName) {
       const { data: attData } = await supabase
         .from('pr_attendance')
         .select('*')
-        .eq('user_name', currentUser.user_metadata.name)
-        .eq('week', targetWeek)
-        .maybeSingle() 
+        .eq('user_name', userName)
+        .eq('week', week)
+        .eq('session_type', mode)
+        .maybeSingle()
 
-      if (attData) {
-        setHasAttended(true)
-        setAttendanceRecord(attData)
-      } else {
-        setHasAttended(false)
-        setAttendanceRecord(null)
-      }
+      if (attData) { setHasAttended(true); setAttendanceRecord(attData) }
+      else { setHasAttended(false); setAttendanceRecord(null) }
     }
+  }
 
-    setLoading(false)
+  const switchMode = (mode) => {
+    setSessionMode(mode)
+    applyMode(mode, regularConfig, weekdayConfig, currentWeek, user?.user_metadata?.name)
   }
 
   const checkTimeStatus = (tConfig) => {
@@ -194,7 +245,8 @@ export default function AttendancePage() {
             user_name: user.user_metadata.name,
             week: currentWeek,
             status: finalStatus,
-            distance_m: dist
+            distance_m: dist,
+            session_type: sessionMode
           }]).select()
 
           if (!error && data) {
@@ -223,31 +275,40 @@ export default function AttendancePage() {
     return d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
   }
 
-  if (loading || !user) return <div className="min-h-screen bg-slate-50 flex items-center justify-center font-bold text-slate-400">데이터를 불러오는 중입니다...</div>
+  if (loading || !user) return <div className="min-h-screen bg-white flex items-center justify-center font-bold text-slate-400">데이터를 불러오는 중입니다...</div>
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans flex flex-col items-center justify-center relative overflow-hidden px-6">
-      
+    <>
+      <InternalNav />
+      <div className="min-h-[calc(100vh-72px)] bg-white text-slate-900 font-sans flex flex-col items-center justify-center relative overflow-hidden px-6">
+
       {/* 🌟 배경 꾸미기 (Deep Teal 테마, 직각 베이스) */}
       <div className="absolute top-0 left-0 w-full h-72 bg-teal-800 z-0"></div>
-      
+
       <div className="relative z-10 w-full max-w-md">
-        
-        {/* 뒤로가기 텍스트 */}
-        <Link href="/home" className="inline-flex items-center mb-6 text-white/80 hover:text-white font-extrabold text-xs uppercase tracking-widest transition-colors">
-          ← Back to Hub
-        </Link>
-        
+
+        {/* 🌟 방학학기: 정규/평일 세션 전환 (평일 일정이 있을 때만) */}
+        {semesterType === 'vacation' && weekdayConfig && (
+          <div className="flex mb-4 border border-white/30 overflow-hidden">
+            <button onClick={() => switchMode('regular')} className={`flex-1 py-2.5 text-xs font-bold transition-colors ${sessionMode === 'regular' ? 'bg-white text-teal-900' : 'bg-transparent text-white/80 hover:bg-white/10'}`}>📚 정규세션</button>
+            <button onClick={() => switchMode('weekday')} className={`flex-1 py-2.5 text-xs font-bold transition-colors ${sessionMode === 'weekday' ? 'bg-white text-teal-900' : 'bg-transparent text-white/80 hover:bg-white/10'}`}>🏖️ 평일세션 ({myGroup}조)</button>
+          </div>
+        )}
+
         {/* 🌟 메인 출석 보드 (둥근 모서리 제거, 심플한 테두리) */}
         <div className="bg-white p-8 md:p-10 rounded-sm shadow-xl border border-slate-200 flex flex-col items-center text-center">
-          
+
           {/* 아이콘 */}
           <div className="w-16 h-16 bg-teal-50 text-teal-700 border border-teal-200 flex items-center justify-center text-2xl mb-6 shadow-sm rounded-sm">
             📍
           </div>
-          
-          <h1 className="text-2xl md:text-3xl font-extrabold text-slate-900 mb-2 tracking-tight">Week {currentWeek} 정규 세션</h1>
-          <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-8">Location Check-in</p>
+
+          <h1 className="text-2xl md:text-3xl font-extrabold text-slate-900 mb-2 tracking-tight">
+            Week {currentWeek} {sessionMode === 'weekday' ? `평일세션 (${myGroup}조)` : '정규 세션'}
+          </h1>
+          <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-8">
+            {sessionMode === 'weekday' && weekdayConfig?.date ? `${weekdayConfig.date} · Location Check-in` : 'Location Check-in'}
+          </p>
           
           {/* 🌟 시간 안내 보드 (박스 대신 선 기반 디자인) */}
           <div className="w-full border-y border-slate-200 py-6 mb-8 flex flex-col gap-4">
@@ -338,6 +399,7 @@ export default function AttendancePage() {
 
         </div>
       </div>
-    </div>
+      </div>
+    </>
   )
 }

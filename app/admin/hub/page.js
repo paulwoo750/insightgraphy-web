@@ -43,7 +43,7 @@ export default function AdminHubPage() {
         <header className="flex flex-col md:flex-row justify-between items-start md:items-end mb-16 gap-6 border-b border-slate-200 pb-8">
           <div>
             <div className="flex items-center gap-3 mb-2">
-              <span className="bg-slate-900 text-white px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest">
+              <span className="bg-slate-900 text-white px-3 py-1 rounded-none text-[10px] font-black uppercase tracking-widest">
                 Command Center
               </span>
               <span className="text-xs font-bold text-slate-400">
@@ -57,7 +57,7 @@ export default function AdminHubPage() {
           
           <button 
             onClick={handleExitAdmin}
-            className="flex items-center gap-2 bg-white border border-slate-200 text-slate-500 hover:bg-slate-900 hover:text-white px-6 py-3 rounded-full font-black text-xs uppercase tracking-widest transition-all shadow-sm active:scale-95"
+            className="flex items-center gap-2 bg-white border border-slate-200 text-slate-500 hover:bg-slate-900 hover:text-white px-6 py-3 rounded-none font-black text-xs uppercase tracking-widest transition-all shadow-sm active:scale-95"
           >
             ← Exit Admin
           </button>
@@ -68,7 +68,7 @@ export default function AdminHubPage() {
         ========================================= */}
         <section className="mb-20">
           <div className="flex items-center gap-4 mb-8">
-            <div className="w-12 h-12 bg-[#32a4a1]/10 text-[#32a4a1] rounded-2xl flex items-center justify-center text-2xl">📢</div>
+            <div className="w-12 h-12 bg-[#32a4a1]/10 text-[#32a4a1] rounded-none flex items-center justify-center text-2xl">📢</div>
             <div>
               <h2 className="text-2xl font-black uppercase text-slate-800">홍보 채널 관리</h2>
               <p className="text-xs font-bold text-slate-400 mt-1">로그인 없이 접근 가능한 외부 공개 웹페이지들을 수정합니다.</p>
@@ -90,7 +90,7 @@ export default function AdminHubPage() {
         ========================================= */}
         <section className="mb-20">
           <div className="flex items-center gap-4 mb-8">
-            <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center text-2xl">🏢</div>
+            <div className="w-12 h-12 bg-teal-100 text-teal-600 rounded-none flex items-center justify-center text-2xl">🏢</div>
             <div>
               <h2 className="text-2xl font-black uppercase text-slate-800">내부 시스템 관리</h2>
               <p className="text-xs font-bold text-slate-400 mt-1">학회원 전용 데이터 및 핵심 운영 시스템을 제어합니다.</p>
@@ -110,7 +110,7 @@ export default function AdminHubPage() {
         ========================================= */}
         <section className="mb-12">
           <div className="flex items-center gap-4 mb-8">
-            <div className="w-12 h-12 bg-purple-100 text-purple-600 rounded-2xl flex items-center justify-center text-2xl">⚖️</div>
+            <div className="w-12 h-12 bg-teal-100 text-teal-600 rounded-none flex items-center justify-center text-2xl">⚖️</div>
             <div>
               <h2 className="text-2xl font-black uppercase text-slate-800">운영진 학회 관리</h2>
               <p className="text-xs font-bold text-slate-400 mt-1">학회 회칙, 출결 및 벌금 등 운영진 전용 관리 시스템입니다.</p>
@@ -136,12 +136,30 @@ export default function AdminHubPage() {
               color="purple" 
             />
 
-            <AdminCard 
-              href="/admin/hub/fine" 
-              icon="📊" 
-              title="Attendance & Fines" 
-              desc="학회원 세션 참석률 트래킹 및 회칙 기반 벌금 자동 계산·관리" 
-              color="purple" 
+            <AdminCard
+              href="/admin/hub/fine"
+              icon="📊"
+              title="Attendance & Fines"
+              desc="학회원 세션 참석률 트래킹 및 회칙 기반 벌금 자동 계산·관리"
+              color="purple"
+            />
+
+            {/* 🌟 학기 리셋 (초기화 버튼 일원화) */}
+            <AdminCard
+              href="/admin/hub/reset"
+              icon="🔄"
+              title="Semester Reset"
+              desc="학기 마감·과거 자료실 이관 및 새 학기(이름·주차) 초기화를 한 곳에서"
+              color="purple"
+            />
+
+            {/* 🌟 회칙 문서 편집 */}
+            <AdminCard
+              href="/admin/hub/rules-doc"
+              icon="📜"
+              title="회칙 편집"
+              desc="학회 회칙 조항(장·조)을 편집하여 아카이브 회칙 열람실에 반영"
+              color="purple"
             />
           </div>
         </section>
@@ -158,24 +176,24 @@ function AdminCard({ href, icon, title, desc, color = "teal" }) {
   let badgeColor = "text-[#32a4a1]";
 
   if (color === "blue") {
-    hoverColor = "hover:border-blue-500 hover:shadow-blue-500/10";
-    titleColor = "group-hover:text-blue-600";
-    badgeColor = "text-blue-500";
+    hoverColor = "hover:border-teal-500 hover:shadow-teal-500/10";
+    titleColor = "group-hover:text-teal-600";
+    badgeColor = "text-teal-500";
   } else if (color === "purple") {
-    hoverColor = "hover:border-purple-500 hover:shadow-purple-500/10";
-    titleColor = "group-hover:text-purple-600";
-    badgeColor = "text-purple-500";
+    hoverColor = "hover:border-teal-500 hover:shadow-teal-500/10";
+    titleColor = "group-hover:text-teal-600";
+    badgeColor = "text-teal-500";
   }
 
   return (
-    <Link href={href} className={`bg-white p-8 rounded-[2rem] shadow-sm border-2 border-transparent ${hoverColor} hover:shadow-2xl transition-all group flex flex-col justify-between min-h-[220px]`}>
+    <Link href={href} className={`bg-white p-8 rounded-none shadow-sm border-2 border-transparent ${hoverColor} hover:shadow-sm transition-all group flex flex-col justify-between min-h-[220px]`}>
       <div>
         <div className="text-4xl mb-5 group-hover:scale-110 transition-transform origin-left">{icon}</div>
         <h3 className={`text-lg font-black uppercase tracking-tight mb-2 text-slate-800 ${titleColor} transition-colors`}>{title}</h3>
         <p className="text-xs text-slate-500 font-medium break-keep leading-relaxed">{desc}</p>
       </div>
       <div className="text-right mt-6 opacity-0 group-hover:opacity-100 transition-opacity">
-        <span className={`text-[10px] font-black uppercase tracking-widest ${badgeColor} bg-slate-50 px-3 py-1.5 rounded-lg`}>
+        <span className={`text-[10px] font-black uppercase tracking-widest ${badgeColor} bg-slate-50 px-3 py-1.5 rounded-none`}>
           Configure ⚙️
         </span>
       </div>

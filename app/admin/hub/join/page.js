@@ -93,7 +93,7 @@ export default function AdminJoinPage() {
         <div className="space-y-8">
           
           {/* 1. 모집 기수 설정 */}
-          <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 flex flex-col md:flex-row gap-6 items-center justify-between">
+          <div className="bg-white p-8 rounded-none shadow-sm border border-slate-100 flex flex-col md:flex-row gap-6 items-center justify-between">
             <div className="flex-1 w-full">
               <h2 className="text-lg font-black uppercase text-slate-800 mb-2">1. Recruiting Generation</h2>
               <p className="text-xs text-slate-500 font-bold mb-4">현재 모집 중인 기수를 입력해주세요. (예: 29기)</p>
@@ -101,30 +101,30 @@ export default function AdminJoinPage() {
                 type="text" 
                 value={generation} 
                 onChange={(e) => setGeneration(e.target.value)} 
-                className="w-full max-w-sm bg-slate-50 p-4 rounded-xl font-black text-lg outline-none focus:border-[#32a4a1] border border-transparent" 
+                className="w-full max-w-sm bg-slate-50 p-4 rounded-none font-black text-lg outline-none focus:border-[#32a4a1] border border-transparent" 
                 placeholder="예: 29기" 
               />
             </div>
             <button 
               onClick={handleSaveGeneration} 
-              className="w-full md:w-auto h-fit bg-[#1a1a1a] text-white px-8 py-4 rounded-xl font-black uppercase tracking-widest text-sm hover:bg-[#32a4a1] transition-all whitespace-nowrap"
+              className="w-full md:w-auto h-fit bg-[#1a1a1a] text-white px-8 py-4 rounded-none font-black uppercase tracking-widest text-sm hover:bg-[#32a4a1] transition-all whitespace-nowrap"
             >
               Save
             </button>
           </div>
 
           {/* 2. 지원서 양식 파일 업로드 */}
-          <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100">
+          <div className="bg-white p-8 rounded-none shadow-sm border border-slate-100">
             <h2 className="text-lg font-black uppercase text-slate-800 mb-2">2. Application Form (.docx)</h2>
             <p className="text-xs text-slate-500 font-bold mb-6">지원자들이 다운로드할 수 있는 최신 지원서 워드 파일을 업로드하세요.</p>
             
             {docUrl && (
-              <div className="mb-6 p-4 bg-blue-50 rounded-xl border border-blue-100 flex items-center justify-between">
+              <div className="mb-6 p-4 bg-teal-50 rounded-none border border-teal-100 flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <span className="text-2xl">📄</span>
                   <div>
-                    <p className="text-xs font-black text-blue-800">현재 등록된 지원서 파일</p>
-                    <a href={docUrl} target="_blank" rel="noreferrer" className="text-[10px] font-bold text-blue-500 hover:underline break-all block mt-1">
+                    <p className="text-xs font-black text-teal-800">현재 등록된 지원서 파일</p>
+                    <a href={docUrl} target="_blank" rel="noreferrer" className="text-[10px] font-bold text-teal-500 hover:underline break-all block mt-1">
                       {docUrl}
                     </a>
                   </div>
@@ -133,18 +133,18 @@ export default function AdminJoinPage() {
             )}
 
             <div className="flex flex-col md:flex-row gap-4 items-center">
-              <div className="flex-1 w-full bg-slate-50 border border-slate-200 rounded-xl p-2">
+              <div className="flex-1 w-full bg-slate-50 border border-slate-200 rounded-none p-2">
                 <input 
                   type="file" 
                   accept=".doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" 
                   onChange={(e) => setDocFile(e.target.files[0])} 
-                  className="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-black file:bg-[#32a4a1]/10 file:text-[#32a4a1] hover:file:bg-[#32a4a1]/20 cursor-pointer" 
+                  className="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-none file:border-0 file:text-xs file:font-black file:bg-[#32a4a1]/10 file:text-[#32a4a1] hover:file:bg-[#32a4a1]/20 cursor-pointer" 
                 />
               </div>
               <button 
                 onClick={handleFileUpload} 
                 disabled={uploading || !docFile}
-                className="w-full md:w-auto bg-[#32a4a1] text-white px-8 py-4 rounded-xl font-black uppercase tracking-widest text-sm hover:bg-[#238986] disabled:opacity-50 transition-all whitespace-nowrap"
+                className="w-full md:w-auto bg-[#32a4a1] text-white px-8 py-4 rounded-none font-black uppercase tracking-widest text-sm hover:bg-[#238986] disabled:opacity-50 transition-all whitespace-nowrap"
               >
                 {uploading ? 'Uploading...' : 'Upload File 🚀'}
               </button>

@@ -175,7 +175,7 @@ export default function VoteContentManager() {
         {/* 헤더 */}
         <header className="flex justify-between items-end mb-8 border-b border-slate-200 pb-6 sticky top-0 bg-slate-50/90 backdrop-blur-md z-20 pt-4">
           <div>
-            <Link href="/admin/hub/vote" className="text-xs font-black text-slate-400 hover:text-yellow-500 uppercase tracking-widest mb-2 block transition-colors">
+            <Link href="/admin/hub/vote" className="text-xs font-black text-slate-400 hover:text-teal-500 uppercase tracking-widest mb-2 block transition-colors">
               ← Back to Vote Hub
             </Link>
             <h1 className="text-4xl font-black uppercase tracking-tighter text-slate-800 flex items-center gap-3">
@@ -183,26 +183,26 @@ export default function VoteContentManager() {
             </h1>
             <p className="text-xs font-bold text-slate-500 mt-2">버전, 카테고리, 평가 항목, 세부 기준까지 모든 것을 내 마음대로 커스텀하세요.</p>
           </div>
-          <button onClick={handleSave} disabled={saving} className="bg-slate-900 text-white px-8 py-3 rounded-xl font-black uppercase tracking-widest hover:bg-blue-600 transition-all shadow-lg active:scale-95">
+          <button onClick={handleSave} disabled={saving} className="bg-slate-900 text-white px-8 py-3 rounded-none font-black uppercase tracking-widest hover:bg-teal-600 transition-all shadow-sm active:scale-95">
             {saving ? 'Saving...' : 'Save All 💾'}
           </button>
         </header>
 
         {/* 🌟 동적 버전 탭 관리 🌟 */}
-        <div className="flex flex-wrap items-center gap-3 mb-8 bg-white p-4 rounded-3xl shadow-sm border border-slate-100">
+        <div className="flex flex-wrap items-center gap-3 mb-8 bg-white p-4 rounded-none shadow-sm border border-slate-100">
           <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-2">Versions</span>
           {versions.map(v => (
             <div key={v} className="flex items-center gap-1">
               <button 
                 onClick={() => setActiveVersion(v)} 
-                className={`px-6 py-2.5 rounded-full font-black text-sm transition-all border-2 ${activeVersion === v ? 'bg-blue-600 text-white border-blue-600 shadow-md' : 'bg-slate-50 text-slate-500 border-slate-200 hover:border-slate-300'}`}
+                className={`px-6 py-2.5 rounded-none font-black text-sm transition-all border-2 ${activeVersion === v ? 'bg-teal-600 text-white border-teal-600 shadow-sm' : 'bg-slate-50 text-slate-500 border-slate-200 hover:border-slate-300'}`}
               >
                 {v.toUpperCase()} 버전
               </button>
-              <button onClick={() => handleDeleteVersion(v)} className="w-8 h-8 rounded-full flex items-center justify-center text-slate-300 hover:bg-red-50 hover:text-red-500 font-black transition-colors">✕</button>
+              <button onClick={() => handleDeleteVersion(v)} className="w-8 h-8 rounded-none flex items-center justify-center text-slate-300 hover:bg-red-50 hover:text-red-500 font-black transition-colors">✕</button>
             </div>
           ))}
-          <button onClick={handleAddVersion} className="px-5 py-2.5 rounded-full font-black text-sm border-2 border-dashed border-blue-300 text-blue-500 hover:bg-blue-50 transition-colors ml-2">
+          <button onClick={handleAddVersion} className="px-5 py-2.5 rounded-none font-black text-sm border-2 border-dashed border-teal-300 text-teal-500 hover:bg-teal-50 transition-colors ml-2">
             + 새 버전 추가
           </button>
         </div>
@@ -218,20 +218,20 @@ export default function VoteContentManager() {
               const colorBorder = `border-${cat.color}-200`
               
               return (
-                <div key={cat.id} className="bg-white p-8 rounded-[2.5rem] shadow-xl border border-slate-200 relative overflow-hidden group">
-                  <button onClick={() => removeCategory(cIdx)} className="absolute top-6 right-6 text-red-300 hover:text-red-600 font-black text-xs bg-red-50 px-3 py-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity">카테고리 삭제 🗑️</button>
+                <div key={cat.id} className="bg-white p-8 rounded-none shadow-sm border border-slate-200 relative overflow-hidden group">
+                  <button onClick={() => removeCategory(cIdx)} className="absolute top-6 right-6 text-red-300 hover:text-red-600 font-black text-xs bg-red-50 px-3 py-1.5 rounded-none opacity-0 group-hover:opacity-100 transition-opacity">카테고리 삭제 🗑️</button>
                   
                   {/* 1️⃣ 카테고리 설정 (아이콘, 이름, 색상) */}
                   <div className="flex flex-col md:flex-row md:items-center gap-4 mb-8 pb-6 border-b border-slate-100 pr-20">
-                    <input type="text" value={cat.icon} onChange={(e) => updateCategory(cIdx, 'icon', e.target.value)} className="w-16 h-16 text-4xl text-center bg-slate-50 rounded-2xl outline-none focus:ring-2 focus:ring-blue-200" placeholder="💡" />
+                    <input type="text" value={cat.icon} onChange={(e) => updateCategory(cIdx, 'icon', e.target.value)} className="w-16 h-16 text-4xl text-center bg-slate-50 rounded-none outline-none focus:ring-2 focus:ring-teal-200" placeholder="💡" />
                     <input type="text" value={cat.title} onChange={(e) => updateCategory(cIdx, 'title', e.target.value)} className={`flex-1 text-3xl font-black ${colorText} outline-none bg-transparent placeholder-slate-300`} placeholder="카테고리명 (예: 1. 인사이트)" />
                     
-                    <div className="flex gap-2 bg-slate-50 p-2 rounded-xl">
+                    <div className="flex gap-2 bg-slate-50 p-2 rounded-none">
                       {colorOptions.map(c => (
                         <button 
                           key={c.value} 
                           onClick={() => updateCategory(cIdx, 'color', c.value)}
-                          className={`w-6 h-6 rounded-full border-2 ${cat.color === c.value ? 'border-slate-800 scale-110 shadow-md' : 'border-transparent opacity-50 hover:opacity-100'} bg-${c.value}-500`}
+                          className={`w-6 h-6 rounded-none border-2 ${cat.color === c.value ? 'border-slate-800 scale-110 shadow-sm' : 'border-transparent opacity-50 hover:opacity-100'} bg-${c.value}-500`}
                           title={c.label}
                         />
                       ))}
@@ -241,38 +241,38 @@ export default function VoteContentManager() {
                   {/* 2️⃣ 내부 평가 항목(Items) 리스트 */}
                   <div className="space-y-6">
                     {cat.items.map((item, iIdx) => (
-                      <div key={item.id} className={`bg-slate-50 p-6 rounded-3xl border ${colorBorder} shadow-sm relative group/item`}>
-                        <button onClick={() => removeItem(cIdx, iIdx)} className="absolute top-4 right-4 w-8 h-8 rounded-full bg-white flex items-center justify-center text-red-400 hover:bg-red-50 hover:text-red-600 font-black opacity-0 group-hover/item:opacity-100 transition-all shadow-sm">✕</button>
+                      <div key={item.id} className={`bg-slate-50 p-6 rounded-none border ${colorBorder} shadow-sm relative group/item`}>
+                        <button onClick={() => removeItem(cIdx, iIdx)} className="absolute top-4 right-4 w-8 h-8 rounded-none bg-white flex items-center justify-center text-red-400 hover:bg-red-50 hover:text-red-600 font-black opacity-0 group-hover/item:opacity-100 transition-all shadow-sm">✕</button>
                         
                         {/* 평가 항목명 */}
                         <div className="flex items-center gap-3 mb-4 pr-10">
-                          <span className={`${colorBg} ${colorText} px-3 py-1 rounded-lg text-xs font-black uppercase`}>항목 {iIdx + 1}</span>
+                          <span className={`${colorBg} ${colorText} px-3 py-1 rounded-none text-xs font-black uppercase`}>항목 {iIdx + 1}</span>
                           <input type="text" value={item.label} onChange={(e) => updateItemLabel(cIdx, iIdx, e.target.value)} className="flex-1 text-xl font-black text-slate-800 outline-none bg-transparent border-b border-transparent focus:border-slate-300 pb-1" placeholder="항목 이름 (예: 1-1. 주제의 명료성)" />
                         </div>
 
                         {/* 점수 기준표(Criteria) 에디터 */}
-                        <div className="space-y-2 bg-white p-4 rounded-2xl shadow-inner border border-slate-100">
+                        <div className="space-y-2 bg-white p-4 rounded-none shadow-inner border border-slate-100">
                           {item.criteria.map((crit, critIdx) => (
                             <div key={critIdx} className="flex items-start gap-3 group/crit">
                               <input 
                                 type="number" 
                                 value={crit.s} 
                                 onChange={(e) => updateCriteria(cIdx, iIdx, critIdx, 's', e.target.value)}
-                                className={`w-16 ${colorBg} ${colorText} font-black text-center p-3 rounded-xl outline-none focus:ring-2`}
+                                className={`w-16 ${colorBg} ${colorText} font-black text-center p-3 rounded-none outline-none focus:ring-2`}
                                 placeholder="점수"
                               />
                               <textarea 
                                 rows="2"
                                 value={crit.t} 
                                 onChange={(e) => updateCriteria(cIdx, iIdx, critIdx, 't', e.target.value)}
-                                className="flex-1 bg-slate-50 text-sm font-bold text-slate-600 p-3 rounded-xl outline-none focus:ring-2 focus:ring-slate-200 resize-none leading-relaxed"
+                                className="flex-1 bg-slate-50 text-sm font-bold text-slate-600 p-3 rounded-none outline-none focus:ring-2 focus:ring-slate-200 resize-none leading-relaxed"
                                 placeholder="이 점수에 해당하는 평가 기준 설명"
                               />
                               <button onClick={() => removeCriteriaRow(cIdx, iIdx, critIdx)} className="mt-2 w-8 h-8 flex items-center justify-center text-slate-300 hover:text-red-500 font-black opacity-0 group-hover/crit:opacity-100 transition-opacity">✕</button>
                             </div>
                           ))}
                           
-                          <button onClick={() => addCriteriaRow(cIdx, iIdx)} className={`w-full py-3 mt-2 border-2 border-dashed ${colorBorder} ${colorText} rounded-xl font-black text-xs hover:${colorBg} transition-colors`}>
+                          <button onClick={() => addCriteriaRow(cIdx, iIdx)} className={`w-full py-3 mt-2 border-2 border-dashed ${colorBorder} ${colorText} rounded-none font-black text-xs hover:${colorBg} transition-colors`}>
                             + 세부 점수칸 추가 (Add Criteria)
                           </button>
                         </div>
@@ -281,7 +281,7 @@ export default function VoteContentManager() {
 
                     {/* 항목 추가 버튼 */}
                     <div className="text-center pt-4">
-                      <button onClick={() => addItem(cIdx)} className={`px-6 py-4 bg-white border border-slate-200 rounded-[2rem] font-black ${colorText} shadow-sm hover:shadow-md transition-all`}>
+                      <button onClick={() => addItem(cIdx)} className={`px-6 py-4 bg-white border border-slate-200 rounded-none font-black ${colorText} shadow-sm hover:shadow-sm transition-all`}>
                         + 이 카테고리에 새로운 평가 항목 추가
                       </button>
                     </div>
@@ -292,7 +292,7 @@ export default function VoteContentManager() {
             })}
 
             {/* 거대한 카테고리 추가 버튼 */}
-            <button onClick={addCategory} className="w-full py-10 bg-slate-900 text-white rounded-[3rem] font-black text-xl shadow-2xl hover:bg-blue-600 hover:scale-[1.01] transition-all">
+            <button onClick={addCategory} className="w-full py-10 bg-slate-900 text-white rounded-none font-black text-xl shadow-sm hover:bg-teal-600 hover:scale-[1.01] transition-all">
               + 새로운 카테고리 (Category) 추가하기
             </button>
             

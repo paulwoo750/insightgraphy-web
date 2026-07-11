@@ -109,7 +109,7 @@ export default function LandingManager() {
             </h1>
             <p className="text-xs font-bold text-slate-500 mt-2">홈페이지 첫 화면에 노출될 핵심 콘텐츠들을 선택하세요.</p>
           </div>
-          <button onClick={handleSaveAll} disabled={saving} className="bg-[#32a4a1] text-white px-8 py-3 rounded-xl font-black uppercase tracking-widest hover:bg-[#238986] transition-all shadow-lg hover:scale-105">
+          <button onClick={handleSaveAll} disabled={saving} className="bg-[#32a4a1] text-white px-8 py-3 rounded-none font-black uppercase tracking-widest hover:bg-[#238986] transition-all shadow-sm hover:scale-105">
             {saving ? 'Saving...' : 'Save All 💾'}
           </button>
         </header>
@@ -117,13 +117,13 @@ export default function LandingManager() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           
           {/* 1. Upcoming Schedules 선택 패널 */}
-          <section className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100">
+          <section className="bg-white p-8 rounded-none shadow-sm border border-slate-100">
             <div className="mb-6 flex justify-between items-end border-b border-slate-100 pb-4">
               <div>
                 <h2 className="text-xl font-black text-slate-800">01. Upcoming Sessions</h2>
                 <p className="text-xs font-bold text-slate-400 mt-1">랜딩 페이지에 노출될 일정을 <span className="text-[#32a4a1] font-black">최대 4개</span> 선택하세요.</p>
               </div>
-              <span className="bg-[#32a4a1]/10 text-[#32a4a1] px-3 py-1 rounded-lg text-xs font-black">
+              <span className="bg-[#32a4a1]/10 text-[#32a4a1] px-3 py-1 rounded-none text-xs font-black">
                 {selectedSchIds.length} / 4 선택됨
               </span>
             </div>
@@ -132,7 +132,7 @@ export default function LandingManager() {
               {allSchedules.map(sch => (
                 <label 
                   key={sch.id} 
-                  className={`flex items-center justify-between p-4 rounded-2xl cursor-pointer transition-all border-2 ${selectedSchIds.includes(sch.id) ? 'border-[#32a4a1] bg-[#e0f2f1]' : 'border-slate-100 bg-slate-50 hover:border-slate-300'}`}
+                  className={`flex items-center justify-between p-4 rounded-none cursor-pointer transition-all border-2 ${selectedSchIds.includes(sch.id) ? 'border-[#32a4a1] bg-[#e0f2f1]' : 'border-slate-100 bg-slate-50 hover:border-slate-300'}`}
                 >
                   <div className="flex flex-col gap-1">
                     <div className="flex items-center gap-2">
@@ -154,13 +154,13 @@ export default function LandingManager() {
           </section>
 
           {/* 2. Best Practices (Showcase) 선택 패널 */}
-          <section className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100">
+          <section className="bg-white p-8 rounded-none shadow-sm border border-slate-100">
             <div className="mb-6 flex justify-between items-end border-b border-slate-100 pb-4">
               <div>
                 <h2 className="text-xl font-black text-slate-800">02. Best Practices</h2>
-                <p className="text-xs font-bold text-slate-400 mt-1">대문에 걸어둘 우수 PPT 작품을 <span className="text-blue-500 font-black">최대 3개</span> 선택하세요.</p>
+                <p className="text-xs font-bold text-slate-400 mt-1">대문에 걸어둘 우수 PPT 작품을 <span className="text-teal-500 font-black">최대 3개</span> 선택하세요.</p>
               </div>
-              <span className="bg-blue-100 text-blue-600 px-3 py-1 rounded-lg text-xs font-black">
+              <span className="bg-teal-100 text-teal-600 px-3 py-1 rounded-none text-xs font-black">
                 {selectedShowIds.length} / 3 선택됨
               </span>
             </div>
@@ -169,14 +169,14 @@ export default function LandingManager() {
               {allShowcases.map(item => (
                 <label 
                   key={item.id} 
-                  className={`flex items-center gap-4 p-3 rounded-2xl cursor-pointer transition-all border-2 ${selectedShowIds.includes(item.id) ? 'border-blue-500 bg-blue-50/50' : 'border-slate-100 bg-slate-50 hover:border-slate-300'}`}
+                  className={`flex items-center gap-4 p-3 rounded-none cursor-pointer transition-all border-2 ${selectedShowIds.includes(item.id) ? 'border-teal-500 bg-teal-50/50' : 'border-slate-100 bg-slate-50 hover:border-slate-300'}`}
                 >
-                  <div className="w-24 h-16 bg-slate-200 rounded-lg overflow-hidden shrink-0 relative">
+                  <div className="w-24 h-16 bg-slate-200 rounded-none overflow-hidden shrink-0 relative">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={item.thumb_url || '/showcase/thumb1.png'} alt="thumb" className="w-full h-full object-cover" />
                   </div>
                   <div className="flex-1 flex flex-col gap-1 overflow-hidden">
-                    <p className="text-[10px] font-black text-blue-500 uppercase tracking-widest">{item.author}</p>
+                    <p className="text-[10px] font-black text-teal-500 uppercase tracking-widest">{item.author}</p>
                     <h3 className="text-sm font-black text-slate-800 truncate">{item.title}</h3>
                   </div>
                   <div className="pr-2">
@@ -184,7 +184,7 @@ export default function LandingManager() {
                       type="checkbox" 
                       checked={selectedShowIds.includes(item.id)} 
                       onChange={() => handleShowcaseToggle(item.id)} 
-                      className="w-5 h-5 accent-blue-500 cursor-pointer"
+                      className="w-5 h-5 accent-teal-500 cursor-pointer"
                     />
                   </div>
                 </label>

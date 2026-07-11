@@ -107,7 +107,7 @@ export default function AdminShowcasePage() {
         {/* 헤더 */}
         <header className="flex justify-between items-end mb-12 border-b border-slate-200 pb-6">
           <div>
-            <Link href="/admin/hub" className="text-xs font-black text-slate-400 hover:text-blue-600 uppercase tracking-widest mb-2 block transition-colors">← Back to Hub</Link>
+            <Link href="/admin/hub" className="text-xs font-black text-slate-400 hover:text-teal-600 uppercase tracking-widest mb-2 block transition-colors">← Back to Hub</Link>
             <h1 className="text-4xl font-black uppercase tracking-tighter text-slate-800 flex items-center gap-3">
               <span className="text-4xl">🖼️</span> Showcase Manager
             </h1>
@@ -117,7 +117,7 @@ export default function AdminShowcasePage() {
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_2fr] gap-8">
           
           {/* 좌측: 업로드 폼 */}
-          <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 h-fit sticky top-8">
+          <div className="bg-white p-8 rounded-none shadow-sm border border-slate-100 h-fit sticky top-8">
             <h2 className="text-lg font-black uppercase mb-6 text-slate-800">New Artwork Upload</h2>
             <form onSubmit={handleUpload} className="space-y-4">
               
@@ -125,65 +125,65 @@ export default function AdminShowcasePage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="text-[10px] font-black text-slate-400 uppercase mb-1 block">발표자 이름</label>
-                  <input type="text" name="author" value={formData.author} onChange={handleInputChange} className="w-full bg-slate-50 p-3 rounded-xl font-bold text-sm outline-none focus:border-blue-300 border border-transparent" placeholder="예: 우제윤" />
+                  <input type="text" name="author" value={formData.author} onChange={handleInputChange} className="w-full bg-slate-50 p-3 rounded-none font-bold text-sm outline-none focus:border-teal-300 border border-transparent" placeholder="예: 우제윤" />
                 </div>
                 <div>
                   <label className="text-[10px] font-black text-slate-400 uppercase mb-1 block">기수</label>
-                  <input type="text" name="generation" value={formData.generation} onChange={handleInputChange} className="w-full bg-slate-50 p-3 rounded-xl font-bold text-sm outline-none focus:border-blue-300 border border-transparent" placeholder="예: 28기" />
+                  <input type="text" name="generation" value={formData.generation} onChange={handleInputChange} className="w-full bg-slate-50 p-3 rounded-none font-bold text-sm outline-none focus:border-teal-300 border border-transparent" placeholder="예: 28기" />
                 </div>
               </div>
 
               <div>
                 <label className="text-[10px] font-black text-slate-400 uppercase mb-1 block">해당 주차 주제명 (Topic)</label>
-                <input type="text" name="topic" value={formData.topic} onChange={handleInputChange} className="w-full bg-slate-50 p-3 rounded-xl font-bold text-sm outline-none focus:border-blue-300 border border-transparent" placeholder="예: 죽은 아이디어를 부활시켜라" />
+                <input type="text" name="topic" value={formData.topic} onChange={handleInputChange} className="w-full bg-slate-50 p-3 rounded-none font-bold text-sm outline-none focus:border-teal-300 border border-transparent" placeholder="예: 죽은 아이디어를 부활시켜라" />
               </div>
 
               <div>
                 <label className="text-[10px] font-black text-slate-400 uppercase mb-1 block">발표 제목 (Title)</label>
-                <input type="text" name="title" value={formData.title} onChange={handleInputChange} className="w-full bg-slate-50 p-3 rounded-xl font-bold text-sm outline-none focus:border-blue-300 border border-transparent" placeholder="예: Connect KE" />
+                <input type="text" name="title" value={formData.title} onChange={handleInputChange} className="w-full bg-slate-50 p-3 rounded-none font-bold text-sm outline-none focus:border-teal-300 border border-transparent" placeholder="예: Connect KE" />
               </div>
 
               {/* 파일 업로드 */}
               <div className="pt-4 border-t border-slate-100">
                 <div className="mb-4">
-                  <label className="text-[10px] font-black text-blue-500 uppercase mb-2 block">🖼️ 표지 썸네일 (이미지)</label>
-                  <input id="thumbInput" type="file" accept="image/*" onChange={(e) => setThumbFile(e.target.files[0])} className="w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-black file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer" />
+                  <label className="text-[10px] font-black text-teal-500 uppercase mb-2 block">🖼️ 표지 썸네일 (이미지)</label>
+                  <input id="thumbInput" type="file" accept="image/*" onChange={(e) => setThumbFile(e.target.files[0])} className="w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-none file:border-0 file:text-xs file:font-black file:bg-teal-50 file:text-teal-700 hover:file:bg-teal-100 cursor-pointer" />
                 </div>
                 <div>
                   <label className="text-[10px] font-black text-red-500 uppercase mb-2 block">📄 발표자료 (PDF)</label>
-                  <input id="pdfInput" type="file" accept="application/pdf" onChange={(e) => setPdfFile(e.target.files[0])} className="w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-black file:bg-red-50 file:text-red-700 hover:file:bg-red-100 cursor-pointer" />
+                  <input id="pdfInput" type="file" accept="application/pdf" onChange={(e) => setPdfFile(e.target.files[0])} className="w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-none file:border-0 file:text-xs file:font-black file:bg-red-50 file:text-red-700 hover:file:bg-red-100 cursor-pointer" />
                 </div>
               </div>
 
-              <button type="submit" disabled={uploading} className="w-full mt-6 py-4 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest text-sm hover:bg-[#32a4a1] transition-all disabled:opacity-50">
+              <button type="submit" disabled={uploading} className="w-full mt-6 py-4 bg-slate-900 text-white rounded-none font-black uppercase tracking-widest text-sm hover:bg-[#32a4a1] transition-all disabled:opacity-50">
                 {uploading ? 'Uploading...' : 'Upload Artwork 🚀'}
               </button>
             </form>
           </div>
 
           {/* 우측: 업로드된 작품 리스트 */}
-          <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100">
+          <div className="bg-white p-8 rounded-none shadow-sm border border-slate-100">
             <h2 className="text-lg font-black uppercase mb-6 text-slate-800">Current Showcase</h2>
             {loading ? (
               <p className="text-center text-slate-400 font-bold py-10">데이터 불러오는 중... 🔄</p>
             ) : works.length === 0 ? (
-              <p className="text-center text-slate-400 font-bold py-10 border-2 border-dashed border-slate-100 rounded-3xl">아직 등록된 작품이 없습니다.</p>
+              <p className="text-center text-slate-400 font-bold py-10 border-2 border-dashed border-slate-100 rounded-none">아직 등록된 작품이 없습니다.</p>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                 {works.map(work => (
-                  <div key={work.id} className="border border-slate-100 rounded-3xl overflow-hidden hover:shadow-md transition-all group">
+                  <div key={work.id} className="border border-slate-100 rounded-none overflow-hidden hover:shadow-sm transition-all group">
                     <div className="aspect-video bg-slate-100 relative">
                       {/* 썸네일 이미지 */}
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img src={work.thumb_url} alt={work.title} className="w-full h-full object-cover" />
-                      <button onClick={() => handleDelete(work.id)} className="absolute top-2 right-2 bg-red-500 text-white w-8 h-8 rounded-full font-black opacity-0 group-hover:opacity-100 transition-opacity hover:scale-110 shadow-lg">✕</button>
+                      <button onClick={() => handleDelete(work.id)} className="absolute top-2 right-2 bg-red-500 text-white w-8 h-8 rounded-none font-black opacity-0 group-hover:opacity-100 transition-opacity hover:scale-110 shadow-sm">✕</button>
                     </div>
                     <div className="p-4">
                       <p className="text-[9px] font-black text-[#32a4a1] uppercase tracking-widest mb-1">{work.topic}</p>
                       <h3 className="font-black text-slate-800 text-sm truncate mb-2">{work.title}</h3>
                       <div className="flex justify-between items-center text-xs font-bold text-slate-500">
                         <span>{work.author} ({work.generation})</span>
-                        <a href={work.pdf_url} target="_blank" rel="noreferrer" className="text-blue-500 hover:underline">PDF 보기</a>
+                        <a href={work.pdf_url} target="_blank" rel="noreferrer" className="text-teal-500 hover:underline">PDF 보기</a>
                       </div>
                     </div>
                   </div>

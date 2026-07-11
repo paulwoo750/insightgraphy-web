@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
+import InternalNav from '@/app/components/InternalNav'
 
 export default function ProposalRoom() {
   const router = useRouter()
@@ -242,28 +243,11 @@ export default function ProposalRoom() {
 
   return (
     <div className="bg-white min-h-screen text-slate-900 font-sans pb-32">
-      {/* 🌟 최상단 GNB 스타일의 탭 네비게이션 */}
-      <div className="border-b border-slate-200 bg-white sticky top-0 z-20">
-        <div className="max-w-[1200px] mx-auto flex items-end px-6 md:px-8 pt-4 overflow-x-auto no-scrollbar">
-          <Link href="/home" className="pb-4 pr-6 text-sm font-extrabold text-slate-400 hover:text-blue-600 transition-colors flex items-center shrink-0">
-            HOME
-          </Link>
-          <div className="w-px h-4 bg-slate-300 mx-2 mb-4 shrink-0"></div>
-          <Link href="/dashboard/proposal" className="pb-4 px-6 text-sm font-extrabold text-blue-600 border-b-2 border-blue-600 transition-colors shrink-0">
-            기획서 📝
-          </Link>
-          <Link href="/dashboard/slide" className="pb-4 px-6 text-sm font-semibold text-slate-400 hover:text-slate-800 transition-colors shrink-0">
-            슬라이드 🖼️
-          </Link>
-          <Link href="/dashboard/video" className="pb-4 px-6 text-sm font-semibold text-slate-400 hover:text-slate-800 transition-colors shrink-0">
-            발표영상 🎬
-          </Link>
-        </div>
-      </div>
+      <InternalNav />
 
       <header className="max-w-[1200px] mx-auto px-6 md:px-8 mt-12 mb-10">
         <div className="mb-8">
-          <h1 className="text-3xl font-extrabold text-blue-800 tracking-tight">Proposal Board</h1>
+          <h1 className="text-3xl font-extrabold text-teal-800 tracking-tight">Proposal Board</h1>
           <p className="text-sm font-medium text-slate-500 mt-2">주차별 기획서를 업로드하고 피드백을 진행합니다.</p>
         </div>
 

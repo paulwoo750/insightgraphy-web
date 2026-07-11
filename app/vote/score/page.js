@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import InternalNav from '@/app/components/InternalNav'
 
 export default function ScorePage() {
   const router = useRouter()
@@ -150,19 +151,8 @@ export default function ScorePage() {
   const getActiveTargetName = (t) => t.members.length > 1 ? `Team ${t.team_id} (${t.members.join(', ')})` : `${t.members[0]} 님`;
 
   return (
-    <div className="bg-slate-50 min-h-screen text-slate-900 font-sans pb-32">
-      {/* 🌟 GNB (가로 1600px로 확장) */}
-      <header className="border-b border-slate-300 bg-slate-50 sticky top-0 z-50">
-        <div className="max-w-[1600px] mx-auto flex items-end px-6 pt-4 overflow-x-auto no-scrollbar">
-          <Link href="/home" className="pb-4 pr-6 text-sm font-extrabold text-slate-400 hover:text-teal-800 transition-colors flex items-center shrink-0">HOME</Link>
-          <div className="w-px h-4 bg-slate-300 mx-2 mb-4 shrink-0"></div>
-          <Link href="/vote/score" className="pb-4 px-6 text-sm font-extrabold text-teal-800 border-b-[3px] border-teal-800 transition-colors shrink-0">발표 채점 📝</Link>
-          <Link href="/vote/feedback" className="pb-4 px-6 text-sm font-semibold text-slate-400 hover:text-slate-800 transition-colors shrink-0">임시저장 피드백 ✍️</Link>
-          <Link href="/vote/results/my" className="pb-4 px-6 text-sm font-semibold text-slate-400 hover:text-slate-800 transition-colors shrink-0">결과 확인 📊</Link>
-          <Link href="/vote/results/arxiv" className="pb-4 px-6 text-sm font-semibold text-slate-400 hover:text-slate-800 transition-colors shrink-0">피드백 확인 💬</Link>
-          <Link href="/vote/results/ranking" className="pb-4 px-6 text-sm font-semibold text-slate-400 hover:text-slate-800 transition-colors shrink-0">베스트 프레젠터 🏆</Link>
-        </div>
-      </header>
+    <div className="bg-white min-h-screen text-slate-900 font-sans pb-32">
+      <InternalNav />
 
       {/* 🌟 메인 컨테이너 폭 1600px 확장 */}
       <div className="max-w-[1600px] mx-auto px-6 mt-12">

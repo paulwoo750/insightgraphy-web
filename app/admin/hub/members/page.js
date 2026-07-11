@@ -154,49 +154,49 @@ export default function AdminMembersPage() {
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
           {/* [좌측 1] 단체사진 설정 */}
-          <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100">
+          <div className="bg-white p-8 rounded-none shadow-sm border border-slate-100">
             <h2 className="text-lg font-black uppercase mb-6 text-slate-800">1. Group Photo</h2>
             {groupPhotoUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={groupPhotoUrl} alt="Group" className="w-full aspect-video object-cover rounded-2xl mb-4 border border-slate-200" />
+              <img src={groupPhotoUrl} alt="Group" className="w-full aspect-video object-cover rounded-none mb-4 border border-slate-200" />
             ) : (
-              <div className="w-full aspect-video bg-slate-100 rounded-2xl mb-4 flex items-center justify-center text-slate-400 font-bold border-2 border-dashed border-slate-300">
+              <div className="w-full aspect-video bg-slate-100 rounded-none mb-4 flex items-center justify-center text-slate-400 font-bold border-2 border-dashed border-slate-300">
                 등록된 사진이 없습니다
               </div>
             )}
             <div className="flex gap-2">
-              <input type="file" accept="image/*" onChange={(e) => setPhotoFile(e.target.files[0])} className="flex-1 text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-black file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer" />
-              <button onClick={handlePhotoUpload} disabled={uploadingPhoto} className="bg-[#32a4a1] text-white px-6 rounded-full font-black text-xs uppercase disabled:opacity-50 hover:bg-[#238986] transition-colors">
+              <input type="file" accept="image/*" onChange={(e) => setPhotoFile(e.target.files[0])} className="flex-1 text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-none file:border-0 file:text-xs file:font-black file:bg-teal-50 file:text-teal-700 hover:file:bg-teal-100 cursor-pointer" />
+              <button onClick={handlePhotoUpload} disabled={uploadingPhoto} className="bg-[#32a4a1] text-white px-6 rounded-none font-black text-xs uppercase disabled:opacity-50 hover:bg-[#238986] transition-colors">
                 {uploadingPhoto ? '업로드중' : 'Save'}
               </button>
             </div>
           </div>
 
           {/* [우측 1] 학회원 등록 */}
-          <div className="bg-[#1a1a1a] text-white p-8 rounded-[2.5rem] shadow-xl">
+          <div className="bg-[#1a1a1a] text-white p-8 rounded-none shadow-sm">
             <h2 className="text-lg font-black uppercase mb-6 text-[#32a4a1]">2. New Member Registration</h2>
             <form onSubmit={handleAddMember} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="text-[10px] font-black text-white/50 uppercase mb-1 block">이름</label>
-                  <input type="text" value={newMember.name} onChange={e => setNewMember({...newMember, name: e.target.value})} className="w-full bg-white/10 p-3 rounded-xl font-bold text-sm outline-none focus:border-[#32a4a1] border border-transparent text-white" placeholder="예: 우제윤" />
+                  <input type="text" value={newMember.name} onChange={e => setNewMember({...newMember, name: e.target.value})} className="w-full bg-white/10 p-3 rounded-none font-bold text-sm outline-none focus:border-[#32a4a1] border border-transparent text-white" placeholder="예: 우제윤" />
                 </div>
                 <div>
                   <label className="text-[10px] font-black text-white/50 uppercase mb-1 block">기수</label>
-                  <input type="text" value={newMember.generation} onChange={e => setNewMember({...newMember, generation: e.target.value})} className="w-full bg-white/10 p-3 rounded-xl font-bold text-sm outline-none focus:border-[#32a4a1] border border-transparent text-white" placeholder="예: 29기" />
+                  <input type="text" value={newMember.generation} onChange={e => setNewMember({...newMember, generation: e.target.value})} className="w-full bg-white/10 p-3 rounded-none font-bold text-sm outline-none focus:border-[#32a4a1] border border-transparent text-white" placeholder="예: 29기" />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="text-[10px] font-black text-white/50 uppercase mb-1 block">대학</label>
-                  <input type="text" value={newMember.university} onChange={e => setNewMember({...newMember, university: e.target.value})} className="w-full bg-white/10 p-3 rounded-xl font-bold text-sm outline-none focus:border-[#32a4a1] border border-transparent text-white" placeholder="예: 서울대학교" />
+                  <input type="text" value={newMember.university} onChange={e => setNewMember({...newMember, university: e.target.value})} className="w-full bg-white/10 p-3 rounded-none font-bold text-sm outline-none focus:border-[#32a4a1] border border-transparent text-white" placeholder="예: 서울대학교" />
                 </div>
                 <div>
                   <label className="text-[10px] font-black text-white/50 uppercase mb-1 block">학과</label>
-                  <input type="text" value={newMember.department} onChange={e => setNewMember({...newMember, department: e.target.value})} className="w-full bg-white/10 p-3 rounded-xl font-bold text-sm outline-none focus:border-[#32a4a1] border border-transparent text-white" placeholder="예: 산업공학과" />
+                  <input type="text" value={newMember.department} onChange={e => setNewMember({...newMember, department: e.target.value})} className="w-full bg-white/10 p-3 rounded-none font-bold text-sm outline-none focus:border-[#32a4a1] border border-transparent text-white" placeholder="예: 산업공학과" />
                 </div>
               </div>
-              <button type="submit" className="w-full mt-4 py-4 bg-[#32a4a1] text-white rounded-xl font-black uppercase tracking-widest text-sm hover:bg-[#238986] transition-all">
+              <button type="submit" className="w-full mt-4 py-4 bg-[#32a4a1] text-white rounded-none font-black uppercase tracking-widest text-sm hover:bg-[#238986] transition-all">
                 Add Member ➕
               </button>
             </form>
@@ -207,7 +207,7 @@ export default function AdminMembersPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
           
           {/* [새로운 구역] 3. 활동 기수 설정 */}
-          <div className="bg-slate-900 p-8 rounded-[2.5rem] shadow-xl text-white">
+          <div className="bg-slate-900 p-8 rounded-none shadow-sm text-white">
             <h2 className="text-lg font-black uppercase mb-2 text-[#a8d0cd]">3. Active Generations</h2>
             <p className="text-[10px] font-bold text-white/50 mb-6">투표 세팅 화면 등에 연동될 현재 활동 기수를 등록하세요.</p>
             
@@ -217,17 +217,17 @@ export default function AdminMembersPage() {
                 value={genInput} 
                 onChange={e => setGenInput(e.target.value)} 
                 onKeyDown={e => e.key === 'Enter' && handleAddGen()}
-                className="w-full bg-white/10 p-3 rounded-xl font-black text-sm outline-none focus:border-[#a8d0cd] border border-transparent text-white text-center" 
+                className="w-full bg-white/10 p-3 rounded-none font-black text-sm outline-none focus:border-[#a8d0cd] border border-transparent text-white text-center" 
                 placeholder="기수 숫자 (예: 28)" 
               />
-              <button onClick={handleAddGen} className="shrink-0 whitespace-nowrap bg-[#a8d0cd] text-[#1a1a1a] px-4 rounded-xl font-black text-sm hover:bg-white transition-colors">
+              <button onClick={handleAddGen} className="shrink-0 whitespace-nowrap bg-[#a8d0cd] text-[#1a1a1a] px-4 rounded-none font-black text-sm hover:bg-white transition-colors">
                 추가
               </button>
             </div>
 
             <div className="flex flex-wrap gap-2 mb-6 min-h-[40px]">
               {activeGenerations.map(gen => (
-                <div key={gen} className="flex items-center gap-2 bg-white/10 px-4 py-2 rounded-lg border border-white/20">
+                <div key={gen} className="flex items-center gap-2 bg-white/10 px-4 py-2 rounded-none border border-white/20">
                   <span className="font-black text-sm">{gen}기</span>
                   <button onClick={() => handleRemoveGen(gen)} className="text-red-400 hover:text-red-500 font-black text-xs">✕</button>
                 </div>
@@ -235,24 +235,24 @@ export default function AdminMembersPage() {
               {activeGenerations.length === 0 && <p className="text-xs text-white/30 font-bold w-full text-center mt-2">등록된 활동 기수가 없습니다.</p>}
             </div>
 
-            <button onClick={handleSaveGenerations} disabled={savingGens} className="w-full py-3 border border-[#a8d0cd] text-[#a8d0cd] rounded-xl font-black text-xs uppercase hover:bg-[#a8d0cd] hover:text-[#1a1a1a] transition-colors">
+            <button onClick={handleSaveGenerations} disabled={savingGens} className="w-full py-3 border border-[#a8d0cd] text-[#a8d0cd] rounded-none font-black text-xs uppercase hover:bg-[#a8d0cd] hover:text-[#1a1a1a] transition-colors">
               {savingGens ? 'Saving...' : 'Save Generations 💾'}
             </button>
           </div>
 
           {/* [기존 구역 이동] 4. 임원진 배정 */}
-          <div className="lg:col-span-2 bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 border-t-4 border-t-amber-400">
+          <div className="lg:col-span-2 bg-white p-8 rounded-none shadow-sm border border-slate-100 border-t-4 border-t-teal-400">
             <h2 className="text-lg font-black uppercase mb-6 text-slate-800">4. Executive Board (임원진 지정)</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {execRoles.map(role => {
                 const currentExec = activeMembers.find(m => m.role === role)
                 return (
-                  <div key={role} className="bg-slate-50 p-4 rounded-2xl flex flex-col">
-                    <span className="text-xs font-black text-amber-600 mb-2 uppercase tracking-widest">{role}</span>
+                  <div key={role} className="bg-slate-50 p-4 rounded-none flex flex-col">
+                    <span className="text-xs font-black text-teal-600 mb-2 uppercase tracking-widest">{role}</span>
                     <select 
                       value={currentExec ? currentExec.id : "none"}
                       onChange={(e) => handleRoleChange(role, e.target.value)}
-                      className="bg-white border border-slate-200 p-2 rounded-lg font-bold text-sm text-slate-700 outline-none focus:border-amber-400"
+                      className="bg-white border border-slate-200 p-2 rounded-none font-bold text-sm text-slate-700 outline-none focus:border-teal-400"
                     >
                       <option value="none">-- 지정 안함 --</option>
                       <option disabled>──────────</option>
@@ -269,7 +269,7 @@ export default function AdminMembersPage() {
         </div>
 
         {/* 5. 명단 관리 (활동 / 졸업) */}
-        <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100">
+        <div className="bg-white p-8 rounded-none shadow-sm border border-slate-100">
           <h2 className="text-lg font-black uppercase mb-6 text-slate-800">5. Member List & Graduation</h2>
           
           {loading ? <p className="text-center font-bold text-slate-400">로딩중...</p> : (
@@ -280,13 +280,13 @@ export default function AdminMembersPage() {
                 <h3 className="font-black text-[#32a4a1] mb-4 border-b border-slate-100 pb-2">🟢 일반 등록 학회원 ({activeMembers.length}명)</h3>
                 <div className="space-y-3">
                   {activeMembers.map(m => (
-                    <div key={m.id} className="flex justify-between items-center bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                    <div key={m.id} className="flex justify-between items-center bg-slate-50 p-4 rounded-none border border-slate-100">
                       <div>
-                        <p className="font-black text-slate-800">{m.name} <span className="text-[10px] text-slate-400 bg-white px-2 py-0.5 rounded-full border border-slate-200 ml-1">{m.generation}</span></p>
+                        <p className="font-black text-slate-800">{m.name} <span className="text-[10px] text-slate-400 bg-white px-2 py-0.5 rounded-none border border-slate-200 ml-1">{m.generation}</span></p>
                         <p className="text-xs text-slate-500 font-bold mt-1">{m.university} {m.department}</p>
                       </div>
                       <div className="flex flex-col gap-2">
-                        <button onClick={() => toggleActiveStatus(m.id, m.is_active)} className="text-[10px] font-black px-3 py-1 bg-slate-200 text-slate-600 rounded-full hover:bg-slate-300">졸업시키기 🎓</button>
+                        <button onClick={() => toggleActiveStatus(m.id, m.is_active)} className="text-[10px] font-black px-3 py-1 bg-slate-200 text-slate-600 rounded-none hover:bg-slate-300">졸업시키기 🎓</button>
                         <button onClick={() => handleDeleteMember(m.id)} className="text-[10px] font-black text-red-400 hover:text-red-600 text-right">삭제</button>
                       </div>
                     </div>
@@ -299,12 +299,12 @@ export default function AdminMembersPage() {
                 <h3 className="font-black text-slate-400 mb-4 border-b border-slate-100 pb-2">🎓 졸업 기수 ({graduatedMembers.length}명)</h3>
                 <div className="space-y-3 opacity-60 hover:opacity-100 transition-opacity">
                   {graduatedMembers.map(m => (
-                    <div key={m.id} className="flex justify-between items-center bg-slate-100 p-4 rounded-2xl border border-slate-200">
+                    <div key={m.id} className="flex justify-between items-center bg-slate-100 p-4 rounded-none border border-slate-200">
                       <div>
-                        <p className="font-black text-slate-600">{m.name} <span className="text-[10px] text-slate-400 bg-white px-2 py-0.5 rounded-full border border-slate-200 ml-1">{m.generation}</span></p>
+                        <p className="font-black text-slate-600">{m.name} <span className="text-[10px] text-slate-400 bg-white px-2 py-0.5 rounded-none border border-slate-200 ml-1">{m.generation}</span></p>
                       </div>
                       <div className="flex gap-3">
-                        <button onClick={() => toggleActiveStatus(m.id, m.is_active)} className="text-[10px] font-black px-3 py-1 bg-white border border-slate-300 text-slate-600 rounded-full hover:bg-slate-200">복귀시키기 🔄</button>
+                        <button onClick={() => toggleActiveStatus(m.id, m.is_active)} className="text-[10px] font-black px-3 py-1 bg-white border border-slate-300 text-slate-600 rounded-none hover:bg-slate-200">복귀시키기 🔄</button>
                         <button onClick={() => handleDeleteMember(m.id)} className="text-[10px] font-black text-red-400 hover:text-red-600">삭제</button>
                       </div>
                     </div>
