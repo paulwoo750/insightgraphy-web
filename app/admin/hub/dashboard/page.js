@@ -460,6 +460,18 @@ export default function DashboardManager() {
                           발표자료·영상 마감 = <b>각 조 진행 날짜 자정</b>, 정성 피드백 = 진행 <b>익일 자정</b> (자동 계산)
                         </p>
 
+                        {/* 🌟 평일세션 주제 (정규세션 주제와 별개) */}
+                        <div className="bg-teal-50/40 p-5 rounded-none border border-teal-100">
+                          <label className="text-[10px] font-black text-teal-700 uppercase tracking-widest block mb-2">평일세션 주제 (정규세션과 다른 주제)</label>
+                          <input
+                            type="text"
+                            value={weekTopics[`weekday_${setupWeek}`] || ''}
+                            onChange={e => setWeekTopics({ ...weekTopics, [`weekday_${setupWeek}`]: e.target.value })}
+                            placeholder="이 주차 평일세션 주제를 입력하세요"
+                            className="w-full bg-white p-3 rounded-none text-sm font-bold text-slate-700 outline-none border border-slate-200 focus:border-teal-400 transition-colors"
+                          />
+                        </div>
+
                         {/* 🌟 평일세션 조 편성 (정규 조와 별개) */}
                         <div className="bg-slate-50 p-5 rounded-none border border-slate-100 space-y-4">
                           <div className="flex items-center justify-between border-b border-slate-200 pb-2">
@@ -514,6 +526,23 @@ export default function DashboardManager() {
                                     <input type="time" value={t.attEnd || ''} onChange={e => updateWeekdayTeam(g, 'attEnd', e.target.value)} className="w-full p-2 rounded-none text-xs font-bold outline-none border border-slate-200 focus:border-teal-400 bg-white" />
                                   </div>
                                 </div>
+
+                                {/* 🌟 조별 제출 마감 (미입력 시 진행일 자정 / 익일 자정 자동) */}
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+                                  <div className="space-y-1.5">
+                                    <label className="text-[9px] font-black text-teal-700 block">🖥️ 발표자료 마감</label>
+                                    <input type="datetime-local" value={t.slideDl || ''} onChange={e => updateWeekdayTeam(g, 'slideDl', e.target.value)} className="w-full p-2 rounded-none text-xs font-bold outline-none border border-slate-200 focus:border-teal-400 bg-white" />
+                                  </div>
+                                  <div className="space-y-1.5">
+                                    <label className="text-[9px] font-black text-teal-700 block">🎬 발표영상 마감</label>
+                                    <input type="datetime-local" value={t.videoDl || ''} onChange={e => updateWeekdayTeam(g, 'videoDl', e.target.value)} className="w-full p-2 rounded-none text-xs font-bold outline-none border border-slate-200 focus:border-teal-400 bg-white" />
+                                  </div>
+                                  <div className="space-y-1.5">
+                                    <label className="text-[9px] font-black text-teal-700 block">✅ 정성 피드백 마감</label>
+                                    <input type="datetime-local" value={t.fbDl || ''} onChange={e => updateWeekdayTeam(g, 'fbDl', e.target.value)} className="w-full p-2 rounded-none text-xs font-bold outline-none border border-slate-200 focus:border-teal-400 bg-white" />
+                                  </div>
+                                </div>
+                                <p className="text-[9px] font-bold text-slate-400 mb-3">※ 비워두면 자동 계산: 발표자료·영상 = 진행일 자정, 정성 피드백 = 익일 자정</p>
                                 <div className="grid grid-cols-3 gap-3">
                                   <div className="space-y-1.5">
                                     <label className="text-[9px] font-black text-slate-400 block">위도 (Lat)</label>

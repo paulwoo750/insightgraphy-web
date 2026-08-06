@@ -225,9 +225,13 @@ function ArchiveUserPage() {
   const myName = user?.user_metadata?.name
   const pastSemesters = [...new Set(pastFiles.map(f => f.semester))]
   const pastWeeks = pastNav.semester ? [...new Set(pastFiles.filter(f => f.semester === pastNav.semester).map(f => f.week))] : []
-  const pastCategories = ['proposal', 'slide', 'video']
-  // 🌟 카테고리별 file_category 별칭 (레거시 'plan' + 현재 'proposal', 평일세션 weekday_* 포함)
-  const catAliases = { proposal: ['proposal', 'plan'], slide: ['slide', 'weekday_slide'], video: ['video', 'weekday_video'] }
+  // 🌟 정규/평일세션을 분리해서 표시 (평일 자료가 있는 학기·주차에만 평일 폴더 노출)
+  const catAliases = {
+    proposal: ['proposal', 'plan'], slide: ['slide'], video: ['video'],
+    weekday_slide: ['weekday_slide'], weekday_video: ['weekday_video']
+  }
+  const hasCat = (cat) => pastFiles.some(f => f.semester === pastNav.semester && f.week === pastNav.week && catAliases[cat].includes(f.file_category))
+  const pastCategories = ['proposal', 'slide', 'video', ...(pastNav.week != null ? ['weekday_slide', 'weekday_video'].filter(hasCat) : [])]
   const finalPastFiles = pastNav.category ? pastFiles.filter(f => f.semester === pastNav.semester && f.week === pastNav.week && (catAliases[pastNav.category] || [pastNav.category]).includes(f.file_category)) : []
   const specialFolders = [...new Set(archiveFiles.filter(f => f.category === 'special').map(f => f.file_type))]
   const eduFiles = archiveFiles.filter(f => f.category === 'edu' && f.file_type === eduSection)
@@ -242,15 +246,21 @@ function ArchiveUserPage() {
     const ts = archiveFiles.find(f => f.category === 'topics' && f.file_type === pastNav.semester)
     if (ts) { try { topicsSnap = JSON.parse(ts.description || '{}') } catch { topicsSnap = {} } }
   }
-  const topicFor = (w) => {
-    if (topicsSnap[w]) return topicsSnap[w]
-    if (weekTopics[w]) return weekTopics[w]
-    const f = pastFiles.find(pf => pf.semester === pastNav.semester && pf.week === w && pf.file_name)
+  // weekday=true 이면 평일세션 주제 (없으면 null)
+  const topicFor = (w, weekday = false) => {
+    const key = weekday ? `weekday_${w}` : w
+    if (topicsSnap[key]) return topicsSnap[key]
+    if (weekTopics[key]) return weekTopics[key]
+    // 파일명 `(주제)`에서 복구 — 평일은 weekday_* 자료에서만
+    const cats = weekday ? ['weekday_slide', 'weekday_video'] : ['proposal', 'plan', 'slide', 'video']
+    const f = pastFiles.find(pf => pf.semester === pastNav.semester && pf.week === w && cats.includes(pf.file_category) && pf.file_name)
     if (f) { const m = f.file_name.match(/\(([^)]+)\)/); if (m && m[1] && m[1] !== '자유 주제') return m[1] }
-    return '자유 주제'
+    return weekday ? null : '자유 주제'
   }
 
-  const catLabel = (c) => c === 'proposal' || c === 'plan' ? '기획서' : c === 'slide' ? '슬라이드' : '발표영상'
+  const catLabel = (c) => c === 'proposal' || c === 'plan' ? '기획서' : c === 'slide' ? '슬라이드' : c === 'video' ? '발표영상'
+    : c === 'weekday_slide' ? '평일세션 슬라이드' : c === 'weekday_video' ? '평일세션 영상' : '자료'
+  const catIcon = (c) => c === 'proposal' ? '📄' : c === 'slide' ? '🖼️' : c === 'video' ? '🎬' : c === 'weekday_slide' ? '🏖️🖼️' : '🏖️🎬'
 
   const openTimeline = (snap) => {
     try { setTimelineView(JSON.parse(snap.description || '[]')) }
@@ -303,7 +313,7 @@ function ArchiveUserPage() {
                 <button onClick={() => setPastNav({ semester: null, week: null, category: null })} className="hover:text-teal-800">학기 선택</button>
                 {pastNav.semester && <><span className="opacity-40">/</span><button onClick={() => setPastNav({ ...pastNav, week: null, category: null })} className="hover:text-teal-800">{pastNav.semester}</button></>}
                 {pastNav.week && <><span className="opacity-40">/</span><button onClick={() => setPastNav({ ...pastNav, category: null })} className="hover:text-teal-800">{pastNav.week}주차</button></>}
-                {pastNav.category && <><span className="opacity-40">/</span><span className="text-teal-800">{catLabel(pastNav.category)}</span></>}
+                {pastNav.category && <><span className="opacity-40">/</span><span className="text-teal-800">{pastNav.category.startsWith('weekday_') ? '🏖️ ' : ''}{catLabel(pastNav.category)}</span></>}
               </div>
 
               {!pastNav.semester && (
@@ -339,7 +349,8 @@ function ArchiveUserPage() {
                     <button key={w} onClick={() => setPastNav({ ...pastNav, week: w })} className="border border-slate-200 hover:border-teal-700 hover:bg-teal-50 p-5 text-left transition-all group flex justify-between items-center">
                       <div>
                         <span className="text-[10px] font-black bg-teal-800 text-white px-2 py-0.5 uppercase">Week {w}</span>
-                        <p className="text-base font-extrabold text-slate-800 mt-2">{topicFor(w)}</p>
+                        <p className="text-base font-extrabold text-slate-800 mt-2">📚 {topicFor(w)}</p>
+                        {topicFor(w, true) && <p className="text-sm font-bold text-teal-700 mt-1">🏖️ {topicFor(w, true)}</p>}
                       </div>
                       <span className="text-teal-500 opacity-0 group-hover:opacity-100 transition-opacity font-black text-sm">→</span>
                     </button>
@@ -348,12 +359,29 @@ function ArchiveUserPage() {
               )}
 
               {pastNav.semester && pastNav.week && !pastNav.category && (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  {pastCategories.map(cat => (
-                    <button key={cat} onClick={() => setPastNav({ ...pastNav, category: cat })} className="border border-slate-200 hover:border-teal-700 hover:bg-teal-50 p-8 font-extrabold text-lg text-slate-700 hover:text-teal-800 transition-all flex flex-col items-center gap-3">
-                      <span className="text-3xl">{cat === 'plan' ? '📄' : cat === 'slide' ? '🖼️' : '🎬'}</span>{catLabel(cat)}
-                    </button>
-                  ))}
+                <div className="space-y-5">
+                  <div>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">📚 정규세션 · {topicFor(pastNav.week)}</p>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      {pastCategories.filter(c => !c.startsWith('weekday_')).map(cat => (
+                        <button key={cat} onClick={() => setPastNav({ ...pastNav, category: cat })} className="border border-slate-200 hover:border-teal-700 hover:bg-teal-50 p-8 font-extrabold text-lg text-slate-700 hover:text-teal-800 transition-all flex flex-col items-center gap-3">
+                          <span className="text-3xl">{catIcon(cat)}</span>{catLabel(cat)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {pastCategories.some(c => c.startsWith('weekday_')) && (
+                    <div>
+                      <p className="text-[10px] font-black text-teal-700 uppercase tracking-widest mb-2">🏖️ 평일세션{topicFor(pastNav.week, true) ? ` · ${topicFor(pastNav.week, true)}` : ''}</p>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        {pastCategories.filter(c => c.startsWith('weekday_')).map(cat => (
+                          <button key={cat} onClick={() => setPastNav({ ...pastNav, category: cat })} className="border border-teal-200 bg-teal-50/40 hover:border-teal-700 hover:bg-teal-50 p-8 font-extrabold text-lg text-teal-800 transition-all flex flex-col items-center gap-3">
+                            <span className="text-3xl">{catIcon(cat)}</span>{catLabel(cat)}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 

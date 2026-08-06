@@ -46,16 +46,22 @@ export default function VideoRoom() {
   const [sessionMode, setSessionMode] = useState('regular') // 'regular' | 'weekday'
   const fileCategory = sessionMode === 'weekday' ? 'weekday_video' : 'video'
 
-  // 🌟 유저가 배정된 조의 평일세션 진행 날짜 (YYYY-MM-DD)
-  const myWeekdayDate = (week) => {
+  // 🌟 유저가 배정된 평일세션 조의 설정 { date, videoDl, fbDl, ... }
+  const myWeekdayTeam = (week) => {
     const uploaderName = user?.user_metadata?.name
     const g = weeklySetup[week]?.weekdayMembers?.[uploaderName] ?? weeklySetup[week]?.members?.[uploaderName]
     const grp = (g && g !== '미정' && g !== '결석') ? Number(g) : null
-    return grp ? (weeklySetup[week]?.weekday?.[grp]?.date || null) : null
+    return grp ? (weeklySetup[week]?.weekday?.[grp] || null) : null
   }
-  // 등록 마감: 평일=조 진행일 자정, 정규=영상 마감
+  const myWeekdayDate = (week) => myWeekdayTeam(week)?.date || null
+  // 등록 마감: 평일=조별 영상 마감(미설정 시 진행일 자정), 정규=영상 마감
   const activeUploadDeadline = (week) => {
-    if (sessionMode === 'weekday') { const d = myWeekdayDate(week); return d ? `${d}T23:59` : null }
+    if (sessionMode === 'weekday') {
+      const t = myWeekdayTeam(week)
+      if (!t) return null
+      if (t.videoDl) return t.videoDl
+      return t.date ? `${t.date}T23:59` : null
+    }
     return deadlines[week]?.video || null
   }
 
@@ -220,7 +226,7 @@ export default function VideoRoom() {
   }
 
   const fetchFiles = async () => {
-    const { data } = await supabase.from('files_metadata').select('*').in('file_category', ['video', 'weekday_video']).order('created_at', { ascending: false })
+    const { data } = await supabase.from('files_metadata').select('*').in('file_category', ['video', 'weekday_video']).eq('is_archive', false).order('created_at', { ascending: false })
     if (data) setFiles(data)
   }
 
@@ -238,7 +244,9 @@ export default function VideoRoom() {
     if (!selectedTargetId || !ytUrl.trim()) return alert("업로드 대상과 유튜브 링크를 모두 입력해줘! 🔗")
     
     setUploading(true)
-    const currentTopic = weekTopics[targetWeek] || (targetWeek === 0 ? 'OT 및 자유 주제' : '자유 주제')
+    const currentTopic = sessionMode === 'weekday'
+      ? (weekTopics[`weekday_${targetWeek}`] || '평일세션')
+      : (weekTopics[targetWeek] || (targetWeek === 0 ? 'OT 및 자유 주제' : '자유 주제'))
     const target = uploadTargets.find(t => t.id === selectedTargetId);
     
     const sessionTag = sessionMode === 'weekday' ? ' [평일세션]' : ''
@@ -375,11 +383,13 @@ export default function VideoRoom() {
   const isMeVideoOwner = isVideoOwner(viewingFile, loggedInUserName);
 
   const getQualitativeDeadline = (weekNum) => {
-    // 평일세션 정성 피드백 = 조 진행일 익일 자정 (자동 계산)
+    // 평일세션 정성 피드백 = 조별 설정값, 미설정 시 진행일 익일 자정
     if (sessionMode === 'weekday') {
-      const d = myWeekdayDate(weekNum)
-      if (!d) return null
-      const nd = new Date(`${d}T23:59`); nd.setDate(nd.getDate() + 1)
+      const t = myWeekdayTeam(weekNum)
+      if (!t) return null
+      if (t.fbDl) return t.fbDl
+      if (!t.date) return null
+      const nd = new Date(`${t.date}T23:59`); nd.setDate(nd.getDate() + 1)
       return nd.toISOString()
     }
     return deadlines[weekNum]?.vote_feedback || deadlines[weekNum]?.feedback;
@@ -467,25 +477,27 @@ export default function VideoRoom() {
                 {weeks.map(w => <option key={w} value={w}>Week {w}</option>)}
               </select>
               <h2 className="text-xl font-bold text-slate-700 tracking-tight">
-                {weekTopics[targetWeek] || (targetWeek === 0 ? 'OT 및 자유 주제' : '자유 주제')}
+                {sessionMode === 'weekday'
+                  ? (weekTopics[`weekday_${targetWeek}`] || '평일세션 주제 미설정')
+                  : (weekTopics[targetWeek] || (targetWeek === 0 ? 'OT 및 자유 주제' : '자유 주제'))}
               </h2>
             </div>
             
-            <div className="flex flex-wrap gap-x-4 gap-y-2 mt-2">
-              <p className="text-xs font-medium text-slate-500 flex items-center gap-1.5">
-                <span className="font-bold text-slate-400">{sessionMode === 'weekday' ? '등록 마감 (내 조 진행일) |' : '등록 마감 |'}</span>
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-1 mt-2">
+              <p className="text-xs font-medium text-slate-500 flex items-center gap-1.5 whitespace-nowrap">
+                <span className="font-bold text-slate-400">{sessionMode === 'weekday' ? '평일세션 마감 |' : '등록 마감 |'}</span>
                 <span className="text-slate-800">{activeUploadDeadline(targetWeek) ? formatDate(activeUploadDeadline(targetWeek)) : '미설정'}</span>
               </p>
-              <p className="text-xs font-medium text-slate-500 flex items-center gap-1.5">
+              <p className="text-xs font-medium text-slate-500 flex items-center gap-1.5 whitespace-nowrap">
                 <span className="font-bold text-slate-400">조원 평가 |</span>
                 <span className="text-slate-800">{getQualitativeDeadline(targetWeek) ? formatDate(getQualitativeDeadline(targetWeek)) : '미설정'}</span>
               </p>
-              <p className="text-xs font-medium text-slate-500 flex items-center gap-1.5">
+              <p className="text-xs font-medium text-slate-500 flex items-center gap-1.5 whitespace-nowrap">
                 <span className="font-bold text-slate-400">본인 평가 |</span>
                 <span className="text-slate-800">{getSelfDeadline(targetWeek) ? formatDate(getSelfDeadline(targetWeek)) : '미설정'}</span>
               </p>
               {sessionMode === 'weekday' && (
-                <p className="text-xs font-bold text-teal-700 w-full">평일세션 영상: 정량평가·베스트 프레젠터 없이 정성/셀프 피드백만 진행합니다.</p>
+                <p className="text-xs font-bold text-teal-700 break-keep">정량평가 없이 정성·셀프 피드백만 진행합니다.</p>
               )}
             </div>
           </div>

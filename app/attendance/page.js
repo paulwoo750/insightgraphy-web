@@ -57,9 +57,10 @@ export default function AttendancePage() {
     
     let targetWeek = 1;
     let tConfig = { start: null, session: null, end: null };
+    const weekMapRef = {}   // { [week]: { attendance_start, session_start, attendance_end } }
 
     if (dlData && dlData.length > 0) {
-      const weekMap = {}
+      const weekMap = weekMapRef
       dlData.forEach(d => {
         if(!weekMap[d.week]) weekMap[d.week] = {}
         weekMap[d.week][d.category] = d.deadline_time
@@ -105,8 +106,6 @@ export default function AttendancePage() {
       }
     }
 
-    setCurrentWeek(targetWeek)
-
     const userName = currentUser?.user_metadata?.name
 
     // 🌟 설정: 학기 유형 + 주차별 세팅(장소/조/평일 조별 일정)
@@ -122,28 +121,66 @@ export default function AttendancePage() {
       const wsStr = configData.find(c => c.key === 'weekly_setup')?.value
       if (wsStr) {
         const ws = JSON.parse(wsStr)
-        const wk = ws[targetWeek] || {}
-        if (wk.location) rConfig.location = wk.location
 
-        // 유저가 이번 주에 배정된 평일세션 조 찾기 (평일 전용 편성 우선, 없으면 정규 조)
-        const gRaw = wk.weekdayMembers?.[userName] ?? wk.members?.[userName]
-        if (gRaw && gRaw !== '미정' && gRaw !== '결석') grp = Number(gRaw)
-
-        // 평일세션이 켜져 있고, 내 조의 진행 일정이 설정돼 있으면 평일 config 생성
-        if (sType === 'vacation' && wk.weekdaySession && grp && wk.weekday?.[grp]?.date) {
-          const t = wk.weekday[grp]
+        // 내가 배정된 평일세션 조를 찾는 헬퍼
+        const grpOf = (wk) => {
+          const gRaw = wk?.weekdayMembers?.[userName] ?? wk?.members?.[userName]
+          return (gRaw && gRaw !== '미정' && gRaw !== '결석') ? Number(gRaw) : null
+        }
+        const buildWeekdayCfg = (wk) => {
+          const g = grpOf(wk)
+          if (!wk?.weekdaySession || !g || !wk.weekday?.[g]?.date) return null
+          const t = wk.weekday[g]
           const mk = (time) => time ? new Date(`${t.date}T${time}`).toISOString() : null
-          wConfig = {
-            start: mk(t.attOpen),
-            session: mk(t.sessionStart),
-            end: mk(t.attEnd),
+          return {
+            start: mk(t.attOpen), session: mk(t.sessionStart), end: mk(t.attEnd),
             location: (t.lat && t.lng) ? { lat: Number(t.lat), lng: Number(t.lng), radius: t.radius || 100 } : null,
-            date: t.date
+            date: t.date, group: g
           }
         }
+
+        // 🌟 방학학기: 평일세션 일정이 있는 주차를 별도로 탐색해 주차를 보정
+        //    (기존에는 정규 출석 마감만 보고 주차를 정해서 평일세션이 안 잡히는 문제가 있었음)
+        if (sType === 'vacation') {
+          const nowT = Date.now()
+          const todayStr = new Date().toLocaleDateString('sv-SE') // YYYY-MM-DD (로컬)
+          // 시간 미설정(날짜만 입력된) 조도 후보에 포함 — 회원이 "시간 설정 대기 중"을 볼 수 있어야 함
+          const cands = Object.keys(ws).map(Number).sort((a, b) => a - b)
+            .map(w => ({ w, cfg: buildWeekdayCfg(ws[w]) })).filter(x => x.cfg && x.cfg.date)
+
+          // 1순위: 출석 창이 열려 있는 조 → 2순위: 오늘 진행 → 3순위: 가장 가까운 미래 → 4순위: 가장 최근 과거
+          let pick = cands.find(x => x.cfg.start && x.cfg.end && nowT >= new Date(x.cfg.start).getTime() && nowT <= new Date(x.cfg.end).getTime())
+          if (!pick) pick = cands.find(x => x.cfg.date === todayStr)
+          if (!pick) pick = cands.filter(x => x.cfg.date > todayStr).sort((a, b) => a.cfg.date.localeCompare(b.cfg.date))[0]
+          if (!pick) pick = cands.filter(x => x.cfg.date < todayStr).sort((a, b) => b.cfg.date.localeCompare(a.cfg.date))[0]
+
+          if (pick) {
+            const regularActive = tConfig.start && tConfig.end &&
+              nowT >= new Date(tConfig.start).getTime() && nowT <= new Date(tConfig.end).getTime()
+            // 정규 출석 창이 열려 있지 않다면 평일세션 주차로 맞춘다
+            if (!regularActive) {
+              targetWeek = pick.w
+              const wkR = ws[pick.w] || {}
+              rConfig = {
+                start: weekMapRef[pick.w]?.attendance_start || null,
+                session: weekMapRef[pick.w]?.session_start || null,
+                end: weekMapRef[pick.w]?.attendance_end || null,
+                location: wkR.location || null
+              }
+            }
+            wConfig = buildWeekdayCfg(ws[targetWeek]) || pick.cfg
+          }
+        }
+
+        const wk = ws[targetWeek] || {}
+        if (wk.location) rConfig.location = wk.location
+        grp = grpOf(wk)
+        if (!wConfig) wConfig = buildWeekdayCfg(wk)
+        if (wConfig?.group) grp = wConfig.group
       }
     }
 
+    setCurrentWeek(targetWeek)
     setMyGroup(grp)
     setRegularConfig(rConfig)
     setWeekdayConfig(wConfig)

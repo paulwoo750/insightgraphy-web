@@ -306,7 +306,7 @@ export default function AbsencePage() {
                       <button type="button" onClick={() => setAbsenceForm({...absenceForm, sessionType: 'regular'})} className={`flex-1 py-2.5 text-xs font-bold transition-colors ${absenceForm.sessionType === 'regular' ? 'bg-teal-800 text-white' : 'bg-white text-slate-500 hover:text-teal-800'}`}>📚 정규세션</button>
                       <button type="button" onClick={() => setAbsenceForm({...absenceForm, sessionType: 'weekday'})} className={`flex-1 py-2.5 text-xs font-bold border-l border-slate-300 transition-colors ${absenceForm.sessionType === 'weekday' ? 'bg-teal-800 text-white' : 'bg-white text-slate-500 hover:text-teal-800'}`}>🏖️ 평일세션</button>
                     </div>
-                    {isWeekday && <p className="text-[11px] font-medium text-teal-700 mt-2">평일세션 불참: 조 내 모든 요일 일정 조정 실패 시, 전주 일요일 자정까지 제출.</p>}
+                    {isWeekday && <p className="text-[11px] font-medium text-teal-700 mt-2 break-keep">조 내 일정 조정 실패 시, 전주 일요일 자정까지 제출.</p>}
                   </div>
                 )}
                 <div>

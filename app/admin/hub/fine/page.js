@@ -332,30 +332,38 @@ export default function FineAdmin() {
             if (!wSetup.weekdaySession) return clearAll()
 
             const grp = getGrp(userName)
-            const dateStr = grp ? wd[grp]?.date : null
+            const team = grp ? wd[grp] : null
+            const dateStr = team?.date
             if (!dateStr) return clearAll()
 
-            const dlTime = new Date(`${dateStr}T23:59`).getTime()      // 발표자료·영상 마감 = 진행일 자정
-            const fbDlTime = dlTime + 24 * 60 * 60 * 1000              // 정성 피드백 마감 = 익일 자정
-            if (dlTime >= now) return clearAll() // 아직 진행 전
+            // 🌟 조별 마감(미설정 시 자동): 발표자료·영상 = 진행일 자정, 정성 피드백 = 익일 자정
+            const baseDl = new Date(`${dateStr}T23:59`).getTime()
+            const slideDlTime = team.slideDl ? new Date(team.slideDl).getTime() : baseDl
+            const videoDlTime = team.videoDl ? new Date(team.videoDl).getTime() : baseDl
+            const fbDlTime = team.fbDl ? new Date(team.fbDl).getTime() : baseDl + 24 * 60 * 60 * 1000
+            if (baseDl >= now) return clearAll() // 아직 진행 전
 
-            const calcSlideLate = (fileTime) => {
-              const diffMin = Math.floor((fileTime - dlTime) / 60000)
+            const calcSlideLate = (fileTime, dl) => {
+              const diffMin = Math.floor((fileTime - dl) / 60000)
               return { fine: Math.min(currentPenalties.slideMax || 3000, (currentPenalties.slideInitial || 1000) + Math.floor(diffMin / 60) * (currentPenalties.slideHourly || 500)), diffMin }
             }
 
             // [A] 발표자료
             const myS = files.find(f => f.week === w && f.file_category === 'weekday_slide' && f.uploader === userName)
             let sFine = 0, sReason = ''
-            if (!myS) { sFine = currentPenalties.slideMiss || 10000; sReason = '평일세션 발표자료 미제출' }
-            else if (new Date(myS.created_at).getTime() > dlTime) { const r = calcSlideLate(new Date(myS.created_at).getTime()); sFine = r.fine; sReason = `평일세션 발표자료 ${r.diffMin}분 지각` }
+            if (slideDlTime < now) {
+              if (!myS) { sFine = currentPenalties.slideMiss || 10000; sReason = '평일세션 발표자료 미제출' }
+              else if (new Date(myS.created_at).getTime() > slideDlTime) { const r = calcSlideLate(new Date(myS.created_at).getTime(), slideDlTime); sFine = r.fine; sReason = `평일세션 발표자료 ${r.diffMin}분 지각` }
+            }
             processFine(userName, w, '평일세션 발표자료 지각/미제출', sFine, sReason)
 
             // [B] 영상
             const myV = files.find(f => f.week === w && f.file_category === 'weekday_video' && f.uploader === userName)
             let vFine = 0, vReason = ''
-            if (!myV) { vFine = currentPenalties.slideMiss || 10000; vReason = '평일세션 영상 미제출' }
-            else if (new Date(myV.created_at).getTime() > dlTime) { const r = calcSlideLate(new Date(myV.created_at).getTime()); vFine = r.fine; vReason = `평일세션 영상 ${r.diffMin}분 지각` }
+            if (videoDlTime < now) {
+              if (!myV) { vFine = currentPenalties.slideMiss || 10000; vReason = '평일세션 영상 미제출' }
+              else if (new Date(myV.created_at).getTime() > videoDlTime) { const r = calcSlideLate(new Date(myV.created_at).getTime(), videoDlTime); vFine = r.fine; vReason = `평일세션 영상 ${r.diffMin}분 지각` }
+            }
             processFine(userName, w, '평일세션 영상 지각/미제출', vFine, vReason)
 
             // [C] 조원 간 정성 피드백 (마감이 지났을 때만 판정)

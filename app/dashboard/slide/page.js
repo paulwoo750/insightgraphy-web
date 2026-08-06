@@ -40,8 +40,10 @@ export default function SlideRoom() {
       const uploaderName = user?.user_metadata?.name
       const g = weeklySetup[week]?.weekdayMembers?.[uploaderName] ?? weeklySetup[week]?.members?.[uploaderName]
       const grp = (g && g !== '미정' && g !== '결석') ? Number(g) : null
-      const d = grp ? weeklySetup[week]?.weekday?.[grp]?.date : null
-      return d ? `${d}T23:59` : null
+      const t = grp ? weeklySetup[week]?.weekday?.[grp] : null
+      if (!t) return null
+      if (t.slideDl) return t.slideDl
+      return t.date ? `${t.date}T23:59` : null
     }
     return deadlines[week]?.slide || null
   }
@@ -150,7 +152,9 @@ export default function SlideRoom() {
 
     setSubmitting(true)
     
-    const currentTopic = weekTopics[targetWeek] || (targetWeek === 0 ? 'OT 및 자유 주제' : '자유 주제')
+    const currentTopic = sessionMode === 'weekday'
+      ? (weekTopics[`weekday_${targetWeek}`] || '평일세션')
+      : (weekTopics[targetWeek] || (targetWeek === 0 ? 'OT 및 자유 주제' : '자유 주제'))
     const uploaderName = user.user_metadata.name || '익명'
     const sessionTag = sessionMode === 'weekday' ? ' [평일세션]' : ''
     const autoFileName = `${targetWeek}W${sessionTag} (${currentTopic}) ${uploaderName} 발표자료`
@@ -269,17 +273,19 @@ export default function SlideRoom() {
                 {weeks.map(w => <option key={w} value={w}>Week {w}</option>)}
               </select>
               <h2 className="text-lg font-bold text-slate-700 tracking-tight">
-                {weekTopics[targetWeek] || (targetWeek === 0 ? 'OT 및 자유 주제' : '자유 주제')}
+                {sessionMode === 'weekday'
+                  ? (weekTopics[`weekday_${targetWeek}`] || '평일세션 주제 미설정')
+                  : (weekTopics[targetWeek] || (targetWeek === 0 ? 'OT 및 자유 주제' : '자유 주제'))}
               </h2>
             </div>
             
-            <div className="flex flex-col sm:flex-row gap-4 mt-2">
-              <p className="text-xs font-medium text-slate-500 flex items-center gap-2">
-                <span className="text-slate-400 font-bold uppercase tracking-wider">{sessionMode === 'weekday' ? '평일세션 제출 마감 (내 조 진행일) |' : '제출 마감 |'}</span>
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-1 mt-2">
+              <p className="text-xs font-medium text-slate-500 flex items-center gap-2 whitespace-nowrap">
+                <span className="text-slate-400 font-bold uppercase tracking-wider">{sessionMode === 'weekday' ? '평일세션 마감 |' : '제출 마감 |'}</span>
                 <span className="text-slate-800">{activeDeadline(targetWeek) ? formatDate(activeDeadline(targetWeek)) : '미설정'}</span>
               </p>
               {sessionMode === 'weekday' && (
-                <p className="text-xs font-bold text-teal-700">평일세션은 기획서 없이 발표자료만 제출하며, 마감은 조별 진행 날짜 자정입니다.</p>
+                <p className="text-xs font-bold text-teal-700 break-keep">기획서 없이 발표자료만 제출합니다.</p>
               )}
             </div>
           </div>
