@@ -89,6 +89,7 @@ export default function MyPage() {
                 {fines.map(f => (
                   <div key={f.id} className="flex items-center justify-between py-3 border-b border-slate-100 gap-3">
                     <div className="flex items-center gap-3 min-w-0">
+                      {f.semester && <span className="shrink-0 text-[10px] font-bold px-2 py-0.5 bg-slate-100 text-slate-500">{f.semester}</span>}
                       <span className={`shrink-0 text-[10px] font-black px-2 py-0.5 ${f.is_paid ? 'bg-slate-200 text-slate-500' : 'bg-teal-800 text-white'}`}>W{f.week}</span>
                       <div className="min-w-0">
                         <p className={`text-sm font-bold truncate ${f.is_paid ? 'text-slate-400 line-through' : 'text-slate-800'}`}>{f.category}</p>
@@ -118,6 +119,7 @@ export default function MyPage() {
                 {attendance.map(a => (
                   <div key={a.id} className="flex items-center justify-between py-3 border-b border-slate-100 gap-3">
                     <div className="flex items-center gap-3">
+                      {a.semester && <span className="shrink-0 text-[10px] font-bold px-2 py-0.5 bg-slate-100 text-slate-500">{a.semester}</span>}
                       <span className="shrink-0 text-[10px] font-black px-2 py-0.5 bg-teal-800 text-white">W{a.week}</span>
                       {a.session_type === 'weekday' && <span className="shrink-0 text-[10px] font-black px-2 py-0.5 bg-teal-100 text-teal-800">평일</span>}
                       <span className="text-sm font-bold text-slate-800">{a.status}</span>

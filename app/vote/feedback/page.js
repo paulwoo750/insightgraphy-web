@@ -37,16 +37,20 @@ export default function FeedbackPage() {
         const currentUser = session.user;
         setUser(currentUser);
         
-        await fetchSystemData();
+        const sem = await fetchSystemData();
 
+        // 🌟 현재 학기 안에서만 주차를 추론한다 (과거 학기 기록이 잡히면 데이터가 섞임)
         const { data: lastScore } = await supabase.from('scores').select('presentation_id').eq('voter_name', currentUser.user_metadata.name).order('created_at', { ascending: false }).limit(1);
+        let resolved = null
         if (lastScore && lastScore.length > 0) {
-          const { data: p } = await supabase.from('presentations').select('week').eq('id', lastScore[0].presentation_id).single();
-          if (p) setWeek(p.week);
-        } else {
-          const { data: latestP } = await supabase.from('presentations').select('week').order('created_at', { ascending: false }).limit(1);
-          if (latestP && latestP.length > 0) setWeek(latestP[0].week);
+          const { data: p } = await supabase.from('presentations').select('week, semester').eq('id', lastScore[0].presentation_id).single();
+          if (p && (!sem || p.semester === sem)) resolved = p.week;
         }
+        if (resolved === null) {
+          const { data: latestP } = await supabase.from('presentations').select('week').eq('semester', sem || '').order('created_at', { ascending: false }).limit(1);
+          if (latestP && latestP.length > 0) resolved = latestP[0].week;
+        }
+        if (resolved !== null) setWeek(resolved);
       }
     }
     init()
@@ -54,21 +58,24 @@ export default function FeedbackPage() {
 
   const fetchSystemData = async () => {
     const { data: configData } = await supabase.from('pr_config').select('*')
+    let sem = ''
     if (configData) {
-      const sem = configData.find(c => c.key === 'current_semester')?.value
+      sem = configData.find(c => c.key === 'current_semester')?.value || ''
       const topics = configData.find(c => c.key === 'week_topics')?.value
       if (sem) setCurrentSemester(sem)
       if (topics) setWeekTopics(JSON.parse(topics))
     }
+    return sem
   }
 
-  useEffect(() => { if (user?.user_metadata?.name) fetchMyData() }, [user, week])
+  useEffect(() => { if (user?.user_metadata?.name && currentSemester) fetchMyData() }, [user, week, currentSemester])
 
   // 🌟 타겟 그룹핑 및 평가 데이터 로드 로직
   const fetchMyData = async () => {
     setLoading(true)
     const userName = user.user_metadata.name;
-    const { data: pAll } = await supabase.from('presentations').select('*').eq('week', week).order('order_index', { ascending: true });
+    // 🌟 학기 필터 필수: 같은 주차라도 학기가 다르면 order_index가 겹쳐 팀으로 잘못 묶인다
+    const { data: pAll } = await supabase.from('presentations').select('*').eq('week', week).eq('semester', currentSemester).order('order_index', { ascending: true });
     
     if (!pAll || pAll.length === 0) { setEvalTargets([]); setLoading(false); return; }
 
@@ -212,7 +219,8 @@ export default function FeedbackPage() {
   const isSameGroup = currentTargetData?.target_info?.group_id === myInfo.group_id;
 
   // 이름 포맷팅 헬퍼 함수
-  const getSidebarName = (t) => t.members.length > 1 ? `Team #${t.team_id} (${t.members.join(', ')})` : t.members[0];
+  // 🌟 팀 표기는 team_id가 실제로 있을 때만 (개인 평가인데 데이터가 겹쳐 팀처럼 보이는 것 방지)
+  const getSidebarName = (t) => (t.team_id && t.members.length > 1) ? `Team #${t.team_id} (${t.members.join(', ')})` : t.members.join(', ');
 
   return (
     <div className="bg-white min-h-screen text-slate-900 font-sans pb-32">

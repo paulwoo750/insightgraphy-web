@@ -153,10 +153,11 @@ export default function AbsenceAdmin() {
       const { error } = await supabase.from('pr_fines').insert([{
         user_name: userName, 
         week: absWeek || currentWeek, 
-        category: '사유서 불허 페널티', 
-        amount: fineAmount, 
-        reason: comment, 
-        is_paid: false
+        category: '사유서 불허 페널티',
+        amount: fineAmount,
+        reason: comment,
+        is_paid: false,
+        semester: currentSemester
       }])
       
       if (error) return alert("벌금 DB 등록 에러: " + error.message)

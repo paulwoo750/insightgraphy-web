@@ -18,6 +18,10 @@ export default function SemesterResetPage() {
   const [scheduleCount, setScheduleCount] = useState(0)
   const [scoreCount, setScoreCount] = useState(0)
   const [absenceCount, setAbsenceCount] = useState(0)
+  const [attendCount, setAttendCount] = useState(0)
+  const [fineCount, setFineCount] = useState(0)
+  const [unpaidCount, setUnpaidCount] = useState(0)
+  const [orphanCount, setOrphanCount] = useState(0) // 학기 미지정(NULL) 출석·벌금
 
   // 새 학기 설정
   const [newSemester, setNewSemester] = useState('')
@@ -49,7 +53,20 @@ export default function SemesterResetPage() {
       setFileCount(fCount || 0)
       const { count: sCount } = await supabase.from('scores').select('*', { count: 'exact', head: true }).eq('semester', sem)
       setScoreCount(sCount || 0)
+
+      // 🌟 출석·벌금은 학기 태그로 보존된다 (삭제 없음)
+      const { count: atCount } = await supabase.from('pr_attendance').select('*', { count: 'exact', head: true }).eq('semester', sem)
+      setAttendCount(atCount || 0)
+      const { count: fnCount } = await supabase.from('pr_fines').select('*', { count: 'exact', head: true }).eq('semester', sem)
+      setFineCount(fnCount || 0)
+      const { count: upCount } = await supabase.from('pr_fines').select('*', { count: 'exact', head: true }).eq('semester', sem).eq('is_paid', false)
+      setUnpaidCount(upCount || 0)
     }
+
+    // 🌟 학기 미지정(NULL) 기록 — 새 학기로 넘어가면 학기가 섞이므로 리셋 시 현재 학기로 정리한다
+    const { count: oaCount } = await supabase.from('pr_attendance').select('*', { count: 'exact', head: true }).is('semester', null)
+    const { count: ofCount } = await supabase.from('pr_fines').select('*', { count: 'exact', head: true }).is('semester', null)
+    setOrphanCount((oaCount || 0) + (ofCount || 0))
 
     const { count: schCount } = await supabase.from('pr_schedules').select('*', { count: 'exact', head: true })
     setScheduleCount(schCount || 0)
@@ -72,6 +89,7 @@ export default function SemesterResetPage() {
       `▸ 타임라인(일정) → 과거 자료실에 스냅샷 보관\n` +
       `▸ 사유서 → 과거 자료실에 스냅샷 보관 후 게시판 초기화\n` +
       `▸ 평가 점수·지표 → 그대로 보존 (개인 화면 유지)\n` +
+      `▸ 출석·벌금 → [${currentSemester}] 학기 기록으로 보존 (미납 벌금 유지)\n` +
       `▸ 일정·마감·주차별 주제/조편성 → 초기화\n\n` +
       `이 작업은 되돌리기 어렵습니다. 계속할까요?`
     if (!confirm(msg)) return
@@ -83,6 +101,13 @@ export default function SemesterResetPage() {
         .update({ is_archive: true, category: '과거 자료실' })
         .eq('semester', currentSemester).eq('is_archive', false)
       if (e1) throw e1
+
+      // 1-2) 🌟 학기 미지정(NULL) 출석·벌금을 마감하는 학기로 확정
+      //      이 단계가 없으면 새 학기에서 지난 기록이 섞여 출석이 막히거나 벌금이 잘못 계산된다
+      const { error: eA } = await supabase.from('pr_attendance').update({ semester: currentSemester }).is('semester', null)
+      if (eA) throw eA
+      const { error: eF } = await supabase.from('pr_fines').update({ semester: currentSemester }).is('semester', null)
+      if (eF) throw eF
 
       // 2) 타임라인 스냅샷을 archive_files 에 보관 (학기별 1건)
       const { data: sch } = await supabase.from('pr_schedules').select('*').order('full_date', { ascending: true })
@@ -176,7 +201,13 @@ export default function SemesterResetPage() {
             <Stat label="운영 주차" value={currentWeeks ? `${currentWeeks}주` : '—'} />
             <Stat label="이관 대상 파일" value={`${fileCount}건`} />
             <Stat label="타임라인 일정" value={`${scheduleCount}건`} />
+            <Stat label="출석 기록" value={`${attendCount}건`} />
+            <Stat label="벌금 기록" value={`${fineCount}건`} />
+            <Stat label="미납 벌금" value={`${unpaidCount}건`} />
           </div>
+          {unpaidCount > 0 && (
+            <p className="text-xs font-bold text-amber-700 mt-3">⚠️ 미납 벌금 {unpaidCount}건이 남아 있습니다. 마감 전 정산을 권장합니다. (리셋해도 기록은 보존됩니다)</p>
+          )}
         </section>
 
         {/* 무엇이 어떻게 되는지 */}
@@ -187,7 +218,11 @@ export default function SemesterResetPage() {
             <Row tone="move" title="타임라인 (일정표)" desc={`${scheduleCount}건을 과거 자료실에 학기 스냅샷으로 보관`} />
             <Row tone="move" title="사유서 (결석·지각·조퇴)" desc={`${absenceCount}건을 과거 자료실에 스냅샷 보관 후 게시판 비움`} />
             <Row tone="keep" title="평가 점수 · 지표 기록" desc={`${scoreCount}건 그대로 보존 — 개인 화면에서 계속 표시`} />
+            <Row tone="keep" title="출석 · 벌금 기록" desc={`출석 ${attendCount}건 · 벌금 ${fineCount}건을 [${currentSemester || '현재'}] 학기 기록으로 보존 (미납 벌금 유지)`} />
             <Row tone="clear" title="일정 · 마감시간 · 주차별 주제/조편성" desc="새 학기를 위해 초기화" />
+            {orphanCount > 0 && (
+              <Row tone="move" title="학기 미지정 출석·벌금 정리" desc={`${orphanCount}건을 [${currentSemester}] 학기로 확정 — 새 학기에 지난 기록이 섞이는 것을 방지`} />
+            )}
           </div>
         </section>
 

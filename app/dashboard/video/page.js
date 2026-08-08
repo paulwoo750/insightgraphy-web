@@ -299,7 +299,8 @@ export default function VideoRoom() {
     const userName = user?.user_metadata?.name;
     if (!userName) return;
 
-    let query = supabase.from('presentations').select('id').eq('week', file.week);
+    // 🌟 학기 필터 필수: 같은 주차·같은 이름이 과거 학기에도 있으면 엉뚱한 발표에 매칭된다
+    let query = supabase.from('presentations').select('id').eq('week', file.week).eq('semester', file.semester || currentSemester);
     if (file.uploader.startsWith('Team ')) {
       const tId = Number(file.uploader.replace('Team ', ''));
       query = query.eq('team_id', tId);

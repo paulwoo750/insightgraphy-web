@@ -21,6 +21,7 @@ export default function AttendancePage() {
 
   // 🌟 방학학기 평일세션(조별 일정) 지원
   const [semesterType, setSemesterType] = useState('regular')
+  const [currentSemester, setCurrentSemester] = useState('')
   const [sessionMode, setSessionMode] = useState('regular') // 'regular' | 'weekday'
   const [regularConfig, setRegularConfig] = useState({ start: null, session: null, end: null, location: null })
   const [weekdayConfig, setWeekdayConfig] = useState(null) // null이면 이번 주 평일세션 없음
@@ -114,9 +115,12 @@ export default function AttendancePage() {
     let grp = null
 
     const { data: configData } = await supabase.from('pr_config').select('*')
+    let sem = ''
     if (configData) {
       const sType = configData.find(c => c.key === 'semester_type')?.value || 'regular'
       setSemesterType(sType)
+      sem = configData.find(c => c.key === 'current_semester')?.value || ''
+      setCurrentSemester(sem)
 
       const wsStr = configData.find(c => c.key === 'weekly_setup')?.value
       if (wsStr) {
@@ -188,13 +192,13 @@ export default function AttendancePage() {
     // 정규 일정이 없고 평일 일정만 있으면 평일 모드를 기본으로
     const defaultMode = (!rConfig.start && wConfig) ? 'weekday' : 'regular'
     setSessionMode(defaultMode)
-    await applyMode(defaultMode, rConfig, wConfig, targetWeek, userName)
+    await applyMode(defaultMode, rConfig, wConfig, targetWeek, userName, sem)
 
     setLoading(false)
   }
 
   // 🌟 모드(정규/평일)에 맞는 시간·장소·출석기록 적용
-  const applyMode = async (mode, rConfig, wConfig, week, userName) => {
+  const applyMode = async (mode, rConfig, wConfig, week, userName, sem) => {
     const cfg = mode === 'weekday' ? wConfig : rConfig
     const tc = { start: cfg?.start || null, session: cfg?.session || null, end: cfg?.end || null }
     setTimeConfig(tc)
@@ -202,13 +206,16 @@ export default function AttendancePage() {
     checkTimeStatus(tc)
 
     if (userName) {
-      const { data: attData } = await supabase
+      // 🌟 학기 필터 필수: 지난 학기의 같은 주차 기록이 잡히면 이번 학기 출석이 막힌다
+      let qy = supabase
         .from('pr_attendance')
         .select('*')
         .eq('user_name', userName)
         .eq('week', week)
         .eq('session_type', mode)
-        .maybeSingle()
+      const targetSem = sem ?? currentSemester
+      if (targetSem) qy = qy.eq('semester', targetSem)
+      const { data: attData } = await qy.maybeSingle()
 
       if (attData) { setHasAttended(true); setAttendanceRecord(attData) }
       else { setHasAttended(false); setAttendanceRecord(null) }
@@ -217,7 +224,7 @@ export default function AttendancePage() {
 
   const switchMode = (mode) => {
     setSessionMode(mode)
-    applyMode(mode, regularConfig, weekdayConfig, currentWeek, user?.user_metadata?.name)
+    applyMode(mode, regularConfig, weekdayConfig, currentWeek, user?.user_metadata?.name, currentSemester)
   }
 
   const checkTimeStatus = (tConfig) => {
@@ -283,7 +290,8 @@ export default function AttendancePage() {
             week: currentWeek,
             status: finalStatus,
             distance_m: dist,
-            session_type: sessionMode
+            session_type: sessionMode,
+            semester: currentSemester
           }]).select()
 
           if (!error && data) {

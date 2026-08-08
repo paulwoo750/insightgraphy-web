@@ -11,6 +11,7 @@ export default function FineAdmin() {
   const [members, setMembers] = useState([])
   const [fines, setFines] = useState([])
   const [penalties, setPenalties] = useState({})
+  const [currentSemester, setCurrentSemester] = useState('')
   
   const [manualFine, setManualFine] = useState({
     user_name: '', week: 1, category: '세션 지각', amount: '', reason: ''
@@ -36,6 +37,7 @@ export default function FineAdmin() {
       let weeklySetup = {}
       let totalWeeks = 12
       let semesterType = 'regular'
+      let semester = ''
       if (configData) {
         const penVal = configData.find(c => c.key === 'penalty_rules')?.value
         const wsVal = configData.find(c => c.key === 'weekly_setup')?.value
@@ -45,6 +47,8 @@ export default function FineAdmin() {
         if (wsVal) weeklySetup = JSON.parse(wsVal)
         if (tWks) totalWeeks = Number(tWks)
         if (sType) semesterType = sType
+        semester = configData.find(c => c.key === 'current_semester')?.value || ''
+        setCurrentSemester(semester)
         setPenalties(currentPenalties)
       }
 
@@ -57,10 +61,13 @@ export default function FineAdmin() {
       const { data: commentsData } = await supabase.from('file_comments').select('*')
       const comments = commentsData || []
 
-      const { data: attData } = await supabase.from('pr_attendance').select('*')
+      // 🌟 학기 필터 필수: 지난 학기의 같은 주차 출석/벌금이 섞이면 계산이 어긋난다
+      const attQ = supabase.from('pr_attendance').select('*')
+      const { data: attData } = semester ? await attQ.eq('semester', semester) : await attQ
       const attendances = attData || []
 
-      const { data: existingFinesDataRaw } = await supabase.from('pr_fines').select('*')
+      const fineQ = supabase.from('pr_fines').select('*')
+      const { data: existingFinesDataRaw } = semester ? await fineQ.eq('semester', semester) : await fineQ
       const existingFinesData = existingFinesDataRaw || []
       
       const uniqueFines = []
@@ -89,7 +96,7 @@ export default function FineAdmin() {
         
         if (expectedFine > 0) {
           if (!existing) {
-            finesToInsert.push({ user_name: userName, week: w, category, amount: expectedFine, reason: expectedReason, is_paid: false })
+            finesToInsert.push({ user_name: userName, week: w, category, amount: expectedFine, reason: expectedReason, is_paid: false, semester })
           } else if (!existing.is_paid && (existing.amount !== expectedFine || existing.reason !== expectedReason)) {
             finesToUpdate.push({ id: existing.id, amount: expectedFine, reason: expectedReason })
           }
@@ -405,7 +412,8 @@ export default function FineAdmin() {
         await supabase.from('pr_fines').insert(finesToInsert)
       }
 
-      const { data: finalFinesData } = await supabase.from('pr_fines').select('*').order('week', { ascending: false }).order('created_at', { ascending: false })
+      const finalQ = supabase.from('pr_fines').select('*').order('week', { ascending: false }).order('created_at', { ascending: false })
+      const { data: finalFinesData } = semester ? await finalQ.eq('semester', semester) : await finalQ
       setFines(finalFinesData || [])
 
     } finally {
@@ -418,7 +426,7 @@ export default function FineAdmin() {
   const handleAddManualFine = async () => {
     if (!manualFine.user_name || !manualFine.amount || !manualFine.reason) return alert("대상, 금액, 사유를 모두 입력해줘!")
     const { error } = await supabase.from('pr_fines').insert([{
-      user_name: manualFine.user_name, week: manualFine.week, category: manualFine.category, amount: Number(manualFine.amount), reason: manualFine.reason, is_paid: false
+      user_name: manualFine.user_name, week: manualFine.week, category: manualFine.category, amount: Number(manualFine.amount), reason: manualFine.reason, is_paid: false, semester: currentSemester
     }])
     if (!error) {
       alert(`${manualFine.user_name}님에게 벌금 부과 완료! 💸`)

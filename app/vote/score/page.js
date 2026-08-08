@@ -37,11 +37,13 @@ export default function ScorePage() {
     const init = async () => {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.push('/login') } 
-      else { 
-        setUser(session.user); 
+      else {
+        setUser(session.user);
         const { data: configData } = await supabase.from('pr_config').select('value').eq('key', 'current_semester').single();
-        if (configData) setSemester(configData.value);
-        const { data: latestP } = await supabase.from('presentations').select('week').order('created_at', { ascending: false }).limit(1);
+        const sem = configData?.value || ''
+        if (sem) setSemester(sem);
+        // 🌟 반드시 현재 학기 안에서만 최신 주차를 찾는다 (과거 학기 주차가 잡히면 데이터가 섞임)
+        const { data: latestP } = await supabase.from('presentations').select('week').eq('semester', sem).order('created_at', { ascending: false }).limit(1);
         if (latestP && latestP.length > 0) setWeek(latestP[0].week);
       }
     }
@@ -49,11 +51,12 @@ export default function ScorePage() {
   }, [router])
 
   useEffect(() => {
-    if (user?.user_metadata?.name) fetchData(user.user_metadata.name, week);
-  }, [week, user]);
+    if (user?.user_metadata?.name && semester) fetchData(user.user_metadata.name, week, semester);
+  }, [week, user, semester]);
 
-  const fetchData = async (userName, targetWeek) => {
-    const { data: pAll } = await supabase.from('presentations').select('*').eq('week', targetWeek).order('order_index', { ascending: true }) 
+  const fetchData = async (userName, targetWeek, targetSemester) => {
+    // 🌟 학기 필터 필수: 같은 주차라도 학기가 다르면 order_index가 겹쳐 팀으로 잘못 묶인다
+    const { data: pAll } = await supabase.from('presentations').select('*').eq('week', targetWeek).eq('semester', targetSemester).order('order_index', { ascending: true })
     if (pAll && pAll.length > 0) {
       
       // 🌟 [핵심 로직] order_index가 같은 인원(팀원)끼리 묶어서 하나의 'Target'으로 만듦
@@ -147,8 +150,10 @@ export default function ScorePage() {
   const isSameGroup = currentTarget?.group_id === myInfo.group_id;
 
   // 이름 포맷팅 헬퍼 함수
-  const getSidebarName = (t) => t.members.length > 1 ? `T#${t.team_id} (${t.members.join(', ')})` : t.members[0];
-  const getActiveTargetName = (t) => t.members.length > 1 ? `Team ${t.team_id} (${t.members.join(', ')})` : `${t.members[0]} 님`;
+  // 🌟 팀 표기는 team_id가 실제로 있을 때만 (개인 평가인데 데이터가 겹쳐 팀처럼 보이는 것 방지)
+  const isTeamTarget = (t) => !!t.team_id && t.members.length > 1;
+  const getSidebarName = (t) => isTeamTarget(t) ? `T#${t.team_id} (${t.members.join(', ')})` : t.members.join(', ');
+  const getActiveTargetName = (t) => isTeamTarget(t) ? `Team ${t.team_id} (${t.members.join(', ')})` : `${t.members[0]} 님`;
 
   return (
     <div className="bg-white min-h-screen text-slate-900 font-sans pb-32">
