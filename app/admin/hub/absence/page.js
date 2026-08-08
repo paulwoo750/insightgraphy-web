@@ -15,7 +15,14 @@ export default function AbsenceAdmin() {
 
   // 🌟 마감 기한 및 폴더(탭) 상태
   const [absenceDeadlines, setAbsenceDeadlines] = useState([])
-  const [selectedFolder, setSelectedFolder] = useState('all') 
+  const [weekdayDeadlines, setWeekdayDeadlines] = useState([])
+  const [selectedFolder, setSelectedFolder] = useState('all')
+
+  // 🌟 방학학기: 정규세션 / 평일세션 구분
+  const [semesterType, setSemesterType] = useState('regular')
+  const [dlTab, setDlTab] = useState('regular')      // 마감 설정 탭
+  const [sessionFilter, setSessionFilter] = useState('all') // 결재함 필터
+  const [attendances, setAttendances] = useState([])
 
   // 🌟 사유서 리스트 상태
   const [absences, setAbsences] = useState([])
@@ -48,30 +55,37 @@ export default function AbsenceAdmin() {
       if (sem) setCurrentSemester(sem)
       if (totalWks) { wks = Number(totalWks); setTotalWeeks(wks); }
       if (curWk) setCurrentWeek(Number(curWk))
+      setSemesterType(configData.find(c => c.key === 'semester_type')?.value || 'regular')
       if (penConfig) {
         const parsed = JSON.parse(penConfig)
         if (parsed.absenceLate) setAbsenceLateFine(parsed.absenceLate)
       }
     }
 
-    // 2. 주차별 사유서 마감일 불러오기
-    const { data: dlData } = await supabase.from('pr_deadlines').select('*').eq('category', 'absence')
-    const newDeadlines = Array(wks + 1).fill('')
-    
+    // 2. 주차별 사유서 마감일 불러오기 (정규 = absence / 평일세션 = weekday_absence)
+    const { data: dlData } = await supabase.from('pr_deadlines').select('*').in('category', ['absence', 'weekday_absence'])
+    const regDl = Array(wks + 1).fill('')
+    const wdDl = Array(wks + 1).fill('')
+
     if (dlData) {
       dlData.forEach(d => {
         if (d.week >= 0 && d.week <= wks && d.deadline_time) {
           const date = new Date(d.deadline_time)
           const localString = new Date(date.getTime() - (date.getTimezoneOffset() * 60000)).toISOString().slice(0, 16)
-          newDeadlines[d.week] = localString
+          if (d.category === 'weekday_absence') wdDl[d.week] = localString
+          else regDl[d.week] = localString
         }
       })
     }
-    setAbsenceDeadlines(newDeadlines)
+    setAbsenceDeadlines(regDl)
+    setWeekdayDeadlines(wdDl)
 
-    // 3. 사유서 결재 리스트 전체 불러오기
+    // 3. 사유서 결재 리스트 + 출석 기록(연동 표시용) 불러오기
     const { data: absData } = await supabase.from('absence_forms').select('*').order('created_at', { ascending: false })
     if (absData) setAbsences(absData)
+
+    const { data: attData } = await supabase.from('pr_attendance').select('*')
+    setAttendances(attData || [])
 
     setLoading(false)
   }
@@ -80,26 +94,31 @@ export default function AbsenceAdmin() {
   // 🕒 마감 기한 설정 로직
   // ==========================================
   const handleDeadlineChange = (weekIndex, value) => {
-    const newDl = [...absenceDeadlines]
-    newDl[weekIndex] = value
-    setAbsenceDeadlines(newDl)
+    if (dlTab === 'weekday') {
+      const newDl = [...weekdayDeadlines]
+      newDl[weekIndex] = value
+      setWeekdayDeadlines(newDl)
+    } else {
+      const newDl = [...absenceDeadlines]
+      newDl[weekIndex] = value
+      setAbsenceDeadlines(newDl)
+    }
   }
 
   const handleSaveDeadlines = async () => {
     setSaving(true)
 
-    await supabase.from('pr_deadlines').delete().eq('category', 'absence')
-    
     const dlInserts = []
     const dlDeletes = []
 
-    absenceDeadlines.forEach((time, idx) => {
-      if (time) {
-        dlInserts.push({ week: idx, category: 'absence', deadline_time: new Date(time).toISOString() })
-      } else {
-        dlDeletes.push({ week: idx, category: 'absence' })
-      }
-    })
+    const collect = (arr, category) => {
+      arr.forEach((time, idx) => {
+        if (time) dlInserts.push({ week: idx, category, deadline_time: new Date(time).toISOString() })
+        else dlDeletes.push({ week: idx, category })
+      })
+    }
+    collect(absenceDeadlines, 'absence')
+    if (semesterType === 'vacation') collect(weekdayDeadlines, 'weekday_absence')
 
     if (dlInserts.length > 0) {
       const { error } = await supabase.from('pr_deadlines').upsert(dlInserts, { onConflict: 'week, category' })
@@ -168,12 +187,25 @@ export default function AbsenceAdmin() {
     fetchData()
   }
 
-  // 폴더별 필터링 로직
+  // 폴더별 + 세션 유형별 필터링
   const filteredAbsences = absences.filter(abs => {
+    if (sessionFilter !== 'all' && (abs.session_type || 'regular') !== sessionFilter) return false;
     if (selectedFolder === 'all') return true;
     if (selectedFolder === 'null') return abs.week === null || abs.week === undefined;
     return abs.week === selectedFolder;
   });
+
+  // 🌟 해당 사유서의 출석 기록 (연동 상태 표시용)
+  const attFor = (abs) => attendances.find(a =>
+    a.user_name === abs.user_name && a.week === abs.week &&
+    (a.session_type || 'regular') === (abs.session_type || 'regular')
+  );
+  // 마감 기한 대비 지각 제출 여부
+  const isLateSubmit = (abs) => {
+    const arr = (abs.session_type === 'weekday') ? weekdayDeadlines : absenceDeadlines;
+    const dl = arr[abs.week];
+    return dl ? new Date(abs.created_at) > new Date(dl) : false;
+  };
 
   if (loading) return <div className="p-10 text-center font-black text-slate-500 min-h-screen flex items-center justify-center">사유서 관리자 로딩 중... 🔄</div>
 
@@ -202,12 +234,27 @@ export default function AbsenceAdmin() {
               </button>
             </div>
 
+            {/* 🌟 방학학기: 정규 / 평일세션 마감 탭 */}
+            {semesterType === 'vacation' && (
+              <div className="mb-4">
+                <div className="flex border border-slate-300">
+                  <button onClick={() => setDlTab('regular')} className={`flex-1 py-2 text-xs font-bold transition-colors ${dlTab === 'regular' ? 'bg-teal-800 text-white' : 'bg-white text-slate-500 hover:text-teal-800'}`}>📚 정규세션</button>
+                  <button onClick={() => setDlTab('weekday')} className={`flex-1 py-2 text-xs font-bold border-l border-slate-300 transition-colors ${dlTab === 'weekday' ? 'bg-teal-800 text-white' : 'bg-white text-slate-500 hover:text-teal-800'}`}>🏖️ 평일세션</button>
+                </div>
+                <p className="text-[11px] font-medium text-slate-500 mt-2 break-keep">
+                  {dlTab === 'weekday'
+                    ? '회칙: 평일세션 불참 사유서는 세션 전주 일요일 자정까지 제출.'
+                    : '회칙(제19조): 정규세션 사유서는 화요일 자정까지 제출.'}
+                </p>
+              </div>
+            )}
+
             <div className="space-y-3 max-h-[600px] overflow-y-auto pr-2 no-scrollbar">
               {weeks.map(w => (
                 <div key={w} className="bg-slate-50 p-4 rounded-none border border-slate-100">
                   <div className="flex justify-between items-center mb-2">
                     <label className="text-[10px] font-black text-teal-600 uppercase tracking-widest bg-teal-100 px-2 py-0.5 rounded">
-                      Week {w} 마감
+                      Week {w} {dlTab === 'weekday' ? '평일' : ''} 마감
                     </label>
                     <button 
                       onClick={() => handleDeadlineChange(w, '')} 
@@ -219,8 +266,8 @@ export default function AbsenceAdmin() {
                   </div>
                   <input 
                     type="datetime-local" 
-                    value={absenceDeadlines[w] || ''} 
-                    onChange={(e) => handleDeadlineChange(w, e.target.value)} 
+                    value={(dlTab === 'weekday' ? weekdayDeadlines[w] : absenceDeadlines[w]) || ''}
+                    onChange={(e) => handleDeadlineChange(w, e.target.value)}
                     className="w-full bg-white p-2.5 rounded-none font-bold text-sm text-slate-700 outline-none border border-slate-200 focus:border-teal-400 transition-colors cursor-pointer" 
                   />
                 </div>
@@ -237,9 +284,18 @@ export default function AbsenceAdmin() {
               </span>
             </div>
 
+            {/* 🌟 방학학기: 세션 유형 필터 */}
+            {semesterType === 'vacation' && (
+              <div className="flex border border-slate-300 mb-4 w-fit">
+                {[['all', '전체'], ['regular', '📚 정규세션'], ['weekday', '🏖️ 평일세션']].map(([v, label], i) => (
+                  <button key={v} onClick={() => setSessionFilter(v)} className={`px-5 py-2 text-xs font-bold transition-colors ${i > 0 ? 'border-l border-slate-300' : ''} ${sessionFilter === v ? 'bg-teal-800 text-white' : 'bg-white text-slate-500 hover:text-teal-800'}`}>{label}</button>
+                ))}
+              </div>
+            )}
+
             <div className="flex gap-2 mb-6 overflow-x-auto pb-4 no-scrollbar border-b border-slate-100">
-              <button 
-                onClick={() => setSelectedFolder('all')} 
+              <button
+                onClick={() => setSelectedFolder('all')}
                 className={`px-4 py-2.5 rounded-none text-xs font-black shrink-0 transition-all border ${selectedFolder === 'all' ? 'bg-slate-800 text-white border-slate-800 shadow-sm' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}
               >
                 전체 보기 📂
@@ -278,8 +334,26 @@ export default function AbsenceAdmin() {
                       {abs.session_type === 'weekday' && <span className="bg-teal-800 text-white px-2 py-0.5 rounded text-[10px] font-black uppercase">평일세션</span>}
                       <span className="bg-slate-800 text-white px-2 py-0.5 rounded text-[10px] font-black uppercase">{abs.type}</span>
                       <span className="text-xs font-black text-slate-500">{abs.user_name} | {abs.target_date}</span>
+                      {isLateSubmit(abs) && <span className="bg-red-100 text-red-600 px-2 py-0.5 rounded text-[10px] font-black uppercase">기한 초과 제출</span>}
                     </div>
-                    
+
+                    {/* 🌟 출석·벌금 연동 상태 */}
+                    <div className="flex items-center gap-2 mb-3 flex-wrap">
+                      <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">연동</span>
+                      {(() => { const at = attFor(abs); return (
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${at ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-slate-100 text-slate-500 border border-slate-200'}`}>
+                          출석: {at ? at.status : '기록 없음'}
+                        </span>
+                      )})()}
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                        abs.status?.includes('완전인정') || abs.status?.includes('부분인정')
+                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                          : abs.status?.includes('불허') ? 'bg-red-50 text-red-600 border border-red-200'
+                          : 'bg-amber-50 text-amber-700 border border-amber-200'}`}>
+                        벌금: {abs.status?.includes('완전인정') || abs.status?.includes('부분인정') ? '결석 벌금 면제' : abs.status?.includes('불허') ? `₩${absenceLateFine.toLocaleString()} 부과` : '결재 대기 (미적용)'}
+                      </span>
+                    </div>
+
                     <p className="text-sm font-bold text-slate-700 whitespace-pre-wrap leading-relaxed">{abs.reason}</p>
                     
                     {abs.proof_url && (

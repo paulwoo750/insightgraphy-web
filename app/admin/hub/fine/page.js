@@ -69,6 +69,15 @@ export default function FineAdmin() {
       const fineQ = supabase.from('pr_fines').select('*')
       const { data: existingFinesDataRaw } = semester ? await fineQ.eq('semester', semester) : await fineQ
       const existingFinesData = existingFinesDataRaw || []
+
+      // 🌟 사유서 연동: 완전인정/부분인정된 사유서가 있으면 결석 벌금을 면제한다 (회칙 제19조·제19-1조)
+      const { data: absData } = await supabase.from('absence_forms').select('*')
+      const absences = absData || []
+      const findAbsence = (userName, w, sType) => absences.find(a =>
+        a.user_name === userName && a.week === w && (a.session_type || 'regular') === sType
+      )
+      // 완전인정 = 출석 인정 / 부분인정 = 결석이지만 벌금 면제 (대체 제출 의무)
+      const absenceExempt = (a) => !!a && (a.status?.includes('완전인정') || a.status?.includes('부분인정'))
       
       const uniqueFines = []
       const duplicateIdsToDelete = []
@@ -286,15 +295,24 @@ export default function FineAdmin() {
           let attFine = 0, attReason = ''
           
           if (attEndDl && attEndDl.deadline_time && new Date(attEndDl.deadline_time).getTime() < now) {
-            const myAtt = attendances.find(a => a.week === w && a.user_name === userName)
-            
+            const myAtt = attendances.find(a => a.week === w && a.user_name === userName && (a.session_type || 'regular') === 'regular')
+
             const maxFine = Number(currentPenalties.sessionMax) || Number(currentPenalties.sessionMiss) || 20000;
             const perMinFine = Number(currentPenalties.sessionPerMin) || Number(currentPenalties.sessionLatePerMin) || 200;
             const per10MinFine = Number(currentPenalties.sessionPer10Min) || Number(currentPenalties.sessionLatePer10Min) || 2000;
 
-            if (!myAtt) {
-              attFine = maxFine; 
-              attReason = '오프라인 세션 무단 결석 (미인증)'
+            // 🌟 사유서가 인정된 경우 결석·지각 벌금 면제
+            const myAbs = findAbsence(userName, w, 'regular')
+
+            if (!myAtt && absenceExempt(myAbs)) {
+              attFine = 0
+              attReason = ''
+            } else if (!myAtt) {
+              attFine = maxFine;
+              attReason = myAbs ? `오프라인 세션 결석 (사유서 ${myAbs.status})` : '오프라인 세션 무단 결석 (미인증)'
+            } else if (absenceExempt(myAbs)) {
+              attFine = 0
+              attReason = ''
             } else if (sessionStartDl && sessionStartDl.deadline_time && new Date(myAtt.created_at).getTime() > new Date(sessionStartDl.deadline_time).getTime()) {
               const diffMin = Math.floor((new Date(myAtt.created_at).getTime() - new Date(sessionStartDl.deadline_time).getTime()) / 60000)
               
@@ -334,6 +352,7 @@ export default function FineAdmin() {
               processFine(userName, w, '평일세션 발표자료 지각/미제출', 0, '')
               processFine(userName, w, '평일세션 영상 지각/미제출', 0, '')
               processFine(userName, w, '평일세션 정성 피드백 페널티', 0, '')
+              processFine(userName, w, '평일세션 출석 페널티', 0, '')
             }
 
             if (!wSetup.weekdaySession) return clearAll()
@@ -354,6 +373,32 @@ export default function FineAdmin() {
               const diffMin = Math.floor((fileTime - dl) / 60000)
               return { fine: Math.min(currentPenalties.slideMax || 3000, (currentPenalties.slideInitial || 1000) + Math.floor(diffMin / 60) * (currentPenalties.slideHourly || 500)), diffMin }
             }
+
+            // 🌟 [D] 평일세션 출석 (조별 보고 일시 기준 · 사유서 인정 시 면제)
+            //     지각 20분까지 미부과, 이후 정규세션과 동일 · 1시간 초과 시 무단결석
+            const myWdAbs = findAbsence(userName, w, 'weekday')
+            const myWdAtt = attendances.find(a => a.week === w && a.user_name === userName && a.session_type === 'weekday')
+            const wdMaxFine = Number(currentPenalties.sessionMax) || 20000
+            const wdPer10 = Number(currentPenalties.sessionPer10Min) || Number(currentPenalties.sessionLatePer10Min) || 2000
+            let aFine = 0, aReason = ''
+            const attEndT = team.attEnd ? new Date(`${dateStr}T${team.attEnd}`).getTime() : baseDl
+            if (attEndT < now) {
+              if (absenceExempt(myWdAbs)) {
+                aFine = 0; aReason = ''
+              } else if (!myWdAtt) {
+                aFine = wdMaxFine
+                aReason = myWdAbs ? `평일세션 결석 (사유서 ${myWdAbs.status})` : '평일세션 무단 결석 (미인증)'
+              } else if (team.sessionStart) {
+                const startT = new Date(`${dateStr}T${team.sessionStart}`).getTime()
+                const diffMin = Math.floor((new Date(myWdAtt.created_at).getTime() - startT) / 60000)
+                if (diffMin > 60) { aFine = wdMaxFine; aReason = '평일세션 1시간 초과 지각 (무단결석 처리)' }
+                else if (diffMin > 20) {
+                  aFine = Math.min(wdMaxFine, 4000 + Math.floor((diffMin - 20) / 10) * wdPer10)
+                  aReason = `평일세션 ${diffMin}분 지각`
+                }
+              }
+            }
+            processFine(userName, w, '평일세션 출석 페널티', aFine, aReason)
 
             // [A] 발표자료
             const myS = files.find(f => f.week === w && f.file_category === 'weekday_slide' && f.uploader === userName)
