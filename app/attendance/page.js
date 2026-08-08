@@ -298,8 +298,20 @@ export default function AttendancePage() {
             alert(`${finalStatus === '지각' ? '지각 처리되었습니다. 🏃‍♂️💨' : '출석 확인 완료! 🎉'}\n(목적지와의 거리: ${dist}m)`)
             setHasAttended(true)
             setAttendanceRecord(data[0])
+          } else if (error?.code === '23505') {
+            // 🌟 중복 출석: 이미 기록이 있으면 그 기록을 불러와 화면에 반영한다
+            const { data: exist } = await supabase.from('pr_attendance').select('*')
+              .eq('user_name', user.user_metadata.name).eq('week', currentWeek)
+              .eq('session_type', sessionMode).eq('semester', currentSemester).maybeSingle()
+            if (exist) {
+              alert('이미 이번 세션 출석이 완료되어 있습니다. ✅')
+              setHasAttended(true)
+              setAttendanceRecord(exist)
+            } else {
+              alert('이미 출석 기록이 있어 저장하지 못했습니다.\n운영진에게 문의해 주세요. (중복 기록 확인 필요)')
+            }
           } else {
-            alert("서버 저장 중 오류가 발생했습니다: " + error?.message)
+            alert("서버 저장 중 오류가 발생했습니다: " + (error?.message || '알 수 없는 오류'))
           }
         } else {
           alert(`세션 장소에서 너무 멉니다! 🏃‍♂️\n\n(현재 위치: ${dist}m / 허용 반경: ${sessionLoc.radius || 100}m)\n\n강의실에 도착한 후 다시 시도해 주세요!`)
