@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { supabase } from '@/lib/supabase'
+import { DEFAULT_SCHEDULE, loadSiteContent } from '@/lib/siteContent'
 
 function PublicNav() {
   return (
@@ -51,6 +52,8 @@ export default function SchedulePage() {
   const [loading, setLoading] = useState(true)
   const [fullSchedule, setFullSchedule] = useState([])
   const [currentDate, setCurrentDate] = useState(new Date(2026, 2, 1))
+  // 🌟 관리자가 편집한 문구 (pr_config.schedule_content)
+  const [c, setC] = useState(DEFAULT_SCHEDULE)
 
   useEffect(() => {
     fetchSchedules()
@@ -58,6 +61,7 @@ export default function SchedulePage() {
 
   const fetchSchedules = async () => {
     setLoading(true)
+    setC(await loadSiteContent(supabase, 'schedule_content', DEFAULT_SCHEDULE))
     // 🌟 핵심: is_public이 true(외부 공개용)인 일정만 가져옴!
     const { data, error } = await supabase
       .from('pr_schedules')
@@ -99,8 +103,8 @@ export default function SchedulePage() {
       {/* 헤더 섹션 */}
       <header className="pt-40 pb-16 bg-white text-center border-b border-slate-100">
         <div className="max-w-4xl mx-auto px-6">
-          <p className="text-[#32a4a1] text-xs font-black tracking-[0.4em] uppercase mb-4">InsightGraphy 2026</p>
-          <h1 className="text-5xl md:text-6xl font-black tracking-tighter uppercase">Schedule Board</h1>
+          <p className="text-[#32a4a1] text-xs font-black tracking-[0.4em] uppercase mb-4">{c.header.eyebrow}</p>
+          <h1 className="text-5xl md:text-6xl font-black tracking-tighter uppercase">{c.header.title}</h1>
         </div>
       </header>
 
@@ -110,21 +114,21 @@ export default function SchedulePage() {
           
           <div className="text-center mb-10 border-b border-slate-100 pb-8">
             <div className="inline-block bg-[#e0f2f1] text-[#0d6b69] px-6 py-2 rounded-lg font-black text-sm md:text-base tracking-widest mb-6">
-              2026년 1학기 세션 일정
+              {c.table.semesterBadge}
             </div>
             <div className="flex items-center justify-center gap-4 text-[#32a4a1]">
               <span className="text-4xl md:text-5xl opacity-40">“</span>
-              <p className="text-lg md:text-2xl font-black italic text-slate-700 tracking-tight">모든 생각은 가치있기에 공유되어야 마땅하다</p>
+              <p className="text-lg md:text-2xl font-black italic text-slate-700 tracking-tight">{c.table.quote}</p>
               <span className="text-4xl md:text-5xl opacity-40">”</span>
             </div>
           </div>
 
           <div className="space-y-3">
             <div className="grid grid-cols-[40px_70px_1fr] md:grid-cols-[60px_100px_1fr_120px] gap-3 items-center mb-2 px-2">
-              <span className="text-[10px] font-black text-slate-400 text-center">유형/주차</span>
-              <span className="text-[10px] font-black text-slate-400 text-center">날짜</span>
-              <span className="text-[10px] font-black text-slate-400 text-center">세션 내용</span>
-              <span className="hidden md:block text-[10px] font-black text-slate-400">비고</span>
+              <span className="text-[10px] font-black text-slate-400 text-center">{c.table.colType}</span>
+              <span className="text-[10px] font-black text-slate-400 text-center">{c.table.colDate}</span>
+              <span className="text-[10px] font-black text-slate-400 text-center">{c.table.colTitle}</span>
+              <span className="hidden md:block text-[10px] font-black text-slate-400">{c.table.colNote}</span>
             </div>
 
             {fullSchedule.map((item, idx) => (
@@ -143,7 +147,7 @@ export default function SchedulePage() {
 
                 {/* 세션명 (취소선 대신 흐림 효과만 남김) */}
                 <div className={`py-3 px-6 rounded-full text-center font-black text-sm md:text-base transition-all ${item.is_break ? 'bg-slate-100 text-slate-500' : 'bg-white border-2 border-slate-200 text-slate-800 shadow-sm group-hover:border-[#32a4a1]'}`}>
-                  {item.title} {item.is_break && '(휴회)'}
+                  {item.title} {item.is_break && c.table.breakLabel}
                 </div>
 
                 {/* 비고 */}
@@ -159,8 +163,8 @@ export default function SchedulePage() {
       {/* 2. ★ 가로 스크롤 타임라인 섹션 (시간 미표시, 휴회 제외) */}
       <section className="py-20 bg-slate-900 text-white overflow-hidden relative">
         <div className="max-w-7xl mx-auto px-6 mb-12">
-          <h2 className="text-3xl font-black uppercase tracking-tighter text-white">Journey Line</h2>
-          <p className="text-slate-400 text-sm font-bold mt-2">좌우로 스크롤하여 전체 여정을 확인하세요.</p>
+          <h2 className="text-3xl font-black uppercase tracking-tighter text-white">{c.journey.title}</h2>
+          <p className="text-slate-400 text-sm font-bold mt-2">{c.journey.desc}</p>
         </div>
 
         <div className="flex overflow-x-auto gap-6 px-6 md:px-12 pb-12 pt-6 no-scrollbar snap-x snap-mandatory relative max-w-7xl mx-auto">
@@ -178,7 +182,7 @@ export default function SchedulePage() {
                   <span className="text-slate-400 font-bold text-sm">{item.date_display}</span>
                 </div>
                 <h3 className="text-xl font-black mb-2 text-white">{item.title}</h3>
-                <p className="text-xs text-slate-400 font-medium break-keep">{item.description || "정규 세션 진행"}</p>
+                <p className="text-xs text-slate-400 font-medium break-keep">{item.description || c.journey.defaultDesc}</p>
               </div>
             </div>
           ))}
@@ -189,7 +193,7 @@ export default function SchedulePage() {
       <section className="py-24 bg-white border-t border-slate-100">
         <div className="max-w-6xl mx-auto px-6">
           <div className="text-center mb-16">
-            <h2 className="text-3xl font-black uppercase tracking-tighter text-[#1a1a1a]">Monthly Calendar</h2>
+            <h2 className="text-3xl font-black uppercase tracking-tighter text-[#1a1a1a]">{c.calendar.title}</h2>
             <div className="w-12 h-1 bg-[#32a4a1] mx-auto mt-4 rounded-full" />
           </div>
 
@@ -240,7 +244,7 @@ export default function SchedulePage() {
             {/* 이번 달 일정 리스트 영역 (🌟 시간 표시 및 흐림 효과 🌟) */}
             <div className="lg:col-span-1 bg-[#1a1a1a] p-8 rounded-[3rem] text-white shadow-2xl h-full">
               <h3 className="text-xs font-black text-[#32a4a1] uppercase tracking-[0.3em] mb-8 border-b border-white/10 pb-6">
-                Events in {month + 1}월
+                {c.calendar.eventsTitle} {month + 1}월
               </h3>
               
               <div className="space-y-6 max-h-[500px] overflow-y-auto pr-2 no-scrollbar">
@@ -258,14 +262,14 @@ export default function SchedulePage() {
                       
                       {/* 취소선(line-through) 제거, 흐림 효과로만 구분 */}
                       <p className="text-lg font-black leading-tight mb-2 text-white">
-                        {ev.title} {ev.is_break && '(휴회)'}
+                        {ev.title} {ev.is_break && c.table.breakLabel}
                       </p>
                       
                       <p className="text-xs text-white/70 font-medium break-keep">{ev.description}</p>
                     </div>
                   ))
                 ) : (
-                  <div className="py-10 text-center opacity-50 font-bold text-sm">예정된 일정이 없습니다.</div>
+                  <div className="py-10 text-center opacity-50 font-bold text-sm">{c.calendar.empty}</div>
                 )}
               </div>
             </div>
@@ -279,7 +283,7 @@ export default function SchedulePage() {
         <div className="relative w-10 h-10 mx-auto mb-6 opacity-80">
           <Image src="/logo.png" alt="InsightGraphy Logo" fill className="object-contain grayscale hover:grayscale-0 transition-all" />
         </div>
-        <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.5em]">© 2026 InsightGraphy.</p>
+        <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.5em]">{c.footer.text}</p>
       </footer>
     </div>
   )
