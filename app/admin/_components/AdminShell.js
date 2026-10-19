@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useEffect, useMemo, useState } from 'react'
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
@@ -25,6 +25,7 @@ import {
   ReceiptText,
   RotateCcw,
   ShieldCheck,
+  Sparkles,
   UserPlus,
   UsersRound,
   Vote,
@@ -32,6 +33,7 @@ import {
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { getAdminAccess } from '@/lib/adminAuth'
+import AdminChangelogDialog, { hasUnseenRelease, markReleaseSeen } from '@/app/admin/_components/AdminChangelog'
 
 const AdminContext = createContext(null)
 
@@ -87,6 +89,10 @@ export default function AdminShell({ children }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [access, setAccess] = useState({ status: 'checking', session: null, admin: null })
   const [semester, setSemester] = useState(null)
+  const [changelogOpen, setChangelogOpen] = useState(false)
+  const [unseenRelease, setUnseenRelease] = useState(false)
+  // 권한 확인은 화면을 옮길 때마다 다시 돌므로, 업데이트 안내는 페이지를 연 뒤 한 번만 자동으로 띄운다
+  const changelogPrompted = useRef(false)
 
   useEffect(() => {
     let active = true
@@ -106,6 +112,12 @@ export default function AdminShell({ children }) {
       }
 
       setAccess(result)
+      if (!changelogPrompted.current) {
+        changelogPrompted.current = true
+        const unseen = hasUnseenRelease()
+        setUnseenRelease(unseen)
+        setChangelogOpen(unseen)
+      }
       const { data } = await supabase
         .from('semesters')
         .select('id, code, name, current_week_no, total_weeks, semester_type')
@@ -121,6 +133,12 @@ export default function AdminShell({ children }) {
   }, [pathname, router])
 
   const contextValue = useMemo(() => ({ ...access, semester, setSemester }), [access, semester])
+
+  function closeChangelog() {
+    markReleaseSeen()
+    setUnseenRelease(false)
+    setChangelogOpen(false)
+  }
 
   if (access.status === 'checking') {
     return (
@@ -220,6 +238,11 @@ export default function AdminShell({ children }) {
               </div>
             </div>
             <div className="flex items-center gap-2">
+              <button type="button" onClick={() => setChangelogOpen(true)} className="relative flex min-h-9 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-xs font-bold text-slate-600 hover:bg-slate-50" aria-label="업데이트 내역 보기">
+                <Sparkles className="h-4 w-4" aria-hidden="true" />
+                <span className="hidden sm:inline">업데이트</span>
+                {unseenRelease && <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-teal-600 ring-2 ring-white" aria-hidden="true" />}
+              </button>
               <Link href="/home" className="hidden min-h-9 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-xs font-bold text-slate-600 hover:bg-slate-50 sm:flex">
                 <Globe2 className="h-4 w-4" aria-hidden="true" />
                 사이트 보기
@@ -233,6 +256,7 @@ export default function AdminShell({ children }) {
           <main className="min-w-0">{children}</main>
         </div>
       </div>
+      {changelogOpen && <AdminChangelogDialog role={access.admin?.role} onClose={closeChangelog} />}
     </AdminContext.Provider>
   )
 }
