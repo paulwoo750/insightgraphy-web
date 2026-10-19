@@ -1,9 +1,9 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import InternalNav from '@/app/components/InternalNav'
+import { currentSemesterIdFilter, fetchCurrentSemester } from '@/lib/semester'
 
 export default function AbsencePage() {
   const router = useRouter()
@@ -13,10 +13,7 @@ export default function AbsencePage() {
   // 시스템 설정 상태
   const [currentSemester, setCurrentSemester] = useState('')
   const [semesterType, setSemesterType] = useState('regular') // 'regular' | 'vacation'
-  const [displayWeek, setDisplayWeek] = useState(1) // 🌟 화면에 안내할 타겟 주차
   const [totalWeeks, setTotalWeeks] = useState(12)
-  const [absenceDeadline, setAbsenceDeadline] = useState(null)
-  const [isLate, setIsLate] = useState(false)
   const [weekdayDlMap, setWeekdayDlMap] = useState({}) // { [week]: deadline_time } 평일세션 불참 사유서 마감
   const [regularDlMap, setRegularDlMap] = useState({}) // { [week]: deadline_time } 정규세션 사유서 마감
 
@@ -31,32 +28,14 @@ export default function AbsencePage() {
   const weeks = Array.from({ length: totalWeeks + 1 }, (_, i) => i)
   const GOOGLE_DRIVE_FOLDER_URL = "https://drive.google.com/drive/folders/1kXKB1l3O9vIhCjdhINzRic_Gn6IKtZlw"
 
-  useEffect(() => {
-    const init = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) {
-        router.push('/login')
-        return
-      }
-      setUser(session.user)
-      await fetchData()
-    }
-    init()
-  }, [router])
-
   const fetchData = async () => {
     setLoading(true)
 
-    // 1. 대시보드 설정값 불러오기
-    const { data: configData } = await supabase.from('pr_config').select('*')
-    if (configData) {
-      const sem = configData.find(c => c.key === 'current_semester')?.value || ''
-      const tWks = configData.find(c => c.key === 'total_weeks')?.value
-      const sType = configData.find(c => c.key === 'semester_type')?.value || 'regular'
-      setCurrentSemester(sem)
-      setSemesterType(sType)
-      if (tWks) setTotalWeeks(Number(tWks))
-    }
+    // 1. 현재 학기 설정값 불러오기
+    const current = await fetchCurrentSemester()
+    setCurrentSemester(current.code)
+    setSemesterType(current.type)
+    setTotalWeeks(current.totalWeeks)
 
     // 🌟 평일세션 불참 사유서 마감(weekday_absence)도 주차별로 로드
     const { data: wdDl } = await supabase.from('pr_deadlines').select('*').eq('category', 'weekday_absence')
@@ -71,7 +50,6 @@ export default function AbsencePage() {
       .order('deadline_time', { ascending: true })
 
     let targetW = 1
-    let targetDL = null
     const now = new Date()
 
     const rMap = {}
@@ -81,30 +59,32 @@ export default function AbsencePage() {
     if (dlData && dlData.length > 0) {
       // 1순위: 아직 지나지 않은 마감일 중 가장 빠른 것
       const upcoming = dlData.find(d => new Date(d.deadline_time) > now)
-      if (upcoming) {
-        targetW = upcoming.week
-        targetDL = upcoming.deadline_time
-      } else {
-        // 2순위: 모두 지났다면 가장 마지막 주차
-        const last = dlData[dlData.length - 1]
-        targetW = last.week
-        targetDL = last.deadline_time
-      }
+      // 2순위: 모두 지났다면 가장 마지막 주차
+      targetW = upcoming ? upcoming.week : dlData[dlData.length - 1].week
     }
 
-    setDisplayWeek(targetW)
-    setAbsenceDeadline(targetDL)
-    setIsLate(targetDL ? now > new Date(targetDL) : false)
-    
     // 기본 제출 주차도 탐색된 주차로 세팅
     setAbsenceForm(prev => ({ ...prev, week: targetW }))
 
-    // 3. 모든 학회원의 사유서 제출 내역 불러오기
-    const { data: absData } = await supabase.from('absence_forms').select('*').order('created_at', { ascending: false })
+    // 3. 이번 학기 사유서 제출 내역 (지난 학기 사유서는 아카이브 > 과거 자료실에서 열람)
+    const { data: absData } = await supabase.from('absence_forms').select('*').or(currentSemesterIdFilter(current)).order('created_at', { ascending: false })
     if (absData) setAllAbsences(absData)
-    
+
     setLoading(false)
   }
+
+  useEffect(() => {
+    const init = async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) {
+        router.push('/login')
+        return
+      }
+      setUser(session.user)
+      await fetchData()
+    }
+    init()
+  }, [router])
 
   const formatTime = (dateStr) => {
     if(!dateStr) return ''

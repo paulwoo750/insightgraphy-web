@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
+import { currentSemesterIdFilter, fetchCurrentSemester, fetchSemesterMembers, parseJson } from '@/lib/semester'
 import Link from 'next/link'
 
 export default function FineAdmin() {
@@ -27,48 +28,22 @@ export default function FineAdmin() {
     setIsScanning(true)
 
     try {
-      const { data: activeSemester } = await supabase.from('semesters').select('id').eq('status', 'active').maybeSingle()
-      if (activeSemester?.id) {
-        await supabase.rpc('admin_sync_missing_attendance', { p_semester_id: activeSemester.id })
+      const current = await fetchCurrentSemester()
+      if (current.id) {
+        await supabase.rpc('admin_sync_missing_attendance', { p_semester_id: current.id })
       }
-      let memberIds = []
-      if (activeSemester) {
-        const { data: membershipData } = await supabase
-          .from('semester_memberships')
-          .select('member_id')
-          .eq('semester_id', activeSemester.id)
-          .eq('participation_status', 'active')
-        memberIds = (membershipData || []).map((membership) => membership.member_id)
-      }
-      let memberQuery = supabase.from('members').select('*').eq('status', 'active').order('name')
-      if (activeSemester) memberQuery = memberIds.length > 0 ? memberQuery.in('id', memberIds) : memberQuery.in('id', ['00000000-0000-0000-0000-000000000000'])
-      const { data: memData } = await memberQuery
-      const activeMembers = memData || []
+      const activeMembers = await fetchSemesterMembers(current.id)
       setMembers(activeMembers)
 
-      const { data: configData } = await supabase.from('pr_config').select('*')
-      let currentPenalties = {}
-      let weeklySetup = {}
-      let totalWeeks = 12
-      let semesterType = 'regular'
-      let semester = ''
-      if (configData) {
-        const penVal = configData.find(c => c.key === 'penalty_rules')?.value
-        const wsVal = configData.find(c => c.key === 'weekly_setup')?.value
-        const tWks = configData.find(c => c.key === 'total_weeks')?.value
-        const sType = configData.find(c => c.key === 'semester_type')?.value
-        if (penVal) currentPenalties = JSON.parse(penVal)
-        if (wsVal) weeklySetup = JSON.parse(wsVal)
-        if (tWks) totalWeeks = Number(tWks)
-        if (sType) semesterType = sType
-        semester = configData.find(c => c.key === 'current_semester')?.value || ''
-        setCurrentSemester(semester)
-      }
+      const currentPenalties = parseJson(current.config.penalty_rules, {})
+      const { weeklySetup, totalWeeks, type: semesterType, code: semester } = current
+      setCurrentSemester(semester)
 
       const { data: dlData } = await supabase.from('pr_deadlines').select('*')
       const deadlines = dlData || []
 
-      const { data: filesData } = await supabase.from('files_metadata').select('*').eq('is_archive', false)
+      // 학기 필터 필수: 지난 학기의 같은 주차 제출물이 이번 학기 제출로 잡히면 미제출 벌금이 누락된다
+      const { data: filesData } = await supabase.from('files_metadata').select('*').eq('semester', semester).eq('is_archive', false)
       const files = filesData || []
       
       const { data: commentsData } = await supabase.from('file_comments').select('*')
@@ -84,7 +59,7 @@ export default function FineAdmin() {
       const existingFinesData = existingFinesDataRaw || []
 
       // 🌟 사유서 연동: 완전인정/부분인정된 사유서가 있으면 결석 벌금을 면제한다 (회칙 제19조·제19-1조)
-      const { data: absData } = await supabase.from('absence_forms').select('*')
+      const { data: absData } = await supabase.from('absence_forms').select('*').or(currentSemesterIdFilter(current))
       const absences = absData || []
       const findAbsence = (userName, w, sType) => absences.find(a =>
         a.user_name === userName && a.week === w && (a.session_type || 'regular') === sType

@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import { sortSemestersDesc } from '@/lib/semester'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import InternalNav from '@/app/components/InternalNav'
@@ -44,7 +45,7 @@ export default function FeedbackArxiv() {
       if (adminCurrentSemester && !uniqueSemesters.includes(adminCurrentSemester)) {
         uniqueSemesters.push(adminCurrentSemester)
       }
-      uniqueSemesters = uniqueSemesters.sort().reverse()
+      uniqueSemesters = sortSemestersDesc(uniqueSemesters)
       setSemesters(uniqueSemesters)
 
       let initialSem = 'all'

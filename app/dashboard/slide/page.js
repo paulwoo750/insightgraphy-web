@@ -1,9 +1,9 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import Link from 'next/link'
 import InternalNav from '@/app/components/InternalNav'
+import { fetchCurrentSemester, formatDateTime, groupDeadlines, groupSubmissionsByTeam, memberGroup, nearestDeadlineWeek, submissionTopic } from '@/lib/semester'
 
 export default function SlideRoom() {
   const router = useRouter()
@@ -18,7 +18,7 @@ export default function SlideRoom() {
 
   const GOOGLE_DRIVE_FOLDER_URL = "https://drive.google.com/drive/folders/1F-YFI422wyYQxd0lBeJ9boaNDlr0iwFJ"
   
-  const [currentSemester, setCurrentSemester] = useState('2026-1')
+  const [currentSemester, setCurrentSemester] = useState('')
   const [totalWeeks, setTotalWeeks] = useState(12) 
   const [deadlines, setDeadlines] = useState({})
   const [weekTopics, setWeekTopics] = useState({}) 
@@ -37,9 +37,7 @@ export default function SlideRoom() {
   // 🌟 마감: 평일세션은 내가 배정된 조의 진행 날짜 자정, 정규세션은 슬라이드 마감
   const activeDeadline = (week) => {
     if (sessionMode === 'weekday') {
-      const uploaderName = user?.user_metadata?.name
-      const g = weeklySetup[week]?.weekdayMembers?.[uploaderName] ?? weeklySetup[week]?.members?.[uploaderName]
-      const grp = (g && g !== '미정' && g !== '결석') ? Number(g) : null
+      const grp = memberGroup(weeklySetup, week, user?.user_metadata?.name, 'weekday')
       const t = grp ? weeklySetup[week]?.weekday?.[grp] : null
       if (!t) return null
       if (t.slideDl) return t.slideDl
@@ -48,88 +46,54 @@ export default function SlideRoom() {
     return deadlines[week]?.slide || null
   }
 
-  useEffect(() => {
-    const checkUser = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) { router.push('/login') }
-      else { setUser(session.user); fetchFiles(); fetchSystemData(); }
-    }
-    checkUser()
-  }, [])
-
-  const fetchSystemData = async () => {
-    const { data: configData } = await supabase.from('pr_config').select('*')
-    if (configData) {
-      const sem = configData.find(c => c.key === 'current_semester')?.value
-      const topics = configData.find(c => c.key === 'week_topics')?.value
-      const wks = configData.find(c => c.key === 'total_weeks')?.value
-      const setupStr = configData.find(c => c.key === 'weekly_setup')?.value
-      const sType = configData.find(c => c.key === 'semester_type')?.value
-
-      if (sem) setCurrentSemester(sem)
-      if (sType) setSemesterType(sType)
-      if (topics) setWeekTopics(JSON.parse(topics))
-      if (wks) setTotalWeeks(Number(wks))
-      if (setupStr) setWeeklySetup(JSON.parse(setupStr))
-    }
-
-    const { data: dlData } = await supabase.from('pr_deadlines').select('*').in('category', ['slide', 'weekday_upload'])
-    
-    const dlMap = {}
-    let initialWeek = 1
-    let minDiff = Infinity
-    let maxPastWeek = 1
-    const now = new Date()
-
-    if (dlData) {
-      dlData.forEach(d => {
-        if (!dlMap[d.week]) dlMap[d.week] = {}
-        dlMap[d.week][d.category] = d.deadline_time
-
-        if (d.category === 'slide' && d.deadline_time) {
-          const dlTime = new Date(d.deadline_time)
-          if (dlTime > now) {
-            const diff = dlTime - now
-            if (diff < minDiff) {
-              minDiff = diff
-              initialWeek = d.week
-            }
-          } else {
-            if (d.week > maxPastWeek) maxPastWeek = d.week
-          }
-        }
-      })
-      if (minDiff === Infinity) initialWeek = maxPastWeek
-    }
-    
-    setDeadlines(dlMap)
-    setSelectedWeek(initialWeek)
-    setTargetWeek(initialWeek)
-  }
-
-  const formatDate = (dateStr) => {
-    if (!dateStr) return '';
-    const d = new Date(dateStr);
-    return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-  }
-
-  const fetchFiles = async () => {
+  // 이번 학기 제출물만 본다. 학기 전환은 is_archive를 바꾸지 않으므로 학기 코드로 거른다.
+  const fetchFiles = useCallback(async (semesterCode) => {
     const { data } = await supabase
       .from('files_metadata')
       .select('*')
       .in('file_category', ['slide', 'weekday_slide'])
+      .eq('semester', semesterCode)
       .eq('is_archive', false)
       .order('created_at', { ascending: false })
     if (data) setFiles(data)
-  }
+  }, [])
+
+  const fetchSystemData = useCallback(async () => {
+    const semester = await fetchCurrentSemester()
+    setCurrentSemester(semester.code)
+    setSemesterType(semester.type)
+    setWeekTopics(semester.weekTopics)
+    setTotalWeeks(semester.totalWeeks)
+    setWeeklySetup(semester.weeklySetup)
+
+    const { data: dlData } = await supabase.from('pr_deadlines').select('*').in('category', ['slide', 'weekday_upload'])
+    const initialWeek = nearestDeadlineWeek(dlData, 'slide')
+    setDeadlines(groupDeadlines(dlData))
+    setSelectedWeek(initialWeek)
+    setTargetWeek(initialWeek)
+    return semester
+  }, [])
+
+  useEffect(() => {
+    const checkUser = async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) { router.push('/login'); return }
+      setUser(session.user)
+      const semester = await fetchSystemData()
+      fetchFiles(semester.code)
+    }
+    checkUser()
+  }, [router, fetchFiles, fetchSystemData])
+
+  const refreshFiles = () => fetchFiles(currentSemester)
 
   const handleUpdateFile = async () => {
     if (!newTitle) return
     const { error } = await supabase.from('files_metadata').update({ file_name: newTitle }).eq('id', editItem.id)
     if (!error) { 
       alert("파일 이름 수정 완료!"); 
-      setEditItem(null); 
-      fetchFiles(); 
+      setEditItem(null);
+      refreshFiles();
     }
   }
 
@@ -137,7 +101,7 @@ export default function SlideRoom() {
     e.stopPropagation(); 
     if (!confirm("해당 슬라이드 제출 기록을 삭제하시겠습니까?\n(원본 링크는 지워지지 않습니다.)")) return
     const { error } = await supabase.from('files_metadata').delete().eq('id', id)
-    if (!error) fetchFiles()
+    if (!error) refreshFiles()
   }
 
   const handleSubmitLink = async () => {
@@ -152,20 +116,13 @@ export default function SlideRoom() {
 
     setSubmitting(true)
     
-    const currentTopic = sessionMode === 'weekday'
-      ? (weekTopics[`weekday_${targetWeek}`] || '평일세션')
-      : (weekTopics[targetWeek] || (targetWeek === 0 ? 'OT 및 자유 주제' : '자유 주제'))
+    const currentTopic = submissionTopic(weekTopics, targetWeek, sessionMode)
     const uploaderName = user.user_metadata.name || '익명'
     const sessionTag = sessionMode === 'weekday' ? ' [평일세션]' : ''
     const autoFileName = `${targetWeek}W${sessionTag} (${currentTopic}) ${uploaderName} 발표자료`
     
-    let myGroup = null
-    if (weeklySetup[targetWeek] && weeklySetup[targetWeek].members) {
-      const g = weeklySetup[targetWeek].members[uploaderName]
-      if (g && g !== '미정' && g !== '결석') {
-        myGroup = Number(g) 
-      }
-    }
+    // 평일세션은 평일 전용 조 편성을 기준으로 저장한다
+    const myGroup = memberGroup(weeklySetup, targetWeek, uploaderName, sessionMode)
 
     const deadline = activeDeadline(targetWeek)
     const isLate = deadline ? new Date() > new Date(deadline) : false
@@ -188,8 +145,8 @@ export default function SlideRoom() {
     } else {
       alert('슬라이드 링크 제출 완료!'); 
       setDriveLink(''); 
-      setSelectedWeek(targetWeek); 
-      fetchFiles();
+      setSelectedWeek(targetWeek);
+      refreshFiles();
     }
     setSubmitting(false); 
   }
@@ -202,40 +159,7 @@ export default function SlideRoom() {
   if (!user) return <div className="p-8 text-center font-bold text-slate-500">데이터 로딩 중...</div>
 
   const filesThisWeek = files.filter(f => f.week === selectedWeek && (f.file_category || 'slide') === fileCategory)
-  const groupedFiles = {}
-  
-  let maxGroup = 0
-  if (weeklySetup[selectedWeek] && weeklySetup[selectedWeek].groupCount) {
-    maxGroup = Number(weeklySetup[selectedWeek].groupCount)
-  }
-
-  const getDynamicGroup = (file) => {
-    if (weeklySetup[selectedWeek] && weeklySetup[selectedWeek].members && weeklySetup[selectedWeek].members[file.uploader]) {
-      const g = weeklySetup[selectedWeek].members[file.uploader]
-      if (g !== '미정' && g !== '결석') return Number(g)
-    }
-    if (file.group_id) return file.group_id
-    return null
-  }
-  
-  filesThisWeek.forEach(f => {
-    const dGroup = getDynamicGroup(f)
-    if (dGroup && dGroup > maxGroup) maxGroup = dGroup
-  })
-
-  for (let i = 1; i <= maxGroup; i++) {
-    groupedFiles[i] = []
-  }
-  groupedFiles['미분류'] = [] 
-
-  filesThisWeek.forEach(f => {
-    const dGroup = getDynamicGroup(f)
-    if (dGroup && groupedFiles[dGroup]) {
-      groupedFiles[dGroup].push(f)
-    } else {
-      groupedFiles['미분류'].push(f)
-    }
-  })
+  const { groups: groupedFiles, maxGroup } = groupSubmissionsByTeam(filesThisWeek, weeklySetup, selectedWeek, sessionMode)
 
   return (
     <div className="bg-white min-h-screen text-slate-900 font-sans pb-32">
@@ -275,14 +199,14 @@ export default function SlideRoom() {
               <h2 className="text-lg font-bold text-slate-700 tracking-tight">
                 {sessionMode === 'weekday'
                   ? (weekTopics[`weekday_${targetWeek}`] || '평일세션 주제 미설정')
-                  : (weekTopics[targetWeek] || (targetWeek === 0 ? 'OT 및 자유 주제' : '자유 주제'))}
+                  : submissionTopic(weekTopics, targetWeek)}
               </h2>
             </div>
             
             <div className="flex flex-wrap items-center gap-x-5 gap-y-1 mt-2">
               <p className="text-xs font-medium text-slate-500 flex items-center gap-2 whitespace-nowrap">
                 <span className="text-slate-400 font-bold uppercase tracking-wider">{sessionMode === 'weekday' ? '평일세션 마감 |' : '제출 마감 |'}</span>
-                <span className="text-slate-800">{activeDeadline(targetWeek) ? formatDate(activeDeadline(targetWeek)) : '미설정'}</span>
+                <span className="text-slate-800">{activeDeadline(targetWeek) ? formatDateTime(activeDeadline(targetWeek)) : '미설정'}</span>
               </p>
               {sessionMode === 'weekday' && (
                 <p className="text-xs font-bold text-teal-700 break-keep">기획서 없이 발표자료만 제출합니다.</p>
@@ -377,7 +301,7 @@ export default function SlideRoom() {
                           file={file} 
                           onEdit={(e) => { e.stopPropagation(); setEditItem(file); setNewTitle(file.file_name); }}
                           onDelete={(e) => { e.stopPropagation(); handleDeleteFile(e, file.id); }}
-                          formatDate={formatDate}
+                          formatDateTime={formatDateTime}
                         />
                       ))}
                     </div>
@@ -401,7 +325,7 @@ export default function SlideRoom() {
                         file={file} 
                         onEdit={(e) => { e.stopPropagation(); setEditItem(file); setNewTitle(file.file_name); }}
                         onDelete={(e) => { e.stopPropagation(); handleDeleteFile(e, file.id); }}
-                        formatDate={formatDate}
+                        formatDateTime={formatDateTime}
                       />
                     ))}
                   </div>
@@ -431,7 +355,7 @@ export default function SlideRoom() {
 }
 
 // 🌟 가로형 슬라이드 리스트 아이템 (기획서 UI 100% 동기화)
-function SlideListItem({ file, onEdit, onDelete, formatDate }) {
+function SlideListItem({ file, onEdit, onDelete, formatDateTime }) {
   return (
     <div 
       className="flex flex-col sm:flex-row sm:items-center justify-between py-4 border-b border-slate-200 hover:bg-slate-50/50 transition-colors cursor-pointer group gap-4 px-2" 
@@ -451,7 +375,7 @@ function SlideListItem({ file, onEdit, onDelete, formatDate }) {
       </div>
 
       <div className="flex items-center justify-between sm:justify-end gap-6 shrink-0 w-full sm:w-auto pl-12 sm:pl-0">
-        <span className="text-xs font-medium text-slate-400">{formatDate(file.created_at)}</span>
+        <span className="text-xs font-medium text-slate-400">{formatDateTime(file.created_at)}</span>
         <div className="flex items-center gap-3 sm:opacity-0 group-hover:opacity-100 transition-opacity">
           <button onClick={(e) => { e.stopPropagation(); onEdit(e); }} className="text-[11px] font-bold text-slate-400 hover:text-purple-600 transition-colors">수정</button>
           <button onClick={(e) => { e.stopPropagation(); onDelete(e); }} className="text-[11px] font-bold text-slate-400 hover:text-red-600 transition-colors">삭제</button>

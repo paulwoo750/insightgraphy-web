@@ -2,13 +2,15 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
+import { fetchCurrentSemester, fetchSemesterMembers, parseJson, syncWeekTopicsToSemester } from '@/lib/semester'
 
 export default function DashboardManager() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 
   // 1. 기본 설정 상태
-  const [semester, setSemester] = useState('2026-1')
+  const [semester, setSemester] = useState('')
+  const [semesterId, setSemesterId] = useState(null)
   const [totalWeeks, setTotalWeeks] = useState(12)
   const [weekTopics, setWeekTopics] = useState({}) 
 
@@ -44,50 +46,24 @@ export default function DashboardManager() {
   const fetchDashboardData = async () => {
     setLoading(true)
     
+    const current = await fetchCurrentSemester()
+    setSemester(current.code)
+    setSemesterId(current.id)
+    setSemesterType(current.type)
+    setTotalWeeks(current.totalWeeks)
+    setWeekTopics(current.weekTopics)
+    setWeeklySetup(current.weeklySetup)
+    setFavoriteLocs(parseJson(current.config.favorite_locations, []))
+
     // 현재 학기 참여 명단을 기준으로 불러온다. legacy_pr_member_id는
     // 기존 weekly_setup 키와의 호환을 위해 화면 안에서만 id로 사용한다.
-    const { data: activeSemester } = await supabase.from('semesters').select('id').eq('status', 'active').maybeSingle()
-    let memberIds = []
-    if (activeSemester) {
-      const { data: membershipData } = await supabase
-        .from('semester_memberships')
-        .select('member_id')
-        .eq('semester_id', activeSemester.id)
-        .eq('participation_status', 'active')
-      memberIds = (membershipData || []).map((membership) => membership.member_id)
-    }
-
-    let memberQuery = supabase
-      .from('members')
-      .select('id, legacy_pr_member_id, name, generation, university, department, status')
-      .eq('status', 'active')
-      .order('name', { ascending: true })
-    if (activeSemester) memberQuery = memberIds.length > 0 ? memberQuery.in('id', memberIds) : memberQuery.in('id', ['00000000-0000-0000-0000-000000000000'])
-    const { data: memData } = await memberQuery
-    setActiveMembers((memData || []).map((member) => ({
+    const memData = await fetchSemesterMembers(current.id, 'id, legacy_pr_member_id, name, generation, university, department, status')
+    setActiveMembers(memData.map((member) => ({
       ...member,
       canonical_id: member.id,
       id: member.legacy_pr_member_id || member.id,
       is_active: member.status === 'active',
     })))
-
-    // 설정값 불러오기
-    const { data: configData } = await supabase.from('pr_config').select('*')
-    if (configData) {
-      const sem = configData.find(c => c.key === 'current_semester')?.value
-      const wks = configData.find(c => c.key === 'total_weeks')?.value
-      const topics = configData.find(c => c.key === 'week_topics')?.value
-      const wSetup = configData.find(c => c.key === 'weekly_setup')?.value
-      const favLocs = configData.find(c => c.key === 'favorite_locations')?.value
-      const sType = configData.find(c => c.key === 'semester_type')?.value
-
-      if (sem) setSemester(sem)
-      if (sType) setSemesterType(sType)
-      if (wks) setTotalWeeks(Number(wks))
-      if (topics) setWeekTopics(JSON.parse(topics))
-      if (wSetup) setWeeklySetup(JSON.parse(wSetup))
-      if (favLocs) setFavoriteLocs(JSON.parse(favLocs))
-    }
 
     // 마감 시간 불러오기
     const { data: dlData } = await supabase.from('pr_deadlines').select('*')
@@ -111,11 +87,10 @@ export default function DashboardManager() {
     setDeadlines(dlState)
 
     // 이번 학기 제출 파일 불러오기
-    const currentSem = configData?.find(c => c.key === 'current_semester')?.value || '2026-1'
     const { data: filesData } = await supabase
       .from('files_metadata')
       .select('*')
-      .eq('semester', currentSem)
+      .eq('semester', current.code)
       .eq('is_archive', false)
       .order('created_at', { ascending: false })
       .limit(30)
@@ -187,6 +162,9 @@ export default function DashboardManager() {
       { key: 'weekly_setup', value: JSON.stringify(weeklySetup) },
       { key: 'favorite_locations', value: JSON.stringify(favoriteLocs) }
     ])
+    // 주차 주제는 학기별 기록(semester_weeks)에도 남겨야 학기 전환 후 아카이브에 그 학기 주제가 표시된다
+    const { error: topicError } = await syncWeekTopicsToSemester(semesterId, weekTopics, totalWeeks)
+    if (topicError) alert('학기별 주제 저장 오류: ' + topicError.message)
 
     const deadlineUpserts = []
     const deadlineDeletes = []

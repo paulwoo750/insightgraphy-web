@@ -1,10 +1,29 @@
 'use client'
-import { useState, useEffect, Suspense } from 'react'
-import { useSearchParams } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
+import { useCallback, useEffect, useState, Suspense } from 'react'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
+import { supabase } from '@/lib/supabase'
 import InternalNav from '@/app/components/InternalNav'
 import { CLUB_RULES } from '@/lib/clubRules'
+import { fetchCurrentSemester, parseJson } from '@/lib/semester'
+import { FOLDER_PLACEHOLDER_TITLE, deleteSubmittedFile } from '@/lib/archive'
+import PastArchive from './_components/PastArchive'
+import ArchiveModal from './_components/ArchiveModal'
+
+const TABS = [
+  { id: 'past', icon: '📦', label: '과거 자료실' },
+  { id: 'edu', icon: '📘', label: '교육자료실' },
+  { id: 'special', icon: '🌟', label: '특별세션 자료실' },
+  { id: 'template', icon: '📑', label: '양식 자료실' },
+  { id: 'rules', icon: '📜', label: '회칙 열람실' },
+]
+const EDU_SECTIONS = ['Insight', 'Graphic', 'Delivery', '기타']
+const GOOGLE_DRIVE_FOLDER_URL = 'https://drive.google.com/drive/folders/1N4BAGYNk5PQEdPxQP5zUAuPehWQkr5bV?usp=drive_link'
+
+const isDriveUrl = (url) => url.includes('drive.google.com') || url.includes('docs.google.com')
+const isYoutubeUrl = (url) => url.includes('youtube.com') || url.includes('youtu.be')
+
+const EMPTY_ARCHIVE = { currentCode: '', pastFiles: [], semesters: [], weekRows: [], archiveFiles: [], absenceRows: [], rules: [] }
 
 export default function ArchivePage() {
   return (
@@ -15,261 +34,109 @@ export default function ArchivePage() {
 }
 
 function ArchiveUserPage() {
+  const router = useRouter()
+  const pathname = usePathname()
   const searchParams = useSearchParams()
+  // 탭은 URL(?tab=)이 단일 기준이라 GNB 드롭다운과 탭 버튼이 같은 상태를 본다
+  const tabParam = searchParams.get('tab')
+  const activeTab = TABS.some((tab) => tab.id === tabParam) ? tabParam : 'past'
+
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState('past')
-
-  const [pastFiles, setPastFiles] = useState([])
-  const [weekTopics, setWeekTopics] = useState({})
-  const [archiveFiles, setArchiveFiles] = useState([])
-  const [rules, setRules] = useState([])
-
-  const [pastNav, setPastNav] = useState({ semester: null, week: null, category: null })
-  const [eduSection, setEduSection] = useState('Insight')
-  const [specialFolder, setSpecialFolder] = useState(null)
-
-  // 🌟 링크 복붙 업로드 폼 및 타입 상태 (드라이브 vs 유튜브)
-  const [uploadForm, setUploadForm] = useState({ title: '', url: '', description: '' })
-  const [uploadType, setUploadType] = useState('drive') // 'drive' or 'youtube'
-  const [isUploading, setIsUploading] = useState(false)
-  const [showUpload, setShowUpload] = useState(false)
-
-  // 🌟 본인 자료 수정 모달 상태
+  const [archive, setArchive] = useState(EMPTY_ARCHIVE)
   const [editResource, setEditResource] = useState(null)
-  const [editForm, setEditForm] = useState({ title: '', file_url: '', description: '' })
+  // 탭 버튼을 다시 누르면 그 탭의 첫 화면(학기 선택·폴더 목록)으로 돌아간다
+  const [tabResetKey, setTabResetKey] = useState(0)
 
-  // 🌟 지난 학기 타임라인 뷰어 상태 (파싱된 일정 배열)
-  const [timelineView, setTimelineView] = useState(null)
-  // 🌟 지난 학기 사유서 뷰어 상태 (파싱된 사유서 배열)
-  const [absenceView, setAbsenceView] = useState(null)
+  const loadArchive = useCallback(async () => {
+    const current = await fetchCurrentSemester()
+    // 과거 자료 = 예전 방식으로 이관된 파일 + 현재 학기가 아닌 학기의 파일 (학기 전환은 is_archive를 바꾸지 않는다)
+    const pastQuery = supabase.from('files_metadata').select('*').order('week', { ascending: true }).order('created_at', { ascending: true })
+    const [pastRes, archiveRes, semesterRes, weekRes, rulesRes] = await Promise.all([
+      current.code ? pastQuery.or(`is_archive.eq.true,semester.neq."${current.code}"`) : pastQuery.eq('is_archive', true),
+      supabase.from('archive_files').select('*').order('created_at', { ascending: false }),
+      supabase.from('semesters').select('id, code, name, status'),
+      supabase.from('semester_weeks').select('semester_id, week_no, topic, weekday_topic'),
+      supabase.from('club_rules').select('content').order('updated_at', { ascending: false }).limit(1),
+    ])
 
-  // 🌟 공용 구글 드라이브 폴더 링크
-  const GOOGLE_DRIVE_FOLDER_URL = "https://drive.google.com/drive/folders/1N4BAGYNk5PQEdPxQP5zUAuPehWQkr5bV?usp=drive_link"
+    const semesters = semesterRes.data || []
+    const pastSemesterIds = semesters.filter((row) => row.code !== current.code).map((row) => row.id)
+    const absenceRes = pastSemesterIds.length > 0
+      ? await supabase.from('absence_forms').select('*').in('semester_id', pastSemesterIds).order('created_at', { ascending: false })
+      : { data: [] }
 
-  const tabs = [
-    { id: 'past', icon: '📦', label: '과거 자료실' },
-    { id: 'edu', icon: '📘', label: '교육자료실' },
-    { id: 'special', icon: '🌟', label: '특별세션 자료실' },
-    { id: 'template', icon: '📑', label: '양식 자료실' },
-    { id: 'rules', icon: '📜', label: '회칙 열람실' }
-  ]
+    const rulesContent = rulesRes.data?.[0]?.content
+    const parsedRules = rulesContent ? parseJson(rulesContent, null) : null
 
-  // 🌟 GNB 드롭다운의 ?tab=... 변화에 반응 (이미 아카이브에 있어도 섹션 전환)
-  useEffect(() => {
-    const t = searchParams.get('tab')
-    if (t && ['past', 'edu', 'special', 'template', 'rules'].includes(t)) {
-      setActiveTab(t)
-      setPastNav({ semester: null, week: null, category: null })
-      setSpecialFolder(null)
-      setShowUpload(false)
-    }
-  }, [searchParams])
-
-  useEffect(() => {
-    const init = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (session) {
-        setUser(session.user)
-        await fetchData(session.user.user_metadata.name)
-      }
-    }
-    init()
+    setArchive({
+      currentCode: current.code,
+      pastFiles: pastRes.data || [],
+      semesters,
+      weekRows: weekRes.data || [],
+      archiveFiles: archiveRes.data || [],
+      absenceRows: absenceRes.data || [],
+      rules: Array.isArray(parsedRules) ? parsedRules : rulesContent ? [{ id: 1, chapter: '회칙', content: rulesContent }] : [],
+    })
+    setLoading(false)
   }, [])
 
-  const fetchData = async (userName) => {
-    setLoading(true)
+  useEffect(() => {
+    let active = true
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (!active || !session) return
+      setUser(session.user)
+      await loadArchive()
+    })
+    return () => { active = false }
+  }, [loadArchive])
 
-    const { data: configData } = await supabase.from('pr_config').select('*').eq('key', 'week_topics').single()
-    if (configData) setWeekTopics(JSON.parse(configData.value))
+  const myName = user?.user_metadata?.name
 
-    const { data: pFiles } = await supabase.from('files_metadata').select('*').eq('is_archive', true).order('week', { ascending: true })
-    if (pFiles) setPastFiles(pFiles)
-
-    const { data: aFiles } = await supabase.from('archive_files').select('*').order('created_at', { ascending: false })
-    if (aFiles) setArchiveFiles(aFiles)
-
-    const { data: rulesData } = await supabase.from('club_rules').select('content').order('updated_at', { ascending: false }).limit(1)
-    if (rulesData && rulesData.length > 0) {
-      try { setRules(JSON.parse(rulesData[0].content)) }
-      catch { setRules([{ id: 1, chapter: '회칙', content: rulesData[0].content }]) }
+  const addResource = async (row) => {
+    const { error } = await supabase.from('archive_files').insert([{ uploader_name: myName, semester: '상시', ...row }])
+    if (error) {
+      alert('등록 실패: ' + error.message)
+      return false
     }
-
-    setLoading(false)
-  }
-
-  // ==========================================
-  // 🌟 기능: 교육 & 특별세션 링크 제출 (구글드라이브 OR 유튜브)
-  // ==========================================
-  const handleUploadResource = async (category, folderName) => {
-    if (!uploadForm.title.trim() || !uploadForm.url.trim()) return alert("제목과 링크를 모두 입력해 줘! 🔗")
-
-    // 업로드 타입에 따른 링크 유효성 검사
-    if (uploadType === 'drive' && !uploadForm.url.includes("drive.google.com") && !uploadForm.url.includes("docs.google.com")) {
-      return alert("올바른 구글 드라이브 링크가 아닌 것 같아! 다시 확인해 봐! 🤔")
-    }
-    if (uploadType === 'youtube' && !uploadForm.url.includes("youtube.com") && !uploadForm.url.includes("youtu.be")) {
-      return alert("올바른 유튜브 링크가 아닌 것 같아! 다시 확인해 봐! 🤔")
-    }
-
-    setIsUploading(true)
-
-    const { error } = await supabase.from('archive_files').insert([{
-      uploader_name: user.user_metadata.name,
-      category: category,
-      file_type: folderName,
-      semester: '상시',
-      title: uploadForm.title,
-      file_url: uploadForm.url.trim(),
-      description: uploadForm.description
-    }])
-
-    if (!error) {
-      alert("자료 등록 완료! 🎉")
-      setUploadForm({ title: '', url: '', description: '' })
-      setShowUpload(false)
-      fetchData(user.user_metadata.name)
-    } else {
-      alert("등록 실패: " + error.message)
-    }
-    setIsUploading(false)
-  }
-
-  // 양식 자료실 전용 업로드 (무조건 드라이브)
-  const handleUploadTemplate = async () => {
-    if (!uploadForm.title.trim() || !uploadForm.url.trim()) return alert("제목과 링크를 모두 입력해 줘! 🔗")
-    if (!uploadForm.url.includes("drive.google.com") && !uploadForm.url.includes("docs.google.com")) {
-      return alert("올바른 구글 드라이브 링크가 아닌 것 같아! 다시 확인해 봐! 🤔")
-    }
-
-    setIsUploading(true)
-
-    const { error } = await supabase.from('archive_files').insert([{
-      uploader_name: user.user_metadata.name,
-      category: 'template',
-      file_type: 'common',
-      semester: '상시',
-      title: uploadForm.title,
-      file_url: uploadForm.url.trim(),
-      description: uploadForm.description
-    }])
-
-    if (!error) {
-      alert("양식 등록 완료! 🎉")
-      setUploadForm({ title: '', url: '', description: '' })
-      setShowUpload(false)
-      fetchData(user.user_metadata.name)
-    } else {
-      alert("등록 실패: " + error.message)
-    }
-    setIsUploading(false)
+    await loadArchive()
+    return true
   }
 
   const handleCreateFolder = async () => {
-    const folderName = prompt("새로운 특별세션 폴더 이름을 입력해 줘! 📁")
-    if (!folderName) return
-
-    const { error } = await supabase.from('archive_files').insert([{
-      uploader_name: user.user_metadata.name,
-      category: 'special',
-      file_type: folderName,
-      semester: '상시',
-      title: '--FOLDER--',
-      file_url: ''
-    }])
-
-    if (!error) {
-      alert("폴더 생성 완료! ✨")
-      fetchData(user.user_metadata.name)
-    }
+    const folderName = prompt('새로운 특별세션 폴더 이름을 입력해 줘! 📁')
+    if (!folderName?.trim()) return
+    if (await addResource({ category: 'special', file_type: folderName.trim(), title: FOLDER_PLACEHOLDER_TITLE, file_url: '' })) alert('폴더 생성 완료! ✨')
   }
 
-  // 🌟 본인이 올린 자료 수정 (archive_files)
-  const startEditResource = (f) => {
-    setEditResource(f)
-    setEditForm({ title: f.title || '', file_url: f.file_url || '', description: f.description || '' })
-  }
-
-  const handleSaveResource = async () => {
-    if (!editForm.title.trim() || !editForm.file_url.trim()) return alert("제목과 링크는 필수야! 🔗")
+  const handleSaveResource = async (form) => {
+    if (!form.title.trim() || !form.file_url.trim()) return alert('제목과 링크는 필수야! 🔗')
     const { error } = await supabase.from('archive_files')
-      .update({ title: editForm.title.trim(), file_url: editForm.file_url.trim(), description: editForm.description })
+      .update({ title: form.title.trim(), file_url: form.file_url.trim(), description: form.description })
       .eq('id', editResource.id)
-    if (!error) {
-      setEditResource(null)
-      fetchData(user.user_metadata.name)
-    } else {
-      alert("수정 실패: " + error.message)
-    }
+    if (error) return alert('수정 실패: ' + error.message)
+    setEditResource(null)
+    loadArchive()
   }
 
-  // 🌟 본인이 올린 자료 삭제 (archive_files)
-  const handleDeleteResource = async (f) => {
-    if (!confirm(`'${f.title}' 자료를 삭제할까요?`)) return
-    const { error } = await supabase.from('archive_files').delete().eq('id', f.id)
-    if (!error) fetchData(user.user_metadata.name)
-    else alert("삭제 실패: " + error.message)
+  const handleDeleteResource = async (row) => {
+    if (!confirm(`'${row.title}' 자료를 삭제할까요?`)) return
+    const { error } = await supabase.from('archive_files').delete().eq('id', row.id)
+    if (error) alert('삭제 실패: ' + error.message)
+    else loadArchive()
   }
 
-  // 🌟 본인이 올린 과거 자료 삭제 (files_metadata)
-  const handleDeletePast = async (f) => {
-    if (!confirm(`'${f.file_name}' 자료를 삭제할까요?`)) return
-    if (f.storage_path) await supabase.storage.from('ig-files').remove([f.storage_path])
-    const { error } = await supabase.from('files_metadata').delete().eq('id', f.id)
-    if (!error) fetchData(user.user_metadata.name)
-    else alert("삭제 실패: " + error.message)
+  const handleDeletePast = async (file) => {
+    if (!confirm(`'${file.file_name}' 자료를 삭제할까요?`)) return
+    const { error } = await deleteSubmittedFile(file)
+    if (error) alert('삭제 실패: ' + error.message)
+    else loadArchive()
   }
 
   if (loading) return <div className="min-h-screen flex items-center justify-center font-black text-slate-400">아카이브 여는 중... 🔄</div>
 
-  const myName = user?.user_metadata?.name
-  const pastSemesters = [...new Set(pastFiles.map(f => f.semester))]
-  const pastWeeks = pastNav.semester ? [...new Set(pastFiles.filter(f => f.semester === pastNav.semester).map(f => f.week))] : []
-  // 🌟 정규/평일세션을 분리해서 표시 (평일 자료가 있는 학기·주차에만 평일 폴더 노출)
-  const catAliases = {
-    proposal: ['proposal', 'plan'], slide: ['slide'], video: ['video'],
-    weekday_slide: ['weekday_slide'], weekday_video: ['weekday_video']
-  }
-  const hasCat = (cat) => pastFiles.some(f => f.semester === pastNav.semester && f.week === pastNav.week && catAliases[cat].includes(f.file_category))
-  const pastCategories = ['proposal', 'slide', 'video', ...(pastNav.week != null ? ['weekday_slide', 'weekday_video'].filter(hasCat) : [])]
-  const finalPastFiles = pastNav.category ? pastFiles.filter(f => f.semester === pastNav.semester && f.week === pastNav.week && (catAliases[pastNav.category] || [pastNav.category]).includes(f.file_category)) : []
-  const specialFolders = [...new Set(archiveFiles.filter(f => f.category === 'special').map(f => f.file_type))]
-  const eduFiles = archiveFiles.filter(f => f.category === 'edu' && f.file_type === eduSection)
-  const templateFiles = archiveFiles.filter(f => f.category === 'template')
-  const specialFiles = archiveFiles.filter(f => f.category === 'special' && f.file_type === specialFolder && f.title !== '--FOLDER--')
-  const timelineSnap = pastNav.semester ? archiveFiles.find(f => f.category === 'timeline' && f.file_type === pastNav.semester) : null
-  const absenceSnap = pastNav.semester ? archiveFiles.find(f => f.category === 'absence' && f.file_type === pastNav.semester) : null
-
-  // 🌟 주제 복구: 학기별 주제 스냅샷 우선, 없으면 파일명의 (주제)에서 추출
-  let topicsSnap = {}
-  if (pastNav.semester) {
-    const ts = archiveFiles.find(f => f.category === 'topics' && f.file_type === pastNav.semester)
-    if (ts) { try { topicsSnap = JSON.parse(ts.description || '{}') } catch { topicsSnap = {} } }
-  }
-  // weekday=true 이면 평일세션 주제 (없으면 null)
-  const topicFor = (w, weekday = false) => {
-    const key = weekday ? `weekday_${w}` : w
-    if (topicsSnap[key]) return topicsSnap[key]
-    if (weekTopics[key]) return weekTopics[key]
-    // 파일명 `(주제)`에서 복구 — 평일은 weekday_* 자료에서만
-    const cats = weekday ? ['weekday_slide', 'weekday_video'] : ['proposal', 'plan', 'slide', 'video']
-    const f = pastFiles.find(pf => pf.semester === pastNav.semester && pf.week === w && cats.includes(pf.file_category) && pf.file_name)
-    if (f) { const m = f.file_name.match(/\(([^)]+)\)/); if (m && m[1] && m[1] !== '자유 주제') return m[1] }
-    return weekday ? null : '자유 주제'
-  }
-
-  const catLabel = (c) => c === 'proposal' || c === 'plan' ? '기획서' : c === 'slide' ? '슬라이드' : c === 'video' ? '발표영상'
-    : c === 'weekday_slide' ? '평일세션 슬라이드' : c === 'weekday_video' ? '평일세션 영상' : '자료'
-  const catIcon = (c) => c === 'proposal' ? '📄' : c === 'slide' ? '🖼️' : c === 'video' ? '🎬' : c === 'weekday_slide' ? '🏖️🖼️' : '🏖️🎬'
-
-  const openTimeline = (snap) => {
-    try { setTimelineView(JSON.parse(snap.description || '[]')) }
-    catch { setTimelineView([]) }
-  }
-  const openAbsence = (snap) => {
-    try { setAbsenceView(JSON.parse(snap.description || '[]')) }
-    catch { setAbsenceView([]) }
-  }
+  const resourceProps = { myName, onAdd: addResource, onEdit: setEditResource, onDelete: handleDeleteResource }
+  const resources = archive.archiveFiles
 
   return (
     <>
@@ -286,13 +153,12 @@ function ArchiveUserPage() {
           </Link>
         </header>
 
-        {/* 🌟 가로 섹션 탭 (한눈에 들어오는 네비게이션) */}
         <div className="max-w-[1200px] mx-auto px-6 md:px-8">
           <div className="flex gap-1 border-b border-slate-200 overflow-x-auto no-scrollbar">
-            {tabs.map(tab => (
+            {TABS.map((tab) => (
               <button
                 key={tab.id}
-                onClick={() => { setActiveTab(tab.id); setPastNav({ semester: null, week: null, category: null }); setSpecialFolder(null); setShowUpload(false) }}
+                onClick={() => { setTabResetKey((key) => key + 1); router.replace(`${pathname}?tab=${tab.id}`, { scroll: false }) }}
                 className={`px-5 py-3 text-sm font-bold shrink-0 border-b-[3px] -mb-px transition-colors ${activeTab === tab.id ? 'border-teal-800 text-teal-800' : 'border-transparent text-slate-400 hover:text-slate-700'}`}
               >
                 <span className="mr-1.5">{tab.icon}</span>{tab.label}
@@ -301,363 +167,211 @@ function ArchiveUserPage() {
           </div>
         </div>
 
-        <main className="max-w-[1200px] mx-auto px-6 md:px-8 mt-10">
-
-          {/* ======================================= */}
-          {/* 1. 과거 자료실 */}
-          {/* ======================================= */}
+        {/* 탭 컴포넌트는 탭을 바꿀 때 언마운트되므로 하위 탐색·업로드 폼 상태가 자동으로 초기화된다 */}
+        <main key={tabResetKey} className="max-w-[1200px] mx-auto px-6 md:px-8 mt-10">
           {activeTab === 'past' && (
-            <div className="space-y-6">
-              {/* 브레드크럼 */}
-              <div className="flex flex-wrap gap-2 text-sm font-bold text-slate-400 border-b border-slate-200 pb-4">
-                <button onClick={() => setPastNav({ semester: null, week: null, category: null })} className="hover:text-teal-800">학기 선택</button>
-                {pastNav.semester && <><span className="opacity-40">/</span><button onClick={() => setPastNav({ ...pastNav, week: null, category: null })} className="hover:text-teal-800">{pastNav.semester}</button></>}
-                {pastNav.week && <><span className="opacity-40">/</span><button onClick={() => setPastNav({ ...pastNav, category: null })} className="hover:text-teal-800">{pastNav.week}주차</button></>}
-                {pastNav.category && <><span className="opacity-40">/</span><span className="text-teal-800">{pastNav.category.startsWith('weekday_') ? '🏖️ ' : ''}{catLabel(pastNav.category)}</span></>}
-              </div>
-
-              {!pastNav.semester && (
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  {pastSemesters.length === 0 ? <p className="col-span-full text-slate-400 font-medium py-10 text-center">보관된 학기가 없습니다.</p> : pastSemesters.map(sem => (
-                    <button key={sem} onClick={() => setPastNav({ ...pastNav, semester: sem })} className="border border-slate-200 hover:border-teal-700 hover:bg-teal-50 p-6 font-extrabold text-lg text-slate-700 hover:text-teal-800 transition-all flex flex-col items-center gap-2">
-                      <span className="text-3xl">📁</span>{sem} 학기
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              {pastNav.semester && !pastNav.week && (timelineSnap || absenceSnap) && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {timelineSnap && (
-                    <button onClick={() => openTimeline(timelineSnap)} className="border border-teal-200 bg-teal-50 hover:bg-teal-100 p-5 flex items-center justify-between transition-colors group">
-                      <span className="flex items-center gap-3 font-extrabold text-teal-800"><span className="text-2xl">📅</span> 타임라인 열람</span>
-                      <span className="text-teal-500 font-black text-sm group-hover:translate-x-1 transition-transform">보기 →</span>
-                    </button>
-                  )}
-                  {absenceSnap && (
-                    <button onClick={() => openAbsence(absenceSnap)} className="border border-teal-200 bg-teal-50 hover:bg-teal-100 p-5 flex items-center justify-between transition-colors group">
-                      <span className="flex items-center gap-3 font-extrabold text-teal-800"><span className="text-2xl">📝</span> 사유서 열람</span>
-                      <span className="text-teal-500 font-black text-sm group-hover:translate-x-1 transition-transform">보기 →</span>
-                    </button>
-                  )}
-                </div>
-              )}
-
-              {pastNav.semester && !pastNav.week && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {pastWeeks.map(w => (
-                    <button key={w} onClick={() => setPastNav({ ...pastNav, week: w })} className="border border-slate-200 hover:border-teal-700 hover:bg-teal-50 p-5 text-left transition-all group flex justify-between items-center">
-                      <div>
-                        <span className="text-[10px] font-black bg-teal-800 text-white px-2 py-0.5 uppercase">Week {w}</span>
-                        <p className="text-base font-extrabold text-slate-800 mt-2">📚 {topicFor(w)}</p>
-                        {topicFor(w, true) && <p className="text-sm font-bold text-teal-700 mt-1">🏖️ {topicFor(w, true)}</p>}
-                      </div>
-                      <span className="text-teal-500 opacity-0 group-hover:opacity-100 transition-opacity font-black text-sm">→</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              {pastNav.semester && pastNav.week && !pastNav.category && (
-                <div className="space-y-5">
-                  <div>
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">📚 정규세션 · {topicFor(pastNav.week)}</p>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                      {pastCategories.filter(c => !c.startsWith('weekday_')).map(cat => (
-                        <button key={cat} onClick={() => setPastNav({ ...pastNav, category: cat })} className="border border-slate-200 hover:border-teal-700 hover:bg-teal-50 p-8 font-extrabold text-lg text-slate-700 hover:text-teal-800 transition-all flex flex-col items-center gap-3">
-                          <span className="text-3xl">{catIcon(cat)}</span>{catLabel(cat)}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  {pastCategories.some(c => c.startsWith('weekday_')) && (
-                    <div>
-                      <p className="text-[10px] font-black text-teal-700 uppercase tracking-widest mb-2">🏖️ 평일세션{topicFor(pastNav.week, true) ? ` · ${topicFor(pastNav.week, true)}` : ''}</p>
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                        {pastCategories.filter(c => c.startsWith('weekday_')).map(cat => (
-                          <button key={cat} onClick={() => setPastNav({ ...pastNav, category: cat })} className="border border-teal-200 bg-teal-50/40 hover:border-teal-700 hover:bg-teal-50 p-8 font-extrabold text-lg text-teal-800 transition-all flex flex-col items-center gap-3">
-                            <span className="text-3xl">{catIcon(cat)}</span>{catLabel(cat)}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {pastNav.category && (
-                <div className="border-t border-slate-200">
-                  {finalPastFiles.length === 0 ? <p className="text-slate-400 font-medium py-12 text-center">등록된 자료가 없습니다.</p> : finalPastFiles.map(f => (
-                    <PastRow key={f.id} f={f} mine={f.uploader === myName} onDelete={() => handleDeletePast(f)} />
-                  ))}
-                </div>
-              )}
-            </div>
+            <PastArchive
+              currentCode={archive.currentCode}
+              files={archive.pastFiles}
+              semesters={archive.semesters}
+              weekRows={archive.weekRows}
+              archiveRows={resources}
+              absenceRows={archive.absenceRows}
+              myName={myName}
+              onDeleteFile={handleDeletePast}
+            />
           )}
-
-          {/* ======================================= */}
-          {/* 2. 교육자료실 */}
-          {/* ======================================= */}
-          {activeTab === 'edu' && (
-            <div className="space-y-6">
-              <SectionHead title="교육자료실" desc="역량별 교육 자료를 드라이브 파일 또는 유튜브 링크로 공유하세요." adding={showUpload} onAdd={() => setShowUpload(v => !v)} />
-
-              <div className="flex gap-2 overflow-x-auto no-scrollbar">
-                {['Insight', 'Graphic', 'Delivery', '기타'].map(sec => (
-                  <button key={sec} onClick={() => setEduSection(sec)} className={`px-5 py-2 text-xs font-bold shrink-0 border transition-colors ${eduSection === sec ? 'bg-teal-800 text-white border-teal-800' : 'bg-white text-slate-500 border-slate-200 hover:border-teal-400'}`}>{sec}</button>
-                ))}
-              </div>
-
-              {showUpload && (
-                <LinkUploadForm form={uploadForm} setForm={setUploadForm} type={uploadType} setType={setUploadType} uploading={isUploading} allowYoutube driveUrl={GOOGLE_DRIVE_FOLDER_URL} onSubmit={() => handleUploadResource('edu', eduSection)} />
-              )}
-
-              <div className="border-t border-slate-200">
-                {eduFiles.length === 0 ? <p className="text-slate-400 font-medium py-12 text-center">{eduSection} 자료가 아직 없습니다.</p> : eduFiles.map(f => (
-                  <ResourceRow key={f.id} f={f} mine={f.uploader_name === myName} onEdit={() => startEditResource(f)} onDelete={() => handleDeleteResource(f)} />
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* ======================================= */}
-          {/* 3. 특별세션 자료실 */}
-          {/* ======================================= */}
-          {activeTab === 'special' && (
-            <div className="space-y-6">
-              {!specialFolder ? (
-                <>
-                  <div className="flex justify-between items-end border-b border-slate-200 pb-4">
-                    <div>
-                      <h2 className="text-2xl font-extrabold text-slate-900">특별세션 자료실</h2>
-                      <p className="text-xs font-medium text-slate-400 mt-1">특강·행사 폴더를 만들고 자료를 모아두세요.</p>
-                    </div>
-                    <button onClick={handleCreateFolder} className="shrink-0 px-5 py-2.5 bg-teal-800 text-white text-xs font-bold hover:bg-teal-900 transition-colors">+ 새 폴더</button>
-                  </div>
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                    {specialFolders.length === 0 ? <p className="col-span-full text-slate-400 font-medium text-center py-12">생성된 세션 폴더가 없습니다.</p> : specialFolders.map(folder => (
-                      <button key={folder} onClick={() => { setSpecialFolder(folder); setShowUpload(false) }} className="border border-slate-200 hover:border-teal-700 hover:bg-teal-50 p-8 font-extrabold text-lg text-slate-700 hover:text-teal-800 transition-all flex flex-col items-center gap-3">
-                        <span className="text-3xl">📂</span>{folder}
-                      </button>
-                    ))}
-                  </div>
-                </>
-              ) : (
-                <>
-                  <button onClick={() => setSpecialFolder(null)} className="text-xs font-black text-slate-400 hover:text-teal-800 uppercase tracking-widest">← 폴더 목록</button>
-                  <SectionHead title={specialFolder} desc="이 세션의 자료를 드라이브 파일 또는 유튜브 링크로 공유하세요." adding={showUpload} onAdd={() => setShowUpload(v => !v)} />
-
-                  {showUpload && (
-                    <LinkUploadForm form={uploadForm} setForm={setUploadForm} type={uploadType} setType={setUploadType} uploading={isUploading} allowYoutube driveUrl={GOOGLE_DRIVE_FOLDER_URL} onSubmit={() => handleUploadResource('special', specialFolder)} />
-                  )}
-
-                  <div className="border-t border-slate-200">
-                    {specialFiles.length === 0 ? <p className="text-slate-400 font-medium py-12 text-center">등록된 자료가 없습니다.</p> : specialFiles.map(f => (
-                      <ResourceRow key={f.id} f={f} mine={f.uploader_name === myName} onEdit={() => startEditResource(f)} onDelete={() => handleDeleteResource(f)} />
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
-          )}
-
-          {/* ======================================= */}
-          {/* 4. 양식 자료실 */}
-          {/* ======================================= */}
+          {activeTab === 'edu' && <EduTab resources={resources} {...resourceProps} />}
+          {activeTab === 'special' && <SpecialTab resources={resources} onCreateFolder={handleCreateFolder} {...resourceProps} />}
           {activeTab === 'template' && (
-            <div className="space-y-6">
-              <SectionHead title="양식 자료실" desc="기획서 양식·학회 로고 등 공통 양식을 드라이브 링크로 공유하세요." adding={showUpload} onAdd={() => setShowUpload(v => !v)} />
-
-              {showUpload && (
-                <LinkUploadForm form={uploadForm} setForm={setUploadForm} type={uploadType} setType={setUploadType} uploading={isUploading} driveUrl={GOOGLE_DRIVE_FOLDER_URL} onSubmit={handleUploadTemplate} />
-              )}
-
-              <div className="border-t border-slate-200">
-                {templateFiles.length === 0 ? <p className="text-slate-400 font-medium py-12 text-center">등록된 양식이 없습니다.</p> : templateFiles.map(f => (
-                  <ResourceRow key={f.id} f={f} mine={f.uploader_name === myName} onEdit={() => startEditResource(f)} onDelete={() => handleDeleteResource(f)} />
-                ))}
-              </div>
-            </div>
+            <ResourceSection
+              title="양식 자료실"
+              desc="기획서 양식·학회 로고 등 공통 양식을 드라이브 링크로 공유하세요."
+              emptyText="등록된 양식이 없습니다."
+              rows={resources.filter((row) => row.category === 'template')}
+              target={{ category: 'template', file_type: 'common' }}
+              {...resourceProps}
+            />
           )}
-
-          {/* ======================================= */}
-          {/* 5. 회칙 열람실 */}
-          {/* ======================================= */}
-          {activeTab === 'rules' && (
-            <div className="space-y-6">
-              <div className="border-b border-slate-200 pb-4 flex flex-col sm:flex-row sm:justify-between sm:items-end gap-3">
-                <div>
-                  <h2 className="text-2xl font-extrabold text-slate-900">인사이트그라피 회칙</h2>
-                  <p className="text-xs font-medium text-slate-400 mt-1">학회 활동의 근간이 되는 공식 회칙입니다. (26.07.04 기준)</p>
-                </div>
-                <a href="/files/IG_%ED%9A%8C%EC%B9%99_260704.docx" download className="shrink-0 px-5 py-2.5 border border-slate-300 text-slate-700 text-xs font-bold hover:border-teal-700 hover:text-teal-800 transition-colors flex items-center gap-2 w-fit">
-                  📄 회칙 원문 다운로드
-                </a>
-              </div>
-              <div className="space-y-6">
-                {(rules.length > 0 ? rules : CLUB_RULES).map(r => (
-                  <div key={r.id} className="border border-slate-200 p-8">
-                    <h3 className="text-lg font-black text-teal-800 mb-4 border-l-[3px] border-teal-800 pl-3">{r.chapter}</h3>
-                    <p className="text-sm font-medium text-slate-700 leading-loose whitespace-pre-wrap">{r.content}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
+          {activeTab === 'rules' && <RulesTab rules={archive.rules.length > 0 ? archive.rules : CLUB_RULES} />}
         </main>
       </div>
 
-      {/* 🌟 지난 학기 타임라인 뷰어 모달 */}
-      {timelineView && (
-        <div className="fixed inset-0 bg-slate-900/60 flex items-center justify-center p-4 z-[110]">
-          <div className="bg-white w-full max-w-2xl max-h-[85vh] flex flex-col shadow-xl border border-slate-200 border-t-[3px] border-t-teal-800">
-            <div className="flex justify-between items-center px-6 py-5 border-b border-slate-200">
-              <h2 className="font-extrabold text-lg text-slate-900 flex items-center gap-2"><span>📅</span> 지난 학기 타임라인</h2>
-              <button onClick={() => setTimelineView(null)} className="px-3 py-1.5 bg-slate-100 text-slate-600 text-xs font-bold hover:bg-slate-900 hover:text-white transition-colors">닫기 ✕</button>
-            </div>
-            <div className="overflow-y-auto p-6">
-              {timelineView.length === 0 ? (
-                <p className="text-slate-400 font-medium text-center py-12">보관된 일정이 없습니다.</p>
-              ) : (
-                <div className="border-t border-slate-200">
-                  {timelineView.map((ev, i) => (
-                    <div key={i} className="flex items-start gap-4 py-3 border-b border-slate-100">
-                      <span className="shrink-0 text-[10px] font-black bg-teal-800 text-white px-2 py-0.5 mt-0.5 w-14 text-center">{ev.type === 'regular' ? `W${ev.week || '?'}` : ev.type === 'special' ? '특별' : '기타'}</span>
-                      <div className="min-w-0 flex-1">
-                        <p className={`text-sm font-bold ${ev.is_break ? 'text-slate-400 line-through' : 'text-slate-800'}`}>{ev.title}</p>
-                        {ev.description && <p className="text-xs text-slate-400 font-medium mt-0.5">{ev.description}</p>}
-                      </div>
-                      <span className="shrink-0 text-xs font-bold text-slate-400">{ev.date_display}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 🌟 지난 학기 사유서 뷰어 모달 */}
-      {absenceView && (
-        <div className="fixed inset-0 bg-slate-900/60 flex items-center justify-center p-4 z-[110]">
-          <div className="bg-white w-full max-w-2xl max-h-[85vh] flex flex-col shadow-xl border border-slate-200 border-t-[3px] border-t-teal-800">
-            <div className="flex justify-between items-center px-6 py-5 border-b border-slate-200">
-              <h2 className="font-extrabold text-lg text-slate-900 flex items-center gap-2"><span>📝</span> 지난 학기 사유서</h2>
-              <button onClick={() => setAbsenceView(null)} className="px-3 py-1.5 bg-slate-100 text-slate-600 text-xs font-bold hover:bg-slate-900 hover:text-white transition-colors">닫기 ✕</button>
-            </div>
-            <div className="overflow-y-auto p-6">
-              {absenceView.length === 0 ? (
-                <p className="text-slate-400 font-medium text-center py-12">보관된 사유서가 없습니다.</p>
-              ) : (
-                <div className="border-t border-slate-200">
-                  {absenceView.map((a, i) => (
-                    <div key={i} className="py-3 border-b border-slate-100">
-                      <div className="flex items-center gap-2 mb-1 flex-wrap">
-                        <span className="shrink-0 text-[9px] font-black bg-teal-800 text-white px-2 py-0.5 uppercase">W{a.week ?? '?'}</span>
-                        {a.session_type === 'weekday' && <span className="shrink-0 text-[9px] font-black bg-teal-100 text-teal-800 px-2 py-0.5 uppercase">평일</span>}
-                        <span className="shrink-0 text-[9px] font-black bg-slate-800 text-white px-2 py-0.5 uppercase">{a.type}</span>
-                        <span className="text-sm font-bold text-slate-800">{a.user_name}</span>
-                        <span className="text-xs font-medium text-slate-400">{a.target_date}</span>
-                        {a.status && a.status !== '대기' && <span className="text-[10px] font-bold text-teal-700">· {a.status}</span>}
-                      </div>
-                      <p className="text-xs text-slate-500 font-medium whitespace-pre-wrap">{a.reason}</p>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 🌟 본인 자료 수정 모달 */}
-      {editResource && (
-        <div className="fixed inset-0 bg-slate-900/60 flex items-center justify-center p-4 z-[110]">
-          <div className="bg-white p-8 w-full max-w-md shadow-xl border border-slate-200 border-t-[3px] border-t-teal-800">
-            <h2 className="font-extrabold mb-6 text-lg text-slate-900">내 자료 수정</h2>
-            <div className="space-y-4">
-              <div>
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">제목</label>
-                <input type="text" value={editForm.title} onChange={e => setEditForm({ ...editForm, title: e.target.value })} className="w-full border border-slate-300 p-3 font-bold text-sm outline-none focus:border-teal-600" />
-              </div>
-              <div>
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">링크</label>
-                <input type="text" value={editForm.file_url} onChange={e => setEditForm({ ...editForm, file_url: e.target.value })} className="w-full border border-slate-300 p-3 font-bold text-sm outline-none focus:border-teal-600 text-teal-700" />
-              </div>
-              <div>
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">설명 (선택)</label>
-                <input type="text" value={editForm.description} onChange={e => setEditForm({ ...editForm, description: e.target.value })} className="w-full border border-slate-300 p-3 font-bold text-sm outline-none focus:border-teal-600" />
-              </div>
-            </div>
-            <div className="flex gap-2 mt-6">
-              <button onClick={handleSaveResource} className="flex-1 py-2.5 bg-teal-800 text-white font-bold text-xs hover:bg-teal-900 transition-colors">저장</button>
-              <button onClick={() => setEditResource(null)} className="flex-1 py-2.5 bg-slate-100 text-slate-600 font-bold text-xs hover:bg-slate-200 transition-colors">취소</button>
-            </div>
-          </div>
-        </div>
-      )}
+      {editResource && <EditResourceModal resource={editResource} onSave={handleSaveResource} onClose={() => setEditResource(null)} />}
     </>
   )
 }
 
-// 🌟 섹션 헤더 + 등록 토글 버튼
-function SectionHead({ title, desc, adding, onAdd }) {
+function EduTab({ resources, ...resourceProps }) {
+  const [section, setSection] = useState(EDU_SECTIONS[0])
   return (
-    <div className="flex justify-between items-end border-b border-slate-200 pb-4">
-      <div>
-        <h2 className="text-2xl font-extrabold text-slate-900">{title}</h2>
-        <p className="text-xs font-medium text-slate-400 mt-1">{desc}</p>
-      </div>
-      <button onClick={onAdd} className={`shrink-0 px-5 py-2.5 text-xs font-bold transition-colors ${adding ? 'bg-slate-100 text-slate-600 hover:bg-slate-200' : 'bg-teal-800 text-white hover:bg-teal-900'}`}>
-        {adding ? '닫기 ✕' : '+ 자료 등록'}
-      </button>
-    </div>
-  )
-}
-
-// 🌟 링크 업로드 폼 (드라이브 / 유튜브)
-function LinkUploadForm({ form, setForm, type, setType, uploading, onSubmit, allowYoutube, driveUrl }) {
-  const isYt = type === 'youtube'
-  return (
-    <div className="border border-slate-200 bg-slate-50 p-5 space-y-3">
-      {allowYoutube && (
-        <div className="flex gap-2">
-          <button onClick={() => setType('drive')} className={`flex-1 py-2 text-xs font-bold border transition-colors ${type === 'drive' ? 'bg-teal-800 text-white border-teal-800' : 'bg-white text-slate-500 border-slate-200'}`}>📁 구글 드라이브</button>
-          <button onClick={() => setType('youtube')} className={`flex-1 py-2 text-xs font-bold border transition-colors ${isYt ? 'bg-red-600 text-white border-red-600' : 'bg-white text-slate-500 border-slate-200'}`}>🎬 유튜브</button>
+    <ResourceSection
+      title="교육자료실"
+      desc="역량별 교육 자료를 드라이브 파일 또는 유튜브 링크로 공유하세요."
+      emptyText={`${section} 자료가 아직 없습니다.`}
+      rows={resources.filter((row) => row.category === 'edu' && row.file_type === section)}
+      target={{ category: 'edu', file_type: section }}
+      allowYoutube
+      toolbar={(
+        <div className="flex gap-2 overflow-x-auto no-scrollbar">
+          {EDU_SECTIONS.map((item) => (
+            <button key={item} onClick={() => setSection(item)} className={`px-5 py-2 text-xs font-bold shrink-0 border transition-colors ${section === item ? 'bg-teal-800 text-white border-teal-800' : 'bg-white text-slate-500 border-slate-200 hover:border-teal-400'}`}>{item}</button>
+          ))}
         </div>
       )}
-      <div className="flex flex-col sm:flex-row gap-2">
-        {!isYt && (
-          <a href={driveUrl} target="_blank" rel="noopener noreferrer" className="shrink-0 px-4 py-3 bg-white border border-slate-200 hover:border-teal-400 text-slate-700 text-xs font-bold flex items-center justify-center gap-2">📁 드라이브에 올리기</a>
-        )}
-        <input type="text" placeholder="자료 제목" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} className="w-full sm:w-1/3 border border-slate-300 p-3 font-bold text-sm outline-none bg-white focus:border-teal-600" />
-        <input type="text" placeholder={isYt ? "유튜브 공유 링크 붙여넣기!" : "구글 드라이브 링크 붙여넣기!"} value={form.url} onChange={e => setForm({ ...form, url: e.target.value })} className={`flex-1 border border-slate-300 p-3 font-bold text-sm outline-none bg-white ${isYt ? 'text-red-600 focus:border-red-400' : 'text-teal-700 focus:border-teal-600'}`} />
+      {...resourceProps}
+    />
+  )
+}
+
+function SpecialTab({ resources, onCreateFolder, ...resourceProps }) {
+  const [folder, setFolder] = useState(null)
+  const folders = [...new Set(resources.filter((row) => row.category === 'special').map((row) => row.file_type))]
+
+  if (folder) {
+    return (
+      <div className="space-y-6">
+        <button onClick={() => setFolder(null)} className="text-xs font-black text-slate-400 hover:text-teal-800 uppercase tracking-widest">← 폴더 목록</button>
+        <ResourceSection
+          title={folder}
+          desc="이 세션의 자료를 드라이브 파일 또는 유튜브 링크로 공유하세요."
+          emptyText="등록된 자료가 없습니다."
+          rows={resources.filter((row) => row.category === 'special' && row.file_type === folder && row.title !== FOLDER_PLACEHOLDER_TITLE)}
+          target={{ category: 'special', file_type: folder }}
+          allowYoutube
+          {...resourceProps}
+        />
       </div>
-      <div className="flex flex-col sm:flex-row gap-2">
-        <input type="text" placeholder="간단한 설명 (선택)" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} className="flex-1 border border-slate-300 p-3 font-bold text-sm outline-none bg-white focus:border-teal-600" />
-        <button onClick={onSubmit} disabled={uploading} className={`shrink-0 px-8 py-3 text-white text-sm font-bold transition-colors active:scale-95 ${isYt ? 'bg-red-600 hover:bg-red-700' : 'bg-teal-800 hover:bg-teal-900'}`}>
-          {uploading ? '제출 중...' : '등록 🚀'}
-        </button>
+    )
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-end border-b border-slate-200 pb-4">
+        <div>
+          <h2 className="text-2xl font-extrabold text-slate-900">특별세션 자료실</h2>
+          <p className="text-xs font-medium text-slate-400 mt-1">특강·행사 폴더를 만들고 자료를 모아두세요.</p>
+        </div>
+        <button onClick={onCreateFolder} className="shrink-0 px-5 py-2.5 bg-teal-800 text-white text-xs font-bold hover:bg-teal-900 transition-colors">+ 새 폴더</button>
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+        {folders.length === 0 ? <p className="col-span-full text-slate-400 font-medium text-center py-12">생성된 세션 폴더가 없습니다.</p> : folders.map((name) => (
+          <button key={name} onClick={() => setFolder(name)} className="border border-slate-200 hover:border-teal-700 hover:bg-teal-50 p-8 font-extrabold text-lg text-slate-700 hover:text-teal-800 transition-all flex flex-col items-center gap-3">
+            <span className="text-3xl">📂</span>{name}
+          </button>
+        ))}
       </div>
     </div>
   )
 }
 
-// 🌟 자료 행 (archive_files) — 본인 자료면 수정/삭제 노출
-function ResourceRow({ f, mine, onEdit, onDelete }) {
-  const isYt = f.file_url && (f.file_url.includes('youtube.com') || f.file_url.includes('youtu.be'))
+function RulesTab({ rules }) {
+  return (
+    <div className="space-y-6">
+      <div className="border-b border-slate-200 pb-4 flex flex-col sm:flex-row sm:justify-between sm:items-end gap-3">
+        <div>
+          <h2 className="text-2xl font-extrabold text-slate-900">인사이트그라피 회칙</h2>
+          <p className="text-xs font-medium text-slate-400 mt-1">학회 활동의 근간이 되는 공식 회칙입니다. (26.07.04 기준)</p>
+        </div>
+        <a href="/files/IG_%ED%9A%8C%EC%B9%99_260704.docx" download className="shrink-0 px-5 py-2.5 border border-slate-300 text-slate-700 text-xs font-bold hover:border-teal-700 hover:text-teal-800 transition-colors flex items-center gap-2 w-fit">
+          📄 회칙 원문 다운로드
+        </a>
+      </div>
+      <div className="space-y-6">
+        {rules.map((rule) => (
+          <div key={rule.id} className="border border-slate-200 p-8">
+            <h3 className="text-lg font-black text-teal-800 mb-4 border-l-[3px] border-teal-800 pl-3">{rule.chapter}</h3>
+            <p className="text-sm font-medium text-slate-700 leading-loose whitespace-pre-wrap">{rule.content}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// 교육·특별세션·양식 자료실 공통: 섹션 헤더 + 링크 등록 폼 + 자료 목록
+function ResourceSection({ title, desc, emptyText, rows, target, allowYoutube = false, toolbar, myName, onAdd, onEdit, onDelete }) {
+  const [adding, setAdding] = useState(false)
+  const [form, setForm] = useState({ title: '', url: '', description: '' })
+  const [type, setType] = useState('drive')
+  const [uploading, setUploading] = useState(false)
+  const isYt = allowYoutube && type === 'youtube'
+
+  const submit = async () => {
+    const url = form.url.trim()
+    if (!form.title.trim() || !url) return alert('제목과 링크를 모두 입력해 줘! 🔗')
+    if (isYt ? !isYoutubeUrl(url) : !isDriveUrl(url)) {
+      return alert(`올바른 ${isYt ? '유튜브' : '구글 드라이브'} 링크가 아닌 것 같아! 다시 확인해 봐! 🤔`)
+    }
+    setUploading(true)
+    const ok = await onAdd({ ...target, title: form.title, file_url: url, description: form.description })
+    setUploading(false)
+    if (!ok) return
+    alert('자료 등록 완료! 🎉')
+    setForm({ title: '', url: '', description: '' })
+    setAdding(false)
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-end border-b border-slate-200 pb-4">
+        <div>
+          <h2 className="text-2xl font-extrabold text-slate-900">{title}</h2>
+          <p className="text-xs font-medium text-slate-400 mt-1">{desc}</p>
+        </div>
+        <button onClick={() => setAdding((value) => !value)} className={`shrink-0 px-5 py-2.5 text-xs font-bold transition-colors ${adding ? 'bg-slate-100 text-slate-600 hover:bg-slate-200' : 'bg-teal-800 text-white hover:bg-teal-900'}`}>
+          {adding ? '닫기 ✕' : '+ 자료 등록'}
+        </button>
+      </div>
+
+      {toolbar}
+
+      {adding && (
+        <div className="border border-slate-200 bg-slate-50 p-5 space-y-3">
+          {allowYoutube && (
+            <div className="flex gap-2">
+              <button onClick={() => setType('drive')} className={`flex-1 py-2 text-xs font-bold border transition-colors ${!isYt ? 'bg-teal-800 text-white border-teal-800' : 'bg-white text-slate-500 border-slate-200'}`}>📁 구글 드라이브</button>
+              <button onClick={() => setType('youtube')} className={`flex-1 py-2 text-xs font-bold border transition-colors ${isYt ? 'bg-red-600 text-white border-red-600' : 'bg-white text-slate-500 border-slate-200'}`}>🎬 유튜브</button>
+            </div>
+          )}
+          <div className="flex flex-col sm:flex-row gap-2">
+            {!isYt && (
+              <a href={GOOGLE_DRIVE_FOLDER_URL} target="_blank" rel="noopener noreferrer" className="shrink-0 px-4 py-3 bg-white border border-slate-200 hover:border-teal-400 text-slate-700 text-xs font-bold flex items-center justify-center gap-2">📁 드라이브에 올리기</a>
+            )}
+            <input type="text" placeholder="자료 제목" value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} className="w-full sm:w-1/3 border border-slate-300 p-3 font-bold text-sm outline-none bg-white focus:border-teal-600" />
+            <input type="text" placeholder={isYt ? '유튜브 공유 링크 붙여넣기!' : '구글 드라이브 링크 붙여넣기!'} value={form.url} onChange={(event) => setForm({ ...form, url: event.target.value })} className={`flex-1 border border-slate-300 p-3 font-bold text-sm outline-none bg-white ${isYt ? 'text-red-600 focus:border-red-400' : 'text-teal-700 focus:border-teal-600'}`} />
+          </div>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <input type="text" placeholder="간단한 설명 (선택)" value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} className="flex-1 border border-slate-300 p-3 font-bold text-sm outline-none bg-white focus:border-teal-600" />
+            <button onClick={submit} disabled={uploading} className={`shrink-0 px-8 py-3 text-white text-sm font-bold transition-colors active:scale-95 ${isYt ? 'bg-red-600 hover:bg-red-700' : 'bg-teal-800 hover:bg-teal-900'}`}>
+              {uploading ? '제출 중...' : '등록 🚀'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="border-t border-slate-200">
+        {rows.length === 0 ? <p className="text-slate-400 font-medium py-12 text-center">{emptyText}</p> : rows.map((row) => (
+          <ResourceRow key={row.id} row={row} mine={row.uploader_name === myName} onEdit={() => onEdit(row)} onDelete={() => onDelete(row)} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function ResourceRow({ row, mine, onEdit, onDelete }) {
+  const isYt = row.file_url && isYoutubeUrl(row.file_url)
   return (
     <div className="flex items-center justify-between py-4 border-b border-slate-200 hover:bg-slate-50/60 transition-colors group gap-4 px-2">
-      <a href={f.file_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-4 flex-1 min-w-0">
+      <a href={row.file_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-4 flex-1 min-w-0">
         <span className={`shrink-0 text-[9px] font-black px-2 py-1 uppercase tracking-widest ${isYt ? 'bg-red-100 text-red-600' : 'bg-teal-100 text-teal-800'}`}>{isYt ? 'YT' : 'DRIVE'}</span>
         <div className="min-w-0">
-          <h4 className="text-sm font-bold text-slate-800 truncate group-hover:text-teal-800 transition-colors">{f.title}</h4>
-          {f.description && <p className="text-xs text-slate-400 font-medium truncate">{f.description}</p>}
+          <h4 className="text-sm font-bold text-slate-800 truncate group-hover:text-teal-800 transition-colors">{row.title}</h4>
+          {row.description && <p className="text-xs text-slate-400 font-medium truncate">{row.description}</p>}
         </div>
       </a>
       <div className="flex items-center gap-5 shrink-0">
-        <span className="text-xs font-medium text-slate-400 hidden sm:block">{f.uploader_name}</span>
+        <span className="text-xs font-medium text-slate-400 hidden sm:block">{row.uploader_name}</span>
         {mine && (
           <div className="flex gap-3 sm:opacity-0 group-hover:opacity-100 transition-opacity">
             <button onClick={onEdit} className="text-[11px] font-bold text-slate-400 hover:text-teal-800 transition-colors">수정</button>
@@ -669,20 +383,27 @@ function ResourceRow({ f, mine, onEdit, onDelete }) {
   )
 }
 
-// 🌟 과거 자료 행 (files_metadata) — 본인 자료면 삭제 노출
-function PastRow({ f, mine, onDelete }) {
+function EditResourceModal({ resource, onSave, onClose }) {
+  const [form, setForm] = useState({ title: resource.title || '', file_url: resource.file_url || '', description: resource.description || '' })
+  const fields = [
+    { key: 'title', label: '제목' },
+    { key: 'file_url', label: '링크', className: 'text-teal-700' },
+    { key: 'description', label: '설명 (선택)' },
+  ]
   return (
-    <div className="flex items-center justify-between py-4 border-b border-slate-200 hover:bg-slate-50/60 transition-colors group gap-4 px-2">
-      <a href={f.file_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-4 flex-1 min-w-0">
-        <span className="shrink-0 text-[9px] font-black px-2 py-1 uppercase tracking-widest bg-teal-100 text-teal-800">{(f.file_category === 'plan' || f.file_category === 'proposal') ? '기획서' : f.file_category === 'slide' ? '슬라이드' : f.file_category === 'weekday_slide' ? '평일 슬라이드' : f.file_category === 'weekday_video' ? '평일 영상' : '영상'}</span>
-        <h4 className="text-sm font-bold text-slate-800 truncate group-hover:text-teal-800 transition-colors">{f.file_name}</h4>
-      </a>
-      <div className="flex items-center gap-5 shrink-0">
-        <span className="text-xs font-medium text-slate-400 hidden sm:block">{f.uploader}</span>
-        {mine && (
-          <button onClick={onDelete} className="text-[11px] font-bold text-slate-400 hover:text-red-600 transition-colors sm:opacity-0 group-hover:opacity-100">삭제</button>
-        )}
+    <ArchiveModal title="내 자료 수정" onClose={onClose} size="max-w-md">
+      <div className="space-y-4">
+        {fields.map((field) => (
+          <div key={field.key}>
+            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">{field.label}</label>
+            <input type="text" value={form[field.key]} onChange={(event) => setForm({ ...form, [field.key]: event.target.value })} className={`w-full border border-slate-300 p-3 font-bold text-sm outline-none focus:border-teal-600 ${field.className || ''}`} />
+          </div>
+        ))}
       </div>
-    </div>
+      <div className="flex gap-2 mt-6">
+        <button onClick={() => onSave(form)} className="flex-1 py-2.5 bg-teal-800 text-white font-bold text-xs hover:bg-teal-900 transition-colors">저장</button>
+        <button onClick={onClose} className="flex-1 py-2.5 bg-slate-100 text-slate-600 font-bold text-xs hover:bg-slate-200 transition-colors">취소</button>
+      </div>
+    </ArchiveModal>
   )
 }

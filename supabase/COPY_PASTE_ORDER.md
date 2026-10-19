@@ -120,6 +120,22 @@ Get-Content -Raw .\supabase\STEP_10_AUTO_ABSENCE_SYNC.sql | Set-Clipboard
 - `correction_trigger_function_ready`
 - `auto_mark_column_ready`
 
+## 11. 학기 ID 자동 연결
+
+앱이 학기 코드(`semester`)만 넣어 저장한 출석·벌금·파일·발표·점수·사유서 행에 `semester_id`를 자동으로 채운다. 기존 행은 같은 학기 코드로 연결만 하고 삭제·수정하지 않는다. 학기 저장·전환 함수가 `week_topics`를 다시 쓸 때 평일세션 주제가 빠지던 문제도 함께 고친다.
+
+**다음 학기로 전환하기 전에 실행한다.** 학기 ID가 없는 사유서는 실행 시점의 운영 학기로 연결되기 때문이다.
+
+```powershell
+Get-Content -Raw .\supabase\STEP_11_SEMESTER_ID_AUTOFILL.sql | Set-Clipboard
+```
+
+첫 번째 결과에서 각 테이블의 `unlinked`가 0인지 확인한다. (학기 코드가 비어 있는 오래된 점수 행은 남을 수 있다.) 마지막 결과의 세 값이 모두 `true`인지 확인한다.
+
+- `autofill_function_ready`
+- `week_topics_function_ready`
+- `autofill_triggers_ready`
+
 ## 중단 조건
 
 - 어느 단계에서든 빨간색 오류가 나오면 다음 단계로 넘어가지 않는다.

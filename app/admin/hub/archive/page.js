@@ -1,249 +1,281 @@
 'use client'
-import { useState, useEffect } from 'react'
-import { supabase } from '@/lib/supabase'
+
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
+import { ExternalLink, FileText, Pencil, Search, Trash2, X } from 'lucide-react'
+import { supabase } from '@/lib/supabase'
+import { fetchCurrentSemester, parseJson, sortSemestersDesc } from '@/lib/semester'
+import {
+  FILE_CATEGORIES,
+  RESOURCE_CATEGORIES,
+  SNAPSHOT_CATEGORIES,
+  deleteSubmittedFile,
+  fileCategoryLabel,
+  isResourceRow,
+  isSnapshotRow,
+  normalizeFileCategory,
+} from '@/lib/archive'
+import { AdminPage, EmptyState, PageHeader, Panel, StatusBadge } from '@/app/admin/_components/AdminUI'
 
-export default function ArchiveAdmin() {
+const RESOURCE_TONES = { edu: 'teal', special: 'blue', template: 'gray' }
+
+export default function ArchiveAdminPage() {
   const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [currentSemester, setCurrentSemester] = useState('2026-1')
+  const [message, setMessage] = useState('')
+  const [currentCode, setCurrentCode] = useState('')
+  const [semesterNames, setSemesterNames] = useState({})
+  const [pastFiles, setPastFiles] = useState([])
+  const [archiveRows, setArchiveRows] = useState([])
+  const [selectedSemester, setSelectedSemester] = useState('')
+  const [categoryFilter, setCategoryFilter] = useState('all')
+  const [resourceFilter, setResourceFilter] = useState('all')
+  const [query, setQuery] = useState('')
+  const [editTarget, setEditTarget] = useState(null)
 
-  // 1. 회칙 데이터 상태 (장별 배열 구조)
-  const [rules, setRules] = useState([{ id: 'initial-rule', chapter: '제 1장 총칙', content: '' }])
+  const loadArchive = useCallback(async () => {
+    const current = await fetchCurrentSemester()
+    // 학기 전환은 is_archive를 바꾸지 않으므로 "현재 학기가 아닌 파일"도 과거 자료로 본다
+    const pastQuery = supabase.from('files_metadata').select('*').order('week', { ascending: true }).order('created_at', { ascending: true })
+    const [pastRes, archiveRes, semesterRes] = await Promise.all([
+      current.code ? pastQuery.or(`is_archive.eq.true,semester.neq."${current.code}"`) : pastQuery.eq('is_archive', true),
+      supabase.from('archive_files').select('*').order('created_at', { ascending: false }),
+      supabase.from('semesters').select('code, name'),
+    ])
+    const error = pastRes.error || archiveRes.error
+    if (error) setMessage(`아카이브 조회 실패: ${error.message}`)
 
-  // 2. 자료 상태
-  const [archiveFiles, setArchiveFiles] = useState([]) // 교육, 특별 (archive_files)
-  const [pastFiles, setPastFiles] = useState([])       // 과거 자료 (files_metadata)
-  const [pastSemestersCount, setPastSemestersCount] = useState(0)
-
-  // 3. 이름 수정 모달 상태
-  const [editTarget, setEditTarget] = useState(null) // { table: 'archive_files' | 'files_metadata', id: '', title: '' }
-  const [newTitle, setNewTitle] = useState('')
-
-  async function fetchData() {
-    
-    // 1. 현재 학기 로드
-    const { data: configData } = await supabase.from('pr_config').select('value').eq('key', 'current_semester').single()
-    const sem = configData?.value || '2026-1'
-    setCurrentSemester(sem)
-
-    // 2. 회칙 로드 (JSON 배열 복원)
-    const { data: rulesData } = await supabase.from('club_rules').select('content').order('updated_at', { ascending: false }).limit(1)
-    if (rulesData && rulesData.length > 0) {
-      try {
-        const parsed = JSON.parse(rulesData[0].content)
-        if (Array.isArray(parsed)) setRules(parsed)
-        else setRules([{ id: Date.now(), chapter: '제 1장', content: rulesData[0].content }])
-      } catch {
-        setRules([{ id: Date.now(), chapter: '제 1장', content: rulesData[0].content }])
-      }
-    }
-
-    // 3. 교육 & 특별세션 자료 로드
-    const { data: aFiles } = await supabase.from('archive_files').select('*').order('created_at', { ascending: false })
-    if (aFiles) setArchiveFiles(aFiles)
-
-    // 4. 대시보드 과거 자료 로드 (is_archive = true)
-    const { data: pFiles } = await supabase.from('files_metadata').select('*').eq('is_archive', true).order('created_at', { ascending: false })
-    if (pFiles) {
-      setPastFiles(pFiles)
-      const uniqueSems = new Set(pFiles.map(f => f.semester).filter(Boolean))
-      setPastSemestersCount(uniqueSems.size)
-    }
-
+    setCurrentCode(current.code)
+    setSemesterNames(Object.fromEntries((semesterRes.data || []).map((row) => [row.code, row.name || row.code])))
+    setPastFiles(pastRes.data || [])
+    setArchiveRows(archiveRes.data || [])
     setLoading(false)
-  }
-
-  useEffect(() => {
-    void Promise.resolve().then(fetchData)
   }, [])
 
-  // --- 회칙 관리 로직 ---
-  const addRuleChapter = () => {
-    setRules([...rules, { id: Date.now(), chapter: `제 ${rules.length + 1}장`, content: '' }])
-  }
-  
-  const removeRuleChapter = (id) => {
-    if(!confirm('이 장을 삭제할까요?')) return
-    setRules(rules.filter(r => r.id !== id))
+  useEffect(() => {
+    let active = true
+    Promise.resolve().then(() => active && loadArchive())
+    return () => { active = false }
+  }, [loadArchive])
+
+  const semesterCodes = useMemo(() => sortSemestersDesc([...new Set(pastFiles.map((file) => file.semester).filter(Boolean))]), [pastFiles])
+  const activeSemester = semesterCodes.includes(selectedSemester) ? selectedSemester : semesterCodes[0] || ''
+  const semesterFiles = useMemo(() => pastFiles.filter((file) => file.semester === activeSemester), [pastFiles, activeSemester])
+  const semesterCategories = useMemo(() => Object.keys(FILE_CATEGORIES).filter((category) => semesterFiles.some((file) => normalizeFileCategory(file.file_category) === category)), [semesterFiles])
+
+  const normalizedQuery = query.trim().toLowerCase()
+  const matchesQuery = (...values) => !normalizedQuery || values.some((value) => String(value || '').toLowerCase().includes(normalizedQuery))
+
+  const visibleFiles = semesterFiles.filter((file) => (categoryFilter === 'all' || normalizeFileCategory(file.file_category) === categoryFilter) && matchesQuery(file.file_name, file.uploader))
+  const resources = archiveRows.filter(isResourceRow)
+  const visibleResources = resources.filter((row) => (resourceFilter === 'all' || row.category === resourceFilter) && matchesQuery(row.title, row.uploader_name, row.file_type))
+  const snapshots = archiveRows.filter(isSnapshotRow).sort((a, b) => String(b.file_type).localeCompare(String(a.file_type)))
+
+  async function deleteFile(file) {
+    if (!confirm(`'${file.file_name}'을 삭제할까요? 제출 기록이 영구 삭제됩니다.`)) return
+    const { error } = await deleteSubmittedFile(file)
+    setMessage(error ? `삭제 실패: ${error.message}` : '제출 자료를 삭제했습니다.')
+    if (!error) loadArchive()
   }
 
-  const updateRule = (id, field, value) => {
-    setRules(rules.map(r => r.id === id ? { ...r, [field]: value } : r))
+  async function deleteResource(row) {
+    if (!confirm(`'${row.title}' 자료를 삭제할까요?`)) return
+    const { error } = await supabase.from('archive_files').delete().eq('id', row.id)
+    setMessage(error ? `삭제 실패: ${error.message}` : '공용 자료를 삭제했습니다.')
+    if (!error) loadArchive()
   }
 
-  const handleSaveRules = async () => {
-    setSaving(true)
-    const { error } = await supabase.from('club_rules').insert([{ content: JSON.stringify(rules), last_editor: 'Admin' }])
-    if (!error) alert('회칙이 성공적으로 업데이트되었습니다! 📜')
-    else alert('회칙 저장 실패: ' + error.message)
-    setSaving(false)
+  async function saveName(name) {
+    if (!name.trim()) return
+    const update = editTarget.table === 'archive_files' ? { title: name.trim() } : { file_name: name.trim() }
+    const { error } = await supabase.from(editTarget.table).update(update).eq('id', editTarget.id)
+    setMessage(error ? `이름 수정 실패: ${error.message}` : '이름을 수정했습니다.')
+    if (error) return
+    setEditTarget(null)
+    loadArchive()
   }
-
-  // --- 파일 관리 로직 ---
-  const handleDeleteFile = async (table, id) => {
-    if (!confirm('이 자료를 목록에서 삭제할까요? (DB에서 영구 삭제됨)')) return
-    const { error } = await supabase.from(table).delete().eq('id', id)
-    if (!error) fetchData()
-  }
-
-  const handleSaveEditName = async () => {
-    if (!newTitle.trim()) return alert("이름을 입력해 주세요.")
-    
-    const updateData = editTarget.table === 'archive_files' ? { title: newTitle } : { file_name: newTitle }
-    const { error } = await supabase.from(editTarget.table).update(updateData).eq('id', editTarget.id)
-    
-    if (!error) {
-      alert('이름이 성공적으로 수정되었습니다! ✨')
-      setEditTarget(null)
-      fetchData()
-    } else alert('수정 실패: ' + error.message)
-  }
-
-  if (loading) return <div className="p-10 text-center font-black text-slate-500 min-h-screen flex items-center justify-center">아카이브 관리소 여는 중... 🔄</div>
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans p-6 md:p-12 pb-32">
-      <div className="max-w-[1500px] mx-auto space-y-12">
-        
-        {/* 상단 헤더 */}
-        <header className="flex flex-col md:flex-row md:justify-between md:items-end gap-4 border-b border-slate-200 pb-6">
-          <div>
-            <Link href="/admin/hub" className="text-xs font-black text-slate-400 hover:text-teal-600 uppercase tracking-widest mb-2 block transition-colors">← Back to Hub</Link>
-            <h1 className="text-4xl font-black uppercase tracking-tighter text-slate-800 flex items-center gap-3">
-              <span className="text-4xl">🗄️</span> Archive Manager
-            </h1>
-            <p className="text-xs font-bold text-slate-500 mt-2">교육 자료 관리, 과거 기록 보존, 회칙 에디터를 통합 관리하세요.</p>
-          </div>
-          <div className="bg-teal-100 text-teal-700 px-6 py-3 rounded-none font-black text-sm uppercase shadow-sm">
-            현재 학기: {currentSemester}
-          </div>
-        </header>
+    <AdminPage>
+      <PageHeader
+        eyebrow="Archive"
+        title="아카이브"
+        description={`현재 학기(${currentCode || '미지정'})를 제외한 학기의 제출 자료와 공용 자료실을 관리합니다. 학기를 전환하면 이전 학기 자료가 자동으로 이곳에 모입니다.`}
+        actions={
+          <Link href="/admin/hub/rules-doc" className="inline-flex min-h-10 items-center gap-2 rounded-md border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 hover:border-teal-300 hover:text-teal-800">
+            <FileText className="h-4 w-4" aria-hidden="true" />
+            회칙 문서 편집
+          </Link>
+        }
+      />
 
-        {/* 🌟 2단 레이아웃 구성 */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
-          
-          {/* [좌측 열] 자료 관리 섹션 */}
-          <div className="flex flex-col gap-8">
-            
-            {/* 1. 현재 교육/특별세션 자료실 관리 */}
-            <div className="bg-slate-900 p-8 rounded-none shadow-sm border border-slate-800 flex flex-col min-h-[400px] max-h-[500px]">
-              <div className="border-b border-slate-700 pb-4 mb-6">
-                <h2 className="text-xl font-black text-white flex items-center gap-2">📘 교육 및 특별세션 자료 관리</h2>
-                <p className="text-[10px] text-slate-400 font-bold mt-2 leading-tight">유저 아카이브 페이지에서 업로드된 자료들의 이름을 수정하거나 삭제할 수 있습니다.</p>
-              </div>
-              <div className="flex-1 space-y-3 overflow-y-auto pr-2 no-scrollbar">
-                {archiveFiles.length === 0 ? <p className="text-slate-500 font-bold text-sm text-center py-10">등록된 자료가 없습니다.</p> : archiveFiles.map(f => (
-                  <div key={f.id} className="bg-slate-800 p-4 rounded-none flex flex-col gap-2 group border border-slate-700 hover:border-teal-500 transition-all">
-                    <div className="flex justify-between items-start">
-                      <div className="flex gap-2">
-                        <span className={`text-[9px] font-black px-2 py-0.5 rounded uppercase ${f.category === 'edu' ? 'bg-teal-900 text-teal-300' : 'bg-teal-900 text-teal-300'}`}>
-                          {f.category === 'edu' ? '교육' : '특별'}
-                        </span>
-                        <span className="text-[9px] font-black text-slate-400 bg-slate-900 px-2 py-0.5 rounded">W{f.week}</span>
-                      </div>
-                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button onClick={() => { setEditTarget({ table: 'archive_files', id: f.id, title: f.title }); setNewTitle(f.title); }} className="text-[9px] font-black bg-teal-900/50 text-teal-300 px-2 py-1 rounded hover:bg-teal-500 hover:text-white">수정</button>
-                        <button onClick={() => handleDeleteFile('archive_files', f.id)} className="text-[9px] font-black bg-red-900/50 text-red-400 px-2 py-1 rounded hover:bg-red-500 hover:text-white">삭제</button>
-                      </div>
-                    </div>
-                    <p className="text-sm font-black text-white truncate pr-2">{f.title}</p>
-                  </div>
+      {message && <div className={`mb-4 rounded-md border px-4 py-3 text-sm font-semibold ${message.includes('실패') ? 'border-red-200 bg-red-50 text-red-700' : 'border-teal-200 bg-teal-50 text-teal-800'}`}>{message}</div>}
+
+      <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <Stat label="보관 학기" value={`${semesterCodes.length}개`} />
+        <Stat label="지난 학기 제출 자료" value={`${pastFiles.length}건`} />
+        <Stat label="공용 자료" value={`${resources.length}건`} />
+        <Stat label="학기 스냅샷" value={`${snapshots.length}건`} />
+      </div>
+
+      <label className="mb-5 flex h-10 max-w-md items-center gap-2 rounded-md border border-slate-200 bg-white px-3 focus-within:border-teal-600">
+        <Search className="h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
+        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="파일명·제출자·자료명 검색" className="h-full w-full bg-transparent text-sm text-slate-900 outline-none" />
+      </label>
+
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_420px]">
+        <Panel title="지난 학기 제출 자료" description="기획서·슬라이드·발표영상 제출 기록입니다. 유저 아카이브의 과거 자료실에 그대로 표시됩니다.">
+          {loading ? (
+            <div className="px-4 py-10 text-center text-sm text-slate-400">불러오는 중입니다.</div>
+          ) : semesterCodes.length === 0 ? (
+            <EmptyState title="보관된 학기가 없습니다." />
+          ) : (
+            <>
+              <div className="flex flex-wrap gap-2 border-b border-slate-100 px-4 py-3 sm:px-5">
+                {semesterCodes.map((code) => (
+                  <Chip key={code} active={code === activeSemester} onClick={() => { setSelectedSemester(code); setCategoryFilter('all') }}>
+                    {semesterNames[code] || code}
+                    <span className="ml-1.5 text-[10px] opacity-70">{pastFiles.filter((file) => file.semester === code).length}</span>
+                  </Chip>
                 ))}
               </div>
-            </div>
-
-            {/* 2. 과거 자료 보관소 관리 */}
-            <div className="bg-slate-800 p-8 rounded-none shadow-sm border border-slate-700 flex flex-col min-h-[400px] max-h-[600px]">
-              <div className="border-b border-slate-600 pb-6 mb-6">
-                <h2 className="text-xl font-black text-white flex items-center gap-2">📦 과거 자료 보관소</h2>
-                <div className="flex items-center gap-3 mt-3">
-                  <span className="text-[10px] font-black bg-slate-900 text-emerald-400 px-3 py-1 rounded-none">보관 중인 학기: {pastSemestersCount}개</span>
-                  <span className="text-[10px] font-black bg-slate-900 text-teal-400 px-3 py-1 rounded-none">총 보관 파일: {pastFiles.length}개</span>
-                </div>
-                <p className="text-[10px] text-slate-400 font-bold mt-2 leading-tight">대시보드에서 학기 마감 시 넘어온 자료들입니다. 유튜브 링크나 파일 이름을 수정할 수 있습니다.</p>
-              </div>
-              <div className="flex-1 space-y-3 overflow-y-auto pr-2 no-scrollbar">
-                {pastFiles.length === 0 ? <p className="text-slate-500 font-bold text-sm text-center py-10">보관된 과거 자료가 없습니다.</p> : pastFiles.map(f => (
-                  <div key={f.id} className="bg-slate-900 p-4 rounded-none flex flex-col gap-2 group border border-slate-700 hover:border-emerald-500 transition-all">
-                    <div className="flex justify-between items-start">
-                      <div className="flex gap-2">
-                        <span className="text-[9px] font-black bg-emerald-900/50 text-emerald-300 px-2 py-0.5 rounded">{f.semester}</span>
-                        <span className="text-[9px] font-black text-slate-400 bg-slate-800 px-2 py-0.5 rounded uppercase">{f.file_category} / W{f.week}</span>
-                      </div>
-                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button onClick={() => { setEditTarget({ table: 'files_metadata', id: f.id, title: f.file_name }); setNewTitle(f.file_name); }} className="text-[9px] font-black bg-teal-900/50 text-teal-300 px-2 py-1 rounded hover:bg-teal-500 hover:text-white">이름수정</button>
-                        <button onClick={() => handleDeleteFile('files_metadata', f.id)} className="text-[9px] font-black bg-red-900/50 text-red-400 px-2 py-1 rounded hover:bg-red-500 hover:text-white">삭제</button>
-                      </div>
-                    </div>
-                    <p className="text-xs font-black text-slate-200 truncate pr-2">{f.file_name}</p>
-                  </div>
+              <div className="flex flex-wrap gap-1.5 border-b border-slate-100 px-4 py-2.5 sm:px-5">
+                <Chip small active={categoryFilter === 'all'} onClick={() => setCategoryFilter('all')}>전체</Chip>
+                {semesterCategories.map((category) => (
+                  <Chip small key={category} active={categoryFilter === category} onClick={() => setCategoryFilter(category)}>{fileCategoryLabel(category)}</Chip>
                 ))}
               </div>
-            </div>
-
-          </div>
-
-          {/* [우측 열] 회칙 에디터 (화면 전체 높이 활용) */}
-          <div className="bg-white p-8 rounded-none shadow-sm border border-slate-200 flex flex-col h-full sticky top-8 min-h-[85vh]">
-            <div className="flex justify-between items-end mb-6 border-b border-slate-100 pb-4 shrink-0">
-              <div>
-                <h2 className="text-2xl font-black text-slate-800">📜 회칙 에디터</h2>
-                <p className="text-[10px] font-bold text-slate-400 mt-1">장을 추가하여 구조적으로 작성하세요.</p>
-              </div>
-              <button onClick={handleSaveRules} disabled={saving} className="bg-emerald-500 text-white px-5 py-2.5 rounded-none font-black text-xs uppercase tracking-widest hover:bg-emerald-600 transition-colors shadow-sm">
-                {saving ? '저장 중...' : '전체 저장 💾'}
-              </button>
-            </div>
-            
-            <div className="flex-1 space-y-6 overflow-y-auto pr-2 no-scrollbar">
-              {rules.map((rule) => (
-                <div key={rule.id} className="bg-slate-50 p-5 rounded-none border border-slate-100 relative group">
-                  <button onClick={() => removeRuleChapter(rule.id)} className="absolute top-4 right-4 text-red-400 hover:text-red-600 text-xs font-black opacity-0 group-hover:opacity-100 transition-opacity">✕ 삭제</button>
-                  <input 
-                    type="text" 
-                    value={rule.chapter} 
-                    onChange={e => updateRule(rule.id, 'chapter', e.target.value)} 
-                    className="w-3/4 bg-transparent text-lg font-black text-emerald-600 outline-none mb-3 border-b border-transparent focus:border-emerald-200 pb-1"
-                    placeholder="제 1장 총칙"
-                  />
-                  <textarea 
-                    value={rule.content} 
-                    onChange={e => updateRule(rule.id, 'content', e.target.value)} 
-                    className="w-full bg-white p-4 rounded-none font-medium text-slate-600 text-sm outline-none border border-slate-200 focus:border-emerald-400 leading-relaxed min-h-[120px] resize-y" 
-                    placeholder="해당 장의 상세 회칙 내용을 적어주세요."
-                  />
+              {visibleFiles.length === 0 ? <EmptyState title="조건에 맞는 자료가 없습니다." /> : (
+                <div className="max-h-[640px] divide-y divide-slate-100 overflow-y-auto">
+                  {visibleFiles.map((file) => (
+                    <Row
+                      key={file.id}
+                      badge={<><StatusBadge tone={FILE_CATEGORIES[normalizeFileCategory(file.file_category)]?.session === 'weekday' ? 'teal' : 'gray'}>{fileCategoryLabel(file.file_category, { short: true })}</StatusBadge><span className="w-9 text-[11px] font-bold text-slate-400">W{file.week ?? '?'}</span></>}
+                      title={file.file_name}
+                      href={file.file_url}
+                      meta={file.uploader}
+                      onRename={() => setEditTarget({ table: 'files_metadata', id: file.id, name: file.file_name })}
+                      onDelete={() => deleteFile(file)}
+                    />
+                  ))}
                 </div>
+              )}
+            </>
+          )}
+        </Panel>
+
+        <div className="space-y-5">
+          <Panel title="공용 자료실" description="학회원이 올린 교육·특별세션·양식 자료입니다.">
+            <div className="flex flex-wrap gap-1.5 border-b border-slate-100 px-4 py-2.5 sm:px-5">
+              <Chip small active={resourceFilter === 'all'} onClick={() => setResourceFilter('all')}>전체</Chip>
+              {Object.entries(RESOURCE_CATEGORIES).map(([category, label]) => (
+                <Chip small key={category} active={resourceFilter === category} onClick={() => setResourceFilter(category)}>{label}</Chip>
               ))}
-              <button onClick={addRuleChapter} className="w-full py-4 border-2 border-dashed border-emerald-200 text-emerald-500 font-black text-xs rounded-none hover:bg-emerald-50 transition-colors">
-                + 새로운 장(Chapter) 추가
-              </button>
             </div>
-          </div>
+            {visibleResources.length === 0 ? <EmptyState title="등록된 자료가 없습니다." /> : (
+              <div className="max-h-[420px] divide-y divide-slate-100 overflow-y-auto">
+                {visibleResources.map((row) => (
+                  <Row
+                    key={row.id}
+                    badge={<StatusBadge tone={RESOURCE_TONES[row.category]}>{RESOURCE_CATEGORIES[row.category]}</StatusBadge>}
+                    title={row.title}
+                    href={row.file_url}
+                    meta={[row.category === 'template' ? null : row.file_type, row.uploader_name].filter(Boolean).join(' · ')}
+                    onRename={() => setEditTarget({ table: 'archive_files', id: row.id, name: row.title })}
+                    onDelete={() => deleteResource(row)}
+                  />
+                ))}
+              </div>
+            )}
+          </Panel>
 
+          <Panel title="학기 스냅샷" description="학기 전환 시 보관한 타임라인·사유서·주차 주제입니다. 유저 아카이브에서 학기별로 열람합니다.">
+            {snapshots.length === 0 ? <EmptyState title="보관된 스냅샷이 없습니다." /> : (
+              <div className="divide-y divide-slate-100">
+                {snapshots.map((row) => (
+                  <div key={row.id} className="flex items-center justify-between gap-3 px-4 py-3 sm:px-5">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <StatusBadge tone="gray">{semesterNames[row.file_type] || row.file_type}</StatusBadge>
+                      <span className="truncate text-sm font-semibold text-slate-800">{SNAPSHOT_CATEGORIES[row.category]}</span>
+                    </div>
+                    <span className="shrink-0 text-xs font-semibold text-slate-500">{snapshotSize(row)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Panel>
         </div>
       </div>
 
-      {/* 🌟 파일명 수정 모달창 */}
-      {editTarget && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-6 z-50">
-          <div className="bg-white p-8 rounded-none w-full max-w-sm shadow-sm">
-            <h2 className="font-black mb-2 text-xl text-slate-800">자료 이름 수정 ✏️</h2>
-            <p className="text-[10px] font-bold text-slate-400 mb-6 uppercase">파일 제목을 변경합니다.</p>
-            <input 
-              type="text" 
-              value={newTitle} 
-              onChange={(e) => setNewTitle(e.target.value)} 
-              className="w-full border-2 border-slate-200 p-4 rounded-none mb-6 font-bold text-sm outline-none focus:border-teal-500 bg-slate-50" 
-              placeholder="새로운 이름 입력"
-            />
-            <div className="flex gap-3">
-              <button onClick={handleSaveEditName} className="flex-1 py-3.5 bg-teal-600 text-white rounded-none font-black text-sm hover:bg-teal-700 shadow-sm">저장 완료</button>
-              <button onClick={() => setEditTarget(null)} className="flex-1 py-3.5 bg-slate-100 text-slate-500 rounded-none font-black text-sm hover:bg-slate-200">취소</button>
-            </div>
-          </div>
+      {editTarget && <RenameDialog initialName={editTarget.name} onSave={saveName} onClose={() => setEditTarget(null)} />}
+    </AdminPage>
+  )
+}
+
+function snapshotSize(row) {
+  const data = parseJson(row.description, null)
+  if (Array.isArray(data)) return `${data.length}건`
+  if (data && typeof data === 'object') return `${Object.values(data).filter(Boolean).length}개 주제`
+  return '-'
+}
+
+function Stat({ label, value }) {
+  return <div className="rounded-md border border-slate-200 bg-white p-4"><p className="text-[11px] font-semibold text-slate-500">{label}</p><p className="mt-1.5 text-xl font-bold text-slate-950">{value}</p></div>
+}
+
+function Chip({ active, onClick, small = false, children }) {
+  return (
+    <button type="button" onClick={onClick} className={`inline-flex items-center rounded-md border font-bold transition-colors ${small ? 'min-h-7 px-2.5 text-[11px]' : 'min-h-8 px-3 text-xs'} ${active ? 'border-teal-700 bg-teal-700 text-white' : 'border-slate-200 bg-white text-slate-600 hover:border-teal-300 hover:text-teal-800'}`}>
+      {children}
+    </button>
+  )
+}
+
+function Row({ badge, title, href, meta, onRename, onDelete }) {
+  return (
+    <div className="group flex items-center gap-3 px-4 py-3 hover:bg-slate-50 sm:px-5">
+      <div className="flex shrink-0 items-center gap-2">{badge}</div>
+      <div className="min-w-0 flex-1">
+        {href ? (
+          <a href={href} target="_blank" rel="noopener noreferrer" className="flex min-w-0 items-center gap-1 text-sm font-semibold text-slate-900 hover:text-teal-800">
+            <span className="truncate">{title}</span>
+            <ExternalLink className="h-3.5 w-3.5 shrink-0 text-slate-300" aria-hidden="true" />
+          </a>
+        ) : <p className="truncate text-sm font-semibold text-slate-900">{title}</p>}
+        {meta && <p className="mt-0.5 truncate text-xs text-slate-500">{meta}</p>}
+      </div>
+      <div className="flex shrink-0 gap-1 sm:opacity-0 sm:group-hover:opacity-100">
+        <IconButton label="이름 수정" onClick={onRename}><Pencil className="h-4 w-4" aria-hidden="true" /></IconButton>
+        <IconButton label="삭제" danger onClick={onDelete}><Trash2 className="h-4 w-4" aria-hidden="true" /></IconButton>
+      </div>
+    </div>
+  )
+}
+
+function IconButton({ label, danger = false, onClick, children }) {
+  return (
+    <button type="button" onClick={onClick} title={label} aria-label={label} className={`grid h-8 w-8 place-items-center rounded-md text-slate-400 ${danger ? 'hover:bg-red-50 hover:text-red-600' : 'hover:bg-teal-50 hover:text-teal-800'}`}>
+      {children}
+    </button>
+  )
+}
+
+function RenameDialog({ initialName, onSave, onClose }) {
+  const [name, setName] = useState(initialName || '')
+  return (
+    <div className="fixed inset-0 z-[70] grid place-items-center bg-slate-950/45 p-4" role="dialog" aria-modal="true" aria-labelledby="rename-title">
+      <form onSubmit={(event) => { event.preventDefault(); onSave(name) }} className="w-full max-w-md rounded-md border border-slate-200 bg-white shadow-xl">
+        <div className="flex min-h-14 items-center justify-between border-b border-slate-200 px-5">
+          <h2 id="rename-title" className="text-base font-bold text-slate-950">이름 수정</h2>
+          <button type="button" onClick={onClose} className="grid h-9 w-9 place-items-center rounded-md text-slate-500 hover:bg-slate-100" aria-label="닫기"><X className="h-5 w-5" aria-hidden="true" /></button>
         </div>
-      )}
+        <div className="p-5">
+          <input autoFocus value={name} onChange={(event) => setName(event.target.value)} className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm text-slate-900 outline-none focus:border-teal-600" />
+        </div>
+        <div className="flex justify-end gap-2 border-t border-slate-200 px-5 py-3">
+          <button type="button" onClick={onClose} className="min-h-10 rounded-md border border-slate-200 px-4 text-sm font-bold text-slate-600">취소</button>
+          <button type="submit" disabled={!name.trim()} className="min-h-10 rounded-md bg-teal-700 px-4 text-sm font-bold text-white hover:bg-teal-800 disabled:opacity-50">저장</button>
+        </div>
+      </form>
     </div>
   )
 }

@@ -1,9 +1,9 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import Link from 'next/link'
 import InternalNav from '@/app/components/InternalNav'
+import { fetchCurrentSemester, fetchSemesterMembers, formatDateTime, groupDeadlines, memberGroup, nearestDeadlineWeek, submissionTopic } from '@/lib/semester'
 
 export default function VideoRoom() {
   const router = useRouter()
@@ -15,11 +15,10 @@ export default function VideoRoom() {
   const [targetWeek, setTargetWeek] = useState(1) 
   
   const [activeMembers, setActiveMembers] = useState([]) 
-  const [uploadTargets, setUploadTargets] = useState([]) // 🌟 팀/개인 단위 타겟 리스트
   const [selectedTargetId, setSelectedTargetId] = useState('') 
   const [ytUrl, setYtUrl] = useState('') 
 
-  const [currentSemester, setCurrentSemester] = useState('2026-1')
+  const [currentSemester, setCurrentSemester] = useState('')
   const [totalWeeks, setTotalWeeks] = useState(12) 
   const [deadlines, setDeadlines] = useState({})
   const [weekTopics, setWeekTopics] = useState({}) 
@@ -48,12 +47,9 @@ export default function VideoRoom() {
 
   // 🌟 유저가 배정된 평일세션 조의 설정 { date, videoDl, fbDl, ... }
   const myWeekdayTeam = (week) => {
-    const uploaderName = user?.user_metadata?.name
-    const g = weeklySetup[week]?.weekdayMembers?.[uploaderName] ?? weeklySetup[week]?.members?.[uploaderName]
-    const grp = (g && g !== '미정' && g !== '결석') ? Number(g) : null
+    const grp = memberGroup(weeklySetup, week, user?.user_metadata?.name, 'weekday')
     return grp ? (weeklySetup[week]?.weekday?.[grp] || null) : null
   }
-  const myWeekdayDate = (week) => myWeekdayTeam(week)?.date || null
   // 등록 마감: 평일=조별 영상 마감(미설정 시 진행일 자정), 정규=영상 마감
   const activeUploadDeadline = (week) => {
     if (sessionMode === 'weekday') {
@@ -65,170 +61,53 @@ export default function VideoRoom() {
     return deadlines[week]?.video || null
   }
 
-  useEffect(() => {
-    const checkUser = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) { router.push('/login') }
-      else { setUser(session.user); fetchFiles(); fetchSystemData(); }
-    }
-    checkUser()
+  // 이번 학기 제출물만 본다. 학기 전환은 is_archive를 바꾸지 않으므로 학기 코드로 거른다.
+  const fetchFiles = useCallback(async (semesterCode) => {
+    const { data } = await supabase
+      .from('files_metadata')
+      .select('*')
+      .in('file_category', ['video', 'weekday_video'])
+      .eq('semester', semesterCode)
+      .eq('is_archive', false)
+      .order('created_at', { ascending: false })
+    if (data) setFiles(data)
+  }, [])
+
+  const fetchSystemData = useCallback(async () => {
+    const semester = await fetchCurrentSemester()
+    setCurrentSemester(semester.code)
+    setSemesterType(semester.type)
+    setWeekTopics(semester.weekTopics)
+    setTotalWeeks(semester.totalWeeks)
+    setWeeklySetup(semester.weeklySetup)
+
+    const { data: dlData } = await supabase.from('pr_deadlines').select('*')
+    const initialWeek = nearestDeadlineWeek(dlData, 'video')
+    setDeadlines(groupDeadlines(dlData))
+    setSelectedWeek(initialWeek)
+    setTargetWeek(initialWeek)
+    return semester
   }, [])
 
   useEffect(() => {
-    if (user) fetchMembers();
-  }, [user])
-
-  const fetchSystemData = async () => {
-    const { data: configData } = await supabase.from('pr_config').select('*')
-    if (configData) {
-      const sem = configData.find(c => c.key === 'current_semester')?.value
-      const topics = configData.find(c => c.key === 'week_topics')?.value
-      const wks = configData.find(c => c.key === 'total_weeks')?.value
-      const setupStr = configData.find(c => c.key === 'weekly_setup')?.value
-      const sType = configData.find(c => c.key === 'semester_type')?.value
-
-      if (sem) setCurrentSemester(sem)
-      if (sType) setSemesterType(sType)
-      if (topics) setWeekTopics(JSON.parse(topics))
-      if (wks) setTotalWeeks(Number(wks))
-      if (setupStr) setWeeklySetup(JSON.parse(setupStr))
+    const checkUser = async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) { router.push('/login'); return }
+      setUser(session.user)
+      const semester = await fetchSystemData()
+      fetchFiles(semester.code)
+      // 업로드 대상 기본 명단 = 이번 학기 참여 학회원
+      setActiveMembers(await fetchSemesterMembers(semester.id, 'id, name'))
     }
-    
-    const { data: dlData } = await supabase.from('pr_deadlines').select('*')
-    
-    const dlMap = {}
-    let initialWeek = 1
-    let minDiff = Infinity
-    let maxPastWeek = 1
-    const now = new Date()
+    checkUser()
+  }, [router, fetchFiles, fetchSystemData])
 
-    if (dlData) {
-      dlData.forEach(d => {
-        if (!dlMap[d.week]) dlMap[d.week] = {}
-        dlMap[d.week][d.category] = d.deadline_time
+  const refreshFiles = () => fetchFiles(currentSemester)
 
-        if (d.category === 'video' && d.deadline_time) {
-          const dlTime = new Date(d.deadline_time)
-          if (dlTime > now) {
-            const diff = dlTime - now
-            if (diff < minDiff) {
-              minDiff = diff
-              initialWeek = d.week
-            }
-          } else {
-            if (d.week > maxPastWeek) maxPastWeek = d.week
-          }
-        }
-      })
-      if (minDiff === Infinity) initialWeek = maxPastWeek
-    }
-    
-    setDeadlines(dlMap)
-    setSelectedWeek(initialWeek)
-    setTargetWeek(initialWeek)
-  }
-
-  // 🌟 타겟 생성 로직 (Dashboard 세팅의 evalMode 기반으로 팀/개인 렌더링)
-  useEffect(() => {
-    let targets = [];
-    const setup = weeklySetup[targetWeek] || {};
-    const evalMode = setup.evalMode || 'individual'; // 대시보드에서 설정한 모드 (기본은 개인)
-
-    // 🌟 평일세션 모드: 항상 개인 단위 + 평일 전용 조 편성 기준
-    if (sessionMode === 'weekday') {
-      const wdMembers = (setup.weekdayMembers && Object.keys(setup.weekdayMembers).length) ? setup.weekdayMembers : (setup.members || {});
-      Object.keys(wdMembers).forEach(name => {
-        const gId = wdMembers[name];
-        if (gId !== '미정') {
-          targets.push({ id: name, label: name + (gId === '결석' ? ' (불참)' : ` · ${gId}조`), group_id: gId === '결석' ? null : Number(gId) });
-        }
-      });
-      if (targets.length === 0 && activeMembers.length > 0) {
-        targets = activeMembers.map(m => ({ id: m.name, label: m.name, group_id: null }));
-      }
-      targets.sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
-      setUploadTargets(targets);
-      setSelectedTargetId('');
-      return;
-    }
-
-    const mTeams = setup.memberTeams || setup.members || {};
-    const tGroups = setup.teamGroups || setup.groupToCluster || {}; // 개인일 땐 members 값이 조(group)
-
-    if (evalMode === 'team') {
-      // 🌟 [팀 발표 모드]
-      const teamMap = {};
-      const absentMembers = [];
-
-      Object.keys(mTeams).forEach(name => {
-        const t = mTeams[name];
-        if (t === '결석') {
-          absentMembers.push(name);
-        } else if (t !== '미정' && !isNaN(Number(t))) {
-          if (!teamMap[t]) teamMap[t] = [];
-          teamMap[t].push(name);
-        }
-      });
-
-      Object.keys(teamMap).forEach(tId => {
-        targets.push({
-          id: `Team ${tId}`,
-          label: `Team #${tId} (${teamMap[tId].join(', ')})`,
-          group_id: tGroups[tId] || null
-        });
-      });
-      absentMembers.forEach(name => {
-        targets.push({
-          id: name,
-          label: `${name} (결석자 보강)`,
-          group_id: null
-        });
-      });
-      
-    } else {
-      // 🌟 [개인 발표 모드]
-      Object.keys(mTeams).forEach(name => {
-        const gId = mTeams[name];
-        if (gId !== '미정') {
-          targets.push({
-            id: name,
-            label: name + (gId === '결석' ? ' (결석자 보강)' : ''),
-            group_id: gId === '결석' ? null : Number(gId)
-          });
-        }
-      });
-    }
-
-    if (targets.length === 0 && activeMembers.length > 0) {
-      targets = activeMembers.map(m => ({ id: m.name, label: m.name, group_id: null }));
-    }
-
-    targets.sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
-    setUploadTargets(targets);
-    setSelectedTargetId('');
-  }, [targetWeek, weeklySetup, activeMembers, sessionMode]);
-
-  const formatDate = (dateStr) => {
-    if (!dateStr) return '';
-    const d = new Date(dateStr);
-    return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-  }
-
-  const fetchMembers = async () => {
-    const { data: memberData } = await supabase.from('members').select('*').order('name');
-    if (memberData && memberData.length > 0) {
-      const active = memberData.filter(m => m.status === '활동' || m.status === '활동기수' || m.role === '활동기수' || m.is_active === true);
-      setActiveMembers(active.length > 0 ? active : memberData);
-    } else {
-      const { data: profData } = await supabase.from('profiles').select('*').order('name');
-      if (profData) setActiveMembers(profData);
-    }
-  }
-
-  const fetchFiles = async () => {
-    const { data } = await supabase.from('files_metadata').select('*').in('file_category', ['video', 'weekday_video']).eq('is_archive', false).order('created_at', { ascending: false })
-    if (data) setFiles(data)
-  }
+  const uploadTargets = useMemo(
+    () => buildUploadTargets(weeklySetup[targetWeek] || {}, sessionMode, activeMembers),
+    [weeklySetup, targetWeek, sessionMode, activeMembers]
+  )
 
   const handleUpdateFile = async () => {
     if (!newTitle) return
@@ -236,7 +115,7 @@ export default function VideoRoom() {
     if (!error) { 
       alert("파일 이름 수정 완료!"); 
       setEditItem(null); 
-      fetchFiles(); 
+      refreshFiles(); 
     }
   }
 
@@ -244,10 +123,9 @@ export default function VideoRoom() {
     if (!selectedTargetId || !ytUrl.trim()) return alert("업로드 대상과 유튜브 링크를 모두 입력해줘! 🔗")
     
     setUploading(true)
-    const currentTopic = sessionMode === 'weekday'
-      ? (weekTopics[`weekday_${targetWeek}`] || '평일세션')
-      : (weekTopics[targetWeek] || (targetWeek === 0 ? 'OT 및 자유 주제' : '자유 주제'))
+    const currentTopic = submissionTopic(weekTopics, targetWeek, sessionMode)
     const target = uploadTargets.find(t => t.id === selectedTargetId);
+    if (!target) { setUploading(false); return alert("업로드 대상을 다시 선택해줘! 🔗") }
     
     const sessionTag = sessionMode === 'weekday' ? ' [평일세션]' : ''
     const autoTitle = `${targetWeek}W${sessionTag} (${currentTopic}) ${target.id} 발표영상`;
@@ -273,7 +151,7 @@ export default function VideoRoom() {
       setYtUrl(''); 
       setSelectedTargetId(''); 
       setSelectedWeek(targetWeek);
-      fetchFiles(); 
+      refreshFiles(); 
     }
     else { alert("등록 실패: " + error.message); }
     setUploading(false)
@@ -368,12 +246,18 @@ export default function VideoRoom() {
   const handleDeleteFile = async (e, id) => {
     e.stopPropagation();
     if (!confirm("해당 영상을 삭제하시겠습니까?")) return
-    await supabase.from('files_metadata').delete().eq('id', id); fetchFiles();
+    await supabase.from('files_metadata').delete().eq('id', id); refreshFiles(); 
   }
 
   const handleWeekChange = (w) => {
     setSelectedWeek(w);
     setTargetWeek(w);
+    setSelectedTargetId('');
+  }
+
+  const handleSessionModeChange = (mode) => {
+    setSessionMode(mode);
+    setSelectedTargetId('');
   }
 
   if (!user) return <div className="p-8 text-center font-bold text-slate-500">데이터 로딩 중...</div>
@@ -457,10 +341,10 @@ export default function VideoRoom() {
           {/* 🌟 방학학기: 정규/평일 세션 전환 */}
           {semesterType === 'vacation' && (
             <div className="flex border border-slate-300 w-fit">
-              <button onClick={() => setSessionMode('regular')} className={`px-5 py-2 text-xs font-bold transition-colors ${sessionMode === 'regular' ? 'bg-teal-800 text-white' : 'bg-white text-slate-500 hover:text-teal-800'}`}>
+              <button onClick={() => handleSessionModeChange('regular')} className={`px-5 py-2 text-xs font-bold transition-colors ${sessionMode === 'regular' ? 'bg-teal-800 text-white' : 'bg-white text-slate-500 hover:text-teal-800'}`}>
                 📚 정규세션
               </button>
-              <button onClick={() => setSessionMode('weekday')} className={`px-5 py-2 text-xs font-bold transition-colors border-l border-slate-300 ${sessionMode === 'weekday' ? 'bg-teal-800 text-white' : 'bg-white text-slate-500 hover:text-teal-800'}`}>
+              <button onClick={() => handleSessionModeChange('weekday')} className={`px-5 py-2 text-xs font-bold transition-colors border-l border-slate-300 ${sessionMode === 'weekday' ? 'bg-teal-800 text-white' : 'bg-white text-slate-500 hover:text-teal-800'}`}>
                 🏖️ 평일세션
               </button>
             </div>
@@ -480,22 +364,22 @@ export default function VideoRoom() {
               <h2 className="text-xl font-bold text-slate-700 tracking-tight">
                 {sessionMode === 'weekday'
                   ? (weekTopics[`weekday_${targetWeek}`] || '평일세션 주제 미설정')
-                  : (weekTopics[targetWeek] || (targetWeek === 0 ? 'OT 및 자유 주제' : '자유 주제'))}
+                  : submissionTopic(weekTopics, targetWeek)}
               </h2>
             </div>
             
             <div className="flex flex-wrap items-center gap-x-5 gap-y-1 mt-2">
               <p className="text-xs font-medium text-slate-500 flex items-center gap-1.5 whitespace-nowrap">
                 <span className="font-bold text-slate-400">{sessionMode === 'weekday' ? '평일세션 마감 |' : '등록 마감 |'}</span>
-                <span className="text-slate-800">{activeUploadDeadline(targetWeek) ? formatDate(activeUploadDeadline(targetWeek)) : '미설정'}</span>
+                <span className="text-slate-800">{activeUploadDeadline(targetWeek) ? formatDateTime(activeUploadDeadline(targetWeek)) : '미설정'}</span>
               </p>
               <p className="text-xs font-medium text-slate-500 flex items-center gap-1.5 whitespace-nowrap">
                 <span className="font-bold text-slate-400">조원 평가 |</span>
-                <span className="text-slate-800">{getQualitativeDeadline(targetWeek) ? formatDate(getQualitativeDeadline(targetWeek)) : '미설정'}</span>
+                <span className="text-slate-800">{getQualitativeDeadline(targetWeek) ? formatDateTime(getQualitativeDeadline(targetWeek)) : '미설정'}</span>
               </p>
               <p className="text-xs font-medium text-slate-500 flex items-center gap-1.5 whitespace-nowrap">
                 <span className="font-bold text-slate-400">본인 평가 |</span>
-                <span className="text-slate-800">{getSelfDeadline(targetWeek) ? formatDate(getSelfDeadline(targetWeek)) : '미설정'}</span>
+                <span className="text-slate-800">{getSelfDeadline(targetWeek) ? formatDateTime(getSelfDeadline(targetWeek)) : '미설정'}</span>
               </p>
               {sessionMode === 'weekday' && (
                 <p className="text-xs font-bold text-teal-700 break-keep">정량평가 없이 정성·셀프 피드백만 진행합니다.</p>
@@ -592,7 +476,7 @@ export default function VideoRoom() {
                           onOpen={() => handleOpenVideo(file)}
                           onEdit={(e) => { e.stopPropagation(); setEditItem(file); setNewTitle(file.file_name); }}
                           onDelete={(e) => { e.stopPropagation(); handleDeleteFile(e, file.id); }}
-                          formatDate={formatDate}
+                          formatDateTime={formatDateTime}
                         />
                       ))}
                     </div>
@@ -616,7 +500,7 @@ export default function VideoRoom() {
                         onOpen={() => handleOpenVideo(file)}
                         onEdit={(e) => { e.stopPropagation(); setEditItem(file); setNewTitle(file.file_name); }}
                         onDelete={(e) => { e.stopPropagation(); handleDeleteFile(e, file.id); }}
-                        formatDate={formatDate}
+                        formatDateTime={formatDateTime}
                       />
                     ))}
                   </div>
@@ -675,12 +559,12 @@ export default function VideoRoom() {
                 <div className="flex flex-col sm:flex-row gap-2 mt-3">
                   {getQualitativeDeadline(viewingFile.week) && (
                     <span className="text-[10px] font-bold text-red-600 border border-red-200 bg-red-50 px-2 py-0.5 rounded-sm w-fit">
-                      조원 마감: {formatDate(getQualitativeDeadline(viewingFile.week))}
+                      조원 마감: {formatDateTime(getQualitativeDeadline(viewingFile.week))}
                     </span>
                   )}
                   {deadlines[viewingFile.week]?.video_comment && (
                     <span className="text-[10px] font-bold text-red-600 border border-red-200 bg-red-50 px-2 py-0.5 rounded-sm w-fit">
-                      본인 마감: {formatDate(deadlines[viewingFile.week].video_comment)}
+                      본인 마감: {formatDateTime(deadlines[viewingFile.week].video_comment)}
                     </span>
                   )}
                 </div>
@@ -750,7 +634,7 @@ export default function VideoRoom() {
   )
 }
 
-function VideoListItem({ file, onOpen, onEdit, onDelete, formatDate }) {
+function VideoListItem({ file, onOpen, onEdit, onDelete, formatDateTime }) {
   return (
     <div 
       className="flex flex-col sm:flex-row sm:items-center justify-between py-4 px-6 border-b border-slate-100 hover:bg-red-50/30 transition-colors cursor-pointer group gap-4 last:border-b-0" 
@@ -770,7 +654,7 @@ function VideoListItem({ file, onOpen, onEdit, onDelete, formatDate }) {
       </div>
 
       <div className="flex items-center justify-between sm:justify-end gap-6 shrink-0 w-full sm:w-auto pl-14 sm:pl-0">
-        <span className="text-xs font-medium text-slate-400">{formatDate(file.created_at)}</span>
+        <span className="text-xs font-medium text-slate-400">{formatDateTime(file.created_at)}</span>
         <div className="flex items-center gap-3 sm:opacity-0 group-hover:opacity-100 transition-opacity">
           <button onClick={(e) => { e.stopPropagation(); onEdit(e); }} className="text-[11px] font-bold text-slate-400 hover:text-red-600 transition-colors">수정</button>
           <button onClick={(e) => { e.stopPropagation(); onDelete(e); }} className="text-[11px] font-bold text-slate-400 hover:text-red-600 transition-colors">삭제</button>
@@ -880,4 +764,80 @@ function FeedbackBox({ title, plus, minus }) {
       </div>
     </div>
   )
+}
+
+// 🌟 업로드 대상 목록 (Dashboard 세팅의 evalMode 기반으로 팀/개인 렌더링)
+function buildUploadTargets(setup, sessionMode, activeMembers) {
+  let targets = [];
+  const evalMode = setup.evalMode || 'individual'; // 대시보드에서 설정한 모드 (기본은 개인)
+
+  // 🌟 평일세션 모드: 항상 개인 단위 + 평일 전용 조 편성 기준
+  if (sessionMode === 'weekday') {
+    const wdMembers = (setup.weekdayMembers && Object.keys(setup.weekdayMembers).length) ? setup.weekdayMembers : (setup.members || {});
+    Object.keys(wdMembers).forEach(name => {
+      const gId = wdMembers[name];
+      if (gId !== '미정') {
+        targets.push({ id: name, label: name + (gId === '결석' ? ' (불참)' : ` · ${gId}조`), group_id: gId === '결석' ? null : Number(gId) });
+      }
+    });
+    if (targets.length === 0 && activeMembers.length > 0) {
+      targets = activeMembers.map(m => ({ id: m.name, label: m.name, group_id: null }));
+    }
+    targets.sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
+    return targets;
+  }
+
+  const mTeams = setup.memberTeams || setup.members || {};
+  const tGroups = setup.teamGroups || setup.groupToCluster || {}; // 개인일 땐 members 값이 조(group)
+
+  if (evalMode === 'team') {
+    // 🌟 [팀 발표 모드]
+    const teamMap = {};
+    const absentMembers = [];
+
+    Object.keys(mTeams).forEach(name => {
+      const t = mTeams[name];
+      if (t === '결석') {
+        absentMembers.push(name);
+      } else if (t !== '미정' && !isNaN(Number(t))) {
+        if (!teamMap[t]) teamMap[t] = [];
+        teamMap[t].push(name);
+      }
+    });
+
+    Object.keys(teamMap).forEach(tId => {
+      targets.push({
+        id: `Team ${tId}`,
+        label: `Team #${tId} (${teamMap[tId].join(', ')})`,
+        group_id: tGroups[tId] || null
+      });
+    });
+    absentMembers.forEach(name => {
+      targets.push({
+        id: name,
+        label: `${name} (결석자 보강)`,
+        group_id: null
+      });
+    });
+    
+  } else {
+    // 🌟 [개인 발표 모드]
+    Object.keys(mTeams).forEach(name => {
+      const gId = mTeams[name];
+      if (gId !== '미정') {
+        targets.push({
+          id: name,
+          label: name + (gId === '결석' ? ' (결석자 보강)' : ''),
+          group_id: gId === '결석' ? null : Number(gId)
+        });
+      }
+    });
+  }
+
+  if (targets.length === 0 && activeMembers.length > 0) {
+    targets = activeMembers.map(m => ({ id: m.name, label: m.name, group_id: null }));
+  }
+
+  targets.sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
+  return targets;
 }

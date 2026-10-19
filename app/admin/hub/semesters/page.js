@@ -5,6 +5,7 @@ import { CalendarRange, Check, ChevronRight, Plus, Save, X } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAdminContext } from '@/app/admin/_components/AdminShell'
 import { AdminPage, EmptyState, PageHeader, Panel, StatusBadge } from '@/app/admin/_components/AdminUI'
+import { saveSemesterSnapshots } from '@/lib/archive'
 
 const semesterStatus = {
   draft: { label: '준비', tone: 'gray' },
@@ -199,10 +200,16 @@ export default function SemesterManagerPage() {
 
   async function activateSemester() {
     if (!draft || draft.status === 'active') return
-    if (!confirm(`${draft.name}을 현재 운영 학기로 전환할까요? 기존 운영 학기는 종료 상태가 됩니다.`)) return
+    if (!confirm(`${draft.name}을 현재 운영 학기로 전환할까요? 기존 운영 학기는 종료 상태가 되고, 타임라인·주차 주제는 아카이브에 학기별로 보관됩니다.`)) return
     setSaving(true)
     setMessage('')
     try {
+      // 전환하면 pr_config의 주제가 새 학기 것으로 바뀌므로, 그 전에 기존 학기 기록을 아카이브에 남긴다
+      const outgoing = semesters.find((item) => item.status === 'active')
+      if (outgoing) {
+        const { error: snapshotError } = await saveSemesterSnapshots(outgoing.code)
+        if (snapshotError) throw snapshotError
+      }
       const { data: activateData, error: activateError } = await supabase.rpc('admin_activate_semester', { p_semester_id: draft.id })
       if (activateError) throw activateError
       const activated = Array.isArray(activateData) ? activateData[0] : activateData

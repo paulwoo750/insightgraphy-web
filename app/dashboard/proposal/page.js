@@ -1,9 +1,10 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import Link from 'next/link'
 import InternalNav from '@/app/components/InternalNav'
+import { fetchCurrentSemester, formatDateTime, groupDeadlines, groupSubmissionsByTeam, memberGroup, nearestDeadlineWeek, submissionTopic } from '@/lib/semester'
+import { deleteSubmittedFile } from '@/lib/archive'
 
 export default function ProposalRoom() {
   const router = useRouter()
@@ -14,7 +15,7 @@ export default function ProposalRoom() {
   const [selectedWeek, setSelectedWeek] = useState(1) 
   const [targetWeek, setTargetWeek] = useState(1) 
   
-  const [currentSemester, setCurrentSemester] = useState('2026-1')
+  const [currentSemester, setCurrentSemester] = useState('')
   const [totalWeeks, setTotalWeeks] = useState(12) 
   const [deadlines, setDeadlines] = useState({})
   const [weekTopics, setWeekTopics] = useState({}) 
@@ -31,95 +32,61 @@ export default function ProposalRoom() {
 
   const weeks = Array.from({ length: totalWeeks + 1 }, (_, i) => i)
 
-  useEffect(() => {
-    const checkUser = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) { router.push('/login') } 
-      else { setUser(session.user); fetchFiles(); fetchSystemData(); }
-    }
-    checkUser()
-  }, [])
-
-  const fetchSystemData = async () => {
-    const { data: configData } = await supabase.from('pr_config').select('*')
-    if (configData) {
-      const sem = configData.find(c => c.key === 'current_semester')?.value
-      const topics = configData.find(c => c.key === 'week_topics')?.value
-      const wks = configData.find(c => c.key === 'total_weeks')?.value 
-      const setupStr = configData.find(c => c.key === 'weekly_setup')?.value 
-
-      if (sem) setCurrentSemester(sem)
-      if (topics) setWeekTopics(JSON.parse(topics))
-      if (wks) setTotalWeeks(Number(wks)) 
-      if (setupStr) setWeeklySetup(JSON.parse(setupStr))
-    }
-    
-    const { data: dlData } = await supabase.from('pr_deadlines').select('*').in('category', ['proposal', 'proposal_comment'])
-    
-    const dlMap = {}
-    let initialWeek = 1
-    let minDiff = Infinity
-    let maxPastWeek = 1
-    const now = new Date()
-
-    if (dlData) {
-      dlData.forEach(d => {
-        if (!dlMap[d.week]) dlMap[d.week] = {}
-        dlMap[d.week][d.category] = d.deadline_time
-
-        if (d.category === 'proposal' && d.deadline_time) {
-          const dlTime = new Date(d.deadline_time)
-          if (dlTime > now) {
-            const diff = dlTime - now
-            if (diff < minDiff) {
-              minDiff = diff
-              initialWeek = d.week
-            }
-          } else {
-            if (d.week > maxPastWeek) maxPastWeek = d.week
-          }
-        }
-      })
-      if (minDiff === Infinity) initialWeek = maxPastWeek
-    }
-    
-    setDeadlines(dlMap)
-    setSelectedWeek(initialWeek)
-    setTargetWeek(initialWeek)
-  }
-
-  const formatDate = (dateStr) => {
-    if (!dateStr) return '';
-    const d = new Date(dateStr);
-    return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-  }
-
-  const fetchFiles = async () => {
+  // 이번 학기 제출물만 본다. 학기 전환은 is_archive를 바꾸지 않으므로 학기 코드로 거른다.
+  const fetchFiles = useCallback(async (semesterCode) => {
     const { data } = await supabase
       .from('files_metadata')
       .select('*')
       .eq('file_category', 'proposal')
-      .eq('is_archive', false) 
+      .eq('semester', semesterCode)
+      .eq('is_archive', false)
       .order('created_at', { ascending: false })
     if (data) setFiles(data)
-  }
+  }, [])
+
+  const fetchSystemData = useCallback(async () => {
+    const semester = await fetchCurrentSemester()
+    setCurrentSemester(semester.code)
+    setWeekTopics(semester.weekTopics)
+    setTotalWeeks(semester.totalWeeks)
+    setWeeklySetup(semester.weeklySetup)
+
+    const { data: dlData } = await supabase.from('pr_deadlines').select('*').in('category', ['proposal', 'proposal_comment'])
+    const initialWeek = nearestDeadlineWeek(dlData, 'proposal')
+    setDeadlines(groupDeadlines(dlData))
+    setSelectedWeek(initialWeek)
+    setTargetWeek(initialWeek)
+    return semester
+  }, [])
+
+  useEffect(() => {
+    const checkUser = async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) { router.push('/login'); return }
+      setUser(session.user)
+      const semester = await fetchSystemData()
+      fetchFiles(semester.code)
+    }
+    checkUser()
+  }, [router, fetchFiles, fetchSystemData])
+
+  const refreshFiles = () => fetchFiles(currentSemester)
 
   const handleUpdateFile = async () => {
     if (!newTitle) return
     const { error } = await supabase.from('files_metadata').update({ file_name: newTitle }).eq('id', editItem.id)
     if (!error) { 
       alert("파일 이름 수정 완료!"); 
-      setEditItem(null); 
-      fetchFiles(); 
+      setEditItem(null);
+      refreshFiles();
     }
   }
 
-  const handleDeleteFile = async (e, id, filePath) => {
-    e.stopPropagation(); 
+  const handleDeleteFile = async (e, file) => {
+    e.stopPropagation();
     if (!confirm("해당 기획서를 완전히 삭제하시겠습니까?")) return
-    if (filePath) await supabase.storage.from('ig-files').remove([filePath])
-    const { error } = await supabase.from('files_metadata').delete().eq('id', id)
-    if (!error) fetchFiles()
+    const { error } = await deleteSubmittedFile(file)
+    if (!error) refreshFiles()
   }
 
   const fetchComments = async (fileId) => {
@@ -152,18 +119,12 @@ export default function ProposalRoom() {
     setUploading(true)
     
     const fileExt = file.name.split('.').pop()
-    const currentTopic = weekTopics[targetWeek] || (targetWeek === 0 ? 'OT 및 자유 주제' : '자유 주제') 
+    const currentTopic = submissionTopic(weekTopics, targetWeek)
     const uploaderName = user.user_metadata.name || '익명'
     const autoFileName = `${targetWeek}W (${currentTopic}) ${uploaderName}.${fileExt}`
     const storagePath = `dashboard/proposal/${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`
     
-    let myGroup = null
-    if (weeklySetup[targetWeek] && weeklySetup[targetWeek].members) {
-      const g = weeklySetup[targetWeek].members[uploaderName]
-      if (g && g !== '미정' && g !== '결석') {
-        myGroup = Number(g) 
-      }
-    }
+    const myGroup = memberGroup(weeklySetup, targetWeek, uploaderName)
 
     const { error: uploadError } = await supabase.storage.from('ig-files').upload(storagePath, file)
     if (uploadError) { alert('업로드 실패: ' + uploadError.message); setUploading(false); return; }
@@ -194,8 +155,8 @@ export default function ProposalRoom() {
     
     alert('기획서 제출 완료!'); 
     setSelectedWeek(targetWeek);
-    setUploading(false); 
-    fetchFiles();
+    setUploading(false);
+    refreshFiles();
   }
 
   const handleWeekChange = (w) => {
@@ -206,40 +167,7 @@ export default function ProposalRoom() {
   if (!user) return <div className="p-8 text-center font-bold text-slate-400">데이터 로딩 중...</div>
 
   const filesThisWeek = files.filter(f => f.week === selectedWeek)
-  const groupedFiles = {}
-  
-  let maxGroup = 0
-  if (weeklySetup[selectedWeek] && weeklySetup[selectedWeek].groupCount) {
-    maxGroup = Number(weeklySetup[selectedWeek].groupCount)
-  }
-
-  const getDynamicGroup = (file) => {
-    if (weeklySetup[selectedWeek] && weeklySetup[selectedWeek].members && weeklySetup[selectedWeek].members[file.uploader]) {
-      const g = weeklySetup[selectedWeek].members[file.uploader]
-      if (g !== '미정' && g !== '결석') return Number(g)
-    }
-    if (file.group_id) return file.group_id
-    return null
-  }
-  
-  filesThisWeek.forEach(f => {
-    const dGroup = getDynamicGroup(f)
-    if (dGroup && dGroup > maxGroup) maxGroup = dGroup
-  })
-
-  for (let i = 1; i <= maxGroup; i++) {
-    groupedFiles[i] = []
-  }
-  groupedFiles['미분류'] = [] 
-
-  filesThisWeek.forEach(f => {
-    const dGroup = getDynamicGroup(f)
-    if (dGroup && groupedFiles[dGroup]) {
-      groupedFiles[dGroup].push(f)
-    } else {
-      groupedFiles['미분류'].push(f)
-    }
-  })
+  const { groups: groupedFiles, maxGroup } = groupSubmissionsByTeam(filesThisWeek, weeklySetup, selectedWeek)
 
   return (
     <div className="bg-white min-h-screen text-slate-900 font-sans pb-32">
@@ -263,18 +191,18 @@ export default function ProposalRoom() {
                 {weeks.map(w => <option key={w} value={w}>Week {w}</option>)}
               </select>
               <h2 className="text-lg font-bold text-slate-700 tracking-tight">
-                {weekTopics[targetWeek] || (targetWeek === 0 ? 'OT 및 자유 주제' : '자유 주제')}
+                {submissionTopic(weekTopics, targetWeek)}
               </h2>
             </div>
             
             <div className="flex flex-col sm:flex-row gap-4 mt-2">
               <p className="text-xs font-medium text-slate-500 flex items-center gap-2">
                 <span className="text-slate-400 font-bold uppercase tracking-wider">제출 마감 |</span>
-                <span className="text-slate-800">{deadlines[targetWeek]?.proposal ? formatDate(deadlines[targetWeek].proposal) : '미설정'}</span>
+                <span className="text-slate-800">{deadlines[targetWeek]?.proposal ? formatDateTime(deadlines[targetWeek].proposal) : '미설정'}</span>
               </p>
               <p className="text-xs font-medium text-slate-500 flex items-center gap-2">
                 <span className="text-slate-400 font-bold uppercase tracking-wider">피드백 마감 |</span>
-                <span className="text-slate-800">{deadlines[targetWeek]?.proposal_comment ? formatDate(deadlines[targetWeek].proposal_comment) : '미설정'}</span>
+                <span className="text-slate-800">{deadlines[targetWeek]?.proposal_comment ? formatDateTime(deadlines[targetWeek].proposal_comment) : '미설정'}</span>
               </p>
             </div>
           </div>
@@ -350,8 +278,8 @@ export default function ProposalRoom() {
                           file={file} 
                           onOpen={() => { setViewingFile(file); fetchComments(file.id); }}
                           onEdit={(e) => { e.stopPropagation(); setEditItem(file); setNewTitle(file.file_name); }}
-                          onDelete={(e) => handleDeleteFile(e, file.id, file.storage_path)}
-                          formatDate={formatDate}
+                          onDelete={(e) => handleDeleteFile(e, file)}
+                          formatDateTime={formatDateTime}
                         />
                       ))}
                     </div>
@@ -375,8 +303,8 @@ export default function ProposalRoom() {
                         file={file} 
                         onOpen={() => { setViewingFile(file); fetchComments(file.id); }}
                         onEdit={(e) => { e.stopPropagation(); setEditItem(file); setNewTitle(file.file_name); }}
-                        onDelete={(e) => handleDeleteFile(e, file.id, file.storage_path)}
-                        formatDate={formatDate}
+                        onDelete={(e) => handleDeleteFile(e, file)}
+                        formatDateTime={formatDateTime}
                       />
                     ))}
                   </div>
@@ -412,7 +340,7 @@ export default function ProposalRoom() {
                 <p className="text-xs text-slate-500 font-semibold mt-1 truncate">{viewingFile.file_name}</p>
                 {deadlines[viewingFile.week]?.proposal_comment && (
                   <p className="text-[10px] font-bold text-red-600 mt-3 border border-red-200 bg-red-50 inline-block px-2 py-0.5">
-                    마감 기한: {formatDate(deadlines[viewingFile.week].proposal_comment)}
+                    마감 기한: {formatDateTime(deadlines[viewingFile.week].proposal_comment)}
                   </p>
                 )}
               </div>
@@ -426,7 +354,7 @@ export default function ProposalRoom() {
                         <div className="flex items-center gap-2">
                           <span className="text-xs font-bold text-blue-600">{c.user_name}</span>
                           {isCommentLate && <span className="text-[9px] font-black text-red-500 border border-red-200 px-1 py-0.5 rounded-sm">LATE</span>}
-                          <span className="text-[10px] font-medium text-slate-400 ml-1">{formatDate(c.created_at)}</span>
+                          <span className="text-[10px] font-medium text-slate-400 ml-1">{formatDateTime(c.created_at)}</span>
                         </div>
                         {user.id === c.user_id && (
                           <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -479,7 +407,7 @@ export default function ProposalRoom() {
 }
 
 // 🌟 가로형 리스트 아이템 (선명한 텍스트 위계, 각진 디자인)
-function ProposalListItem({ file, onOpen, onEdit, onDelete, formatDate }) {
+function ProposalListItem({ file, onOpen, onEdit, onDelete, formatDateTime }) {
   return (
     <div 
       className="flex flex-col sm:flex-row sm:items-center justify-between py-4 border-b border-slate-200 hover:bg-slate-50/50 transition-colors cursor-pointer group gap-4 px-2" 
@@ -499,7 +427,7 @@ function ProposalListItem({ file, onOpen, onEdit, onDelete, formatDate }) {
       </div>
 
       <div className="flex items-center justify-between sm:justify-end gap-6 shrink-0 w-full sm:w-auto pl-12 sm:pl-0">
-        <span className="text-xs font-medium text-slate-400">{formatDate(file.created_at)}</span>
+        <span className="text-xs font-medium text-slate-400">{formatDateTime(file.created_at)}</span>
         <div className="flex items-center gap-3 sm:opacity-0 group-hover:opacity-100 transition-opacity">
           <button onClick={onEdit} className="text-[11px] font-bold text-slate-400 hover:text-blue-600 transition-colors">수정</button>
           <button onClick={onDelete} className="text-[11px] font-bold text-slate-400 hover:text-red-600 transition-colors">삭제</button>

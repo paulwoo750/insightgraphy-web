@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import { currentSemesterIdFilter, fetchCurrentSemester, parseJson } from '@/lib/semester'
 import Link from 'next/link'
 
 export default function AbsenceAdmin() {
@@ -8,7 +9,7 @@ export default function AbsenceAdmin() {
   const [saving, setSaving] = useState(false)
 
   // 🌟 시스템 설정 상태
-  const [currentSemester, setCurrentSemester] = useState('2026-1')
+  const [currentSemester, setCurrentSemester] = useState('')
   const [totalWeeks, setTotalWeeks] = useState(12)
   const [absenceLateFine, setAbsenceLateFine] = useState(20000) 
   const [processingId, setProcessingId] = useState(null)
@@ -39,21 +40,13 @@ export default function AbsenceAdmin() {
   async function fetchData() {
 
     // 1. 설정값 불러오기
-    const { data: configData } = await supabase.from('pr_config').select('*')
-    let wks = 12
-    if (configData) {
-      const sem = configData.find(c => c.key === 'current_semester')?.value
-      const totalWks = configData.find(c => c.key === 'total_weeks')?.value
-      const penConfig = configData.find(c => c.key === 'penalty_rules')?.value
-
-      if (sem) setCurrentSemester(sem)
-      if (totalWks) { wks = Number(totalWks); setTotalWeeks(wks); }
-      setSemesterType(configData.find(c => c.key === 'semester_type')?.value || 'regular')
-      if (penConfig) {
-        const parsed = JSON.parse(penConfig)
-        if (parsed.absenceLate) setAbsenceLateFine(parsed.absenceLate)
-      }
-    }
+    const current = await fetchCurrentSemester()
+    const wks = current.totalWeeks
+    setCurrentSemester(current.code)
+    setTotalWeeks(wks)
+    setSemesterType(current.type)
+    const penalties = parseJson(current.config.penalty_rules, {})
+    if (penalties.absenceLate) setAbsenceLateFine(penalties.absenceLate)
 
     // 2. 주차별 사유서 마감일 불러오기 (정규 = absence / 평일세션 = weekday_absence)
     const { data: dlData } = await supabase.from('pr_deadlines').select('*').in('category', ['absence', 'weekday_absence'])
@@ -73,11 +66,11 @@ export default function AbsenceAdmin() {
     setAbsenceDeadlines(regDl)
     setWeekdayDeadlines(wdDl)
 
-    // 3. 사유서 결재 리스트 + 출석 기록(연동 표시용) 불러오기
-    const { data: absData } = await supabase.from('absence_forms').select('*').order('created_at', { ascending: false })
+    // 3. 이번 학기 사유서 결재 리스트 + 출석 기록(연동 표시용) 불러오기
+    const { data: absData } = await supabase.from('absence_forms').select('*').or(currentSemesterIdFilter(current)).order('created_at', { ascending: false })
     if (absData) setAbsences(absData)
 
-    const { data: attData } = await supabase.from('pr_attendance').select('*')
+    const { data: attData } = await supabase.from('pr_attendance').select('*').eq('semester', current.code)
     setAttendances(attData || [])
 
     setLoading(false)

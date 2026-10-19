@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import { sortSemestersDesc } from '@/lib/semester'
 import Link from 'next/link'
 import InternalNav from '@/app/components/InternalNav'
 import {
@@ -84,7 +85,7 @@ export default function MyAnalytics() {
       if (adminCurrentSemester && !uniqueSemesters.includes(adminCurrentSemester)) {
         uniqueSemesters.push(adminCurrentSemester)
       }
-      uniqueSemesters = uniqueSemesters.sort().reverse()
+      uniqueSemesters = sortSemestersDesc(uniqueSemesters)
       setSemesters(uniqueSemesters)
 
       if (adminCurrentSemester && uniqueSemesters.includes(adminCurrentSemester)) {
