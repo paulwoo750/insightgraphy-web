@@ -1,152 +1,127 @@
 'use client'
-import { useState, useEffect } from 'react'
-import Link from 'next/link'
+// 지원 안내: 모집 기수와 지원서 양식 파일
+// 파일은 먼저 Storage에 올리고, 그다음 공개 주소를 설정에 저장한다. 두 번째 단계만 실패하면
+// 올린 파일을 다시 연결하는 버튼을 보여 준다 (다시 올릴 필요 없음).
+import { useCallback, useEffect, useState } from 'react'
+import { ExternalLink, FileUp, Save } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { useSiteUrls } from '@/lib/siteUrls'
+import { useAdminRole } from '@/app/admin/_components/AdminShell'
+import { AdminPage, Button, ErrorState, Field, inputClass, LoadingState, Notice, PageHeader, Panel, ReadOnlyBanner, useAsyncAction, useToast } from '@/app/admin/_components/AdminUI'
 
 export default function AdminJoinPage() {
-  const [loading, setLoading] = useState(true)
-  
-  // 상태 관리
+  const { role, canWrite } = useAdminRole()
+  const toast = useToast()
+  const site = useSiteUrls()
+  const [run, pending] = useAsyncAction()
+  const [state, setState] = useState({ status: 'loading', error: '' })
   const [generation, setGeneration] = useState('')
+  const [savedGeneration, setSavedGeneration] = useState('')
   const [docUrl, setDocUrl] = useState('')
   const [docFile, setDocFile] = useState(null)
-  const [uploading, setUploading] = useState(false)
+  const [pendingLink, setPendingLink] = useState(null)
 
-  useEffect(() => {
-    fetchJoinData()
+  const load = useCallback(async () => {
+    setState({ status: 'loading', error: '' })
+    const { data, error } = await supabase.from('pr_config').select('key, value').in('key', ['recruiting_generation', 'application_form_url'])
+    if (error) {
+      setState({ status: 'error', error: error.message })
+      return
+    }
+    const config = Object.fromEntries((data || []).map((row) => [row.key, row.value]))
+    setGeneration(config.recruiting_generation || '')
+    setSavedGeneration(config.recruiting_generation || '')
+    setDocUrl(config.application_form_url || '')
+    setState({ status: 'ready', error: '' })
   }, [])
 
-  // DB에서 기존 설정값 불러오기
-  const fetchJoinData = async () => {
-    setLoading(true)
-    
-    // 1. 모집 기수 가져오기
-    const { data: genData } = await supabase.from('pr_config').select('value').eq('key', 'recruiting_generation').single()
-    if (genData) setGeneration(genData.value)
+  useEffect(() => {
+    const timer = setTimeout(load, 0)
+    return () => clearTimeout(timer)
+  }, [load])
 
-    // 2. 지원서 파일 주소 가져오기
-    const { data: docData } = await supabase.from('pr_config').select('value').eq('key', 'application_form_url').single()
-    if (docData) setDocUrl(docData.value)
-
-    setLoading(false)
+  async function saveGeneration() {
+    if (!generation.trim()) {
+      toast.error('모집 기수를 입력하세요.')
+      return
+    }
+    await run(async () => {
+      const { error } = await supabase.from('pr_config').upsert({ key: 'recruiting_generation', value: generation.trim() })
+      if (error) {
+        toast.error(`모집 기수를 저장하지 못했습니다: ${error.message}`)
+        return
+      }
+      setSavedGeneration(generation.trim())
+      toast.success('모집 기수를 저장했습니다.')
+    })
   }
 
-  // 1. 모집 기수 저장 로직 (upsert: 없으면 만들고 있으면 덮어쓰기)
-  const handleSaveGeneration = async () => {
-    if (!generation) return alert('모집 기수를 입력해주세요.')
-    const { error } = await supabase.from('pr_config').upsert({ key: 'recruiting_generation', value: generation })
-    if (!error) alert('모집 기수가 저장되었습니다! 🎯')
-    else alert('저장 실패: ' + error.message)
+  async function linkUrl(url) {
+    const { error } = await supabase.from('pr_config').upsert({ key: 'application_form_url', value: url })
+    if (error) {
+      setPendingLink(url)
+      toast.error(`파일은 올렸지만 지원 안내에 연결하지 못했습니다: ${error.message}. 아래 '다시 연결'을 누르세요.`, { duration: 0 })
+      return
+    }
+    setPendingLink(null)
+    setDocUrl(url)
+    toast.success('지원서 양식을 바꿨습니다.')
   }
 
-  // 2. 지원서 파일(docx) 업로드 로직
-  const handleFileUpload = async () => {
-    if (!docFile) return alert('업로드할 지원서 파일을 선택해주세요.')
-    setUploading(true)
-    
-    try {
+  async function upload() {
+    if (!docFile) {
+      toast.error('올릴 지원서 파일을 고르세요.')
+      return
+    }
+    if (docFile.size > 20 * 1024 * 1024) {
+      toast.error('20MB 이하 파일만 올릴 수 있습니다.')
+      return
+    }
+    await run(async () => {
       const ext = docFile.name.split('.').pop()
       const path = `join/application_form_${Date.now()}.${ext}`
-      
-      // showcase 버킷을 재사용하여 join 폴더에 저장
-      const { error: uploadErr } = await supabase.storage.from('showcase').upload(path, docFile)
-      if (uploadErr) throw uploadErr
-
+      const { error: uploadError } = await supabase.storage.from('showcase').upload(path, docFile)
+      if (uploadError) {
+        toast.error(`파일을 올리지 못했습니다: ${uploadError.message}`)
+        return
+      }
       const publicUrl = supabase.storage.from('showcase').getPublicUrl(path).data.publicUrl
-
-      // DB에 파일 주소 저장 (upsert)
-      const { error: dbErr } = await supabase.from('pr_config').upsert({ key: 'application_form_url', value: publicUrl })
-      if (dbErr) throw dbErr
-
-      alert('지원서 양식이 성공적으로 업로드되었습니다! 📄')
-      setDocUrl(publicUrl)
       setDocFile(null)
-    } catch (error) {
-      alert('업로드 실패: ' + error.message)
-    } finally {
-      setUploading(false)
-    }
+      await linkUrl(publicUrl)
+    })
   }
 
-  if (loading) return <div className="min-h-screen bg-slate-50 flex items-center justify-center font-bold text-slate-400">데이터 불러오는 중...</div>
+  if (state.status === 'loading') return <AdminPage><LoadingState /></AdminPage>
+  if (state.status === 'error') return <AdminPage><ErrorState title="지원 안내 설정을 불러오지 못했습니다." description={state.error} onRetry={load} /></AdminPage>
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans p-6 md:p-12 pb-32">
-      <div className="max-w-4xl mx-auto">
-        
-        {/* 헤더 */}
-        <header className="flex justify-between items-end mb-12 border-b border-slate-200 pb-6">
-          <div>
-            <Link href="/admin/hub" className="text-xs font-black text-slate-400 hover:text-[#32a4a1] uppercase tracking-widest mb-2 block transition-colors">← Back to Hub</Link>
-            <h1 className="text-4xl font-black uppercase tracking-tighter text-slate-800 flex items-center gap-3">
-              <span className="text-4xl">📝</span> Join Us Manager
-            </h1>
+    <AdminPage>
+      <PageHeader eyebrow="외부 사이트" title="지원 안내" description="공개 사이트 Join Us 페이지의 모집 기수와 지원서 양식 파일을 관리합니다." actions={<Button icon={ExternalLink} href={site.publicUrl('/join')} target="_blank">공개 화면 열기</Button>} />
+      <ReadOnlyBanner role={role} />
+      {pendingLink && (
+        <Notice tone="danger" className="mb-4" title="올린 파일이 아직 연결되지 않았습니다" action={<Button size="sm" variant="primary" onClick={() => run(() => linkUrl(pendingLink))} loading={pending}>다시 연결</Button>}>
+          {pendingLink}
+        </Notice>
+      )}
+      <div className="grid gap-5 lg:grid-cols-2">
+        <Panel title="모집 기수" description="예: 31기">
+          <form className="flex flex-wrap items-end gap-2 p-4 sm:p-5" onSubmit={(event) => { event.preventDefault(); saveGeneration() }}>
+            <Field label="현재 모집 기수" htmlFor="recruit-generation" className="min-w-[200px] flex-1">
+              <input id="recruit-generation" value={generation} onChange={(event) => setGeneration(event.target.value)} disabled={!canWrite} className={inputClass} />
+            </Field>
+            <Button type="submit" variant="primary" icon={Save} loading={pending} disabled={!canWrite || generation.trim() === savedGeneration}>저장</Button>
+          </form>
+        </Panel>
+        <Panel title="지원서 양식 (.doc, .docx)" description="지원자가 내려받는 최신 지원서 파일입니다.">
+          <div className="space-y-3 p-4 sm:p-5">
+            {docUrl ? <a href={docUrl} target="_blank" rel="noopener noreferrer" className="block break-all rounded-md bg-teal-50 px-3 py-2 text-sm font-semibold text-teal-800 hover:underline">현재 파일: {decodeURIComponent(docUrl.split('/').pop())}</a> : <p className="text-sm text-slate-500">등록된 파일이 없습니다.</p>}
+            <Field label="새 파일" htmlFor="join-file" hint="20MB 이하">
+              <input id="join-file" type="file" accept=".doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={(event) => setDocFile(event.target.files?.[0] || null)} disabled={!canWrite} className="block w-full text-sm text-slate-600 file:mr-3 file:rounded-md file:border-0 file:bg-teal-50 file:px-3 file:py-2 file:text-sm file:font-bold file:text-teal-800" />
+            </Field>
+            <Button variant="primary" icon={FileUp} onClick={upload} loading={pending} disabled={!canWrite || !docFile}>올리고 바꾸기</Button>
           </div>
-        </header>
-
-        <div className="space-y-8">
-          
-          {/* 1. 모집 기수 설정 */}
-          <div className="bg-white p-8 rounded-none shadow-sm border border-slate-100 flex flex-col md:flex-row gap-6 items-center justify-between">
-            <div className="flex-1 w-full">
-              <h2 className="text-lg font-black uppercase text-slate-800 mb-2">1. Recruiting Generation</h2>
-              <p className="text-xs text-slate-500 font-bold mb-4">현재 모집 중인 기수를 입력해주세요. (예: 29기)</p>
-              <input 
-                type="text" 
-                value={generation} 
-                onChange={(e) => setGeneration(e.target.value)} 
-                className="w-full max-w-sm bg-slate-50 p-4 rounded-none font-black text-lg outline-none focus:border-[#32a4a1] border border-transparent" 
-                placeholder="예: 29기" 
-              />
-            </div>
-            <button 
-              onClick={handleSaveGeneration} 
-              className="w-full md:w-auto h-fit bg-[#1a1a1a] text-white px-8 py-4 rounded-none font-black uppercase tracking-widest text-sm hover:bg-[#32a4a1] transition-all whitespace-nowrap"
-            >
-              Save
-            </button>
-          </div>
-
-          {/* 2. 지원서 양식 파일 업로드 */}
-          <div className="bg-white p-8 rounded-none shadow-sm border border-slate-100">
-            <h2 className="text-lg font-black uppercase text-slate-800 mb-2">2. Application Form (.docx)</h2>
-            <p className="text-xs text-slate-500 font-bold mb-6">지원자들이 다운로드할 수 있는 최신 지원서 워드 파일을 업로드하세요.</p>
-            
-            {docUrl && (
-              <div className="mb-6 p-4 bg-teal-50 rounded-none border border-teal-100 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <span className="text-2xl">📄</span>
-                  <div>
-                    <p className="text-xs font-black text-teal-800">현재 등록된 지원서 파일</p>
-                    <a href={docUrl} target="_blank" rel="noreferrer" className="text-[10px] font-bold text-teal-500 hover:underline break-all block mt-1">
-                      {docUrl}
-                    </a>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            <div className="flex flex-col md:flex-row gap-4 items-center">
-              <div className="flex-1 w-full bg-slate-50 border border-slate-200 rounded-none p-2">
-                <input 
-                  type="file" 
-                  accept=".doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" 
-                  onChange={(e) => setDocFile(e.target.files[0])} 
-                  className="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-none file:border-0 file:text-xs file:font-black file:bg-[#32a4a1]/10 file:text-[#32a4a1] hover:file:bg-[#32a4a1]/20 cursor-pointer" 
-                />
-              </div>
-              <button 
-                onClick={handleFileUpload} 
-                disabled={uploading || !docFile}
-                className="w-full md:w-auto bg-[#32a4a1] text-white px-8 py-4 rounded-none font-black uppercase tracking-widest text-sm hover:bg-[#238986] disabled:opacity-50 transition-all whitespace-nowrap"
-              >
-                {uploading ? 'Uploading...' : 'Upload File 🚀'}
-              </button>
-            </div>
-          </div>
-
-        </div>
+        </Panel>
       </div>
-    </div>
+    </AdminPage>
   )
 }

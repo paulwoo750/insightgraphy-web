@@ -1,393 +1,279 @@
 'use client'
-import { useState, useEffect } from 'react'
-import { supabase } from '@/lib/supabase'
+// 정성 피드백 작성실: 같은 클러스터 발표에 대한 피드백·메모를 미리 쓰고 임시 저장한다 (영상 댓글용)
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
-import InternalNav from '@/app/components/InternalNav'
+import { Save } from 'lucide-react'
+import { supabase } from '@/lib/supabase'
+import { displayTopic, fetchCurrentSemester, sameJson, weekFromParam } from '@/lib/semester'
+import { MemberHeader, MemberPage, rememberWeekContext, useMember } from '@/app/components/MemberShell'
+import { Button, EmptyState, ErrorState, LoadingState, SaveStatus, StatusBadge, useAsyncAction, useToast, useUnsavedChanges } from '@/app/components/ui'
+
+const EMPTY_FEEDBACK = { originalMessage: '', insightPlus: '', insightMinus: '', graphicPlus: '', graphicMinus: '', deliveryPlus: '', deliveryMinus: '', memo: '' }
+const SECTIONS = [
+  { title: 'Insight', subtitle: '독창성, 적합성', plus: 'insightPlus', minus: 'insightMinus' },
+  { title: 'Graphic', subtitle: '가독성, 가시성', plus: 'graphicPlus', minus: 'graphicMinus' },
+  { title: 'Delivery', subtitle: '목소리, 흐름', plus: 'deliveryPlus', minus: 'deliveryMinus' },
+]
+
+const toFeedback = (qualitative) => ({ ...EMPTY_FEEDBACK, ...Object.fromEntries(Object.entries(qualitative || {}).map(([key, value]) => [key, value || ''])) })
+// 팀 표기는 team_id가 실제로 있을 때만 (개인 평가인데 데이터가 겹쳐 팀처럼 보이는 것 방지)
+const targetName = (target) => (target.team_id && target.members.length > 1 ? `${target.team_id}팀 (${target.members.join(', ')})` : target.members.join(', '))
 
 export default function FeedbackPage() {
   const router = useRouter()
-  const [user, setUser] = useState(null)
-  const [week, setWeek] = useState(1)
-  
-  const [currentSemester, setCurrentSemester] = useState('2026-1')
-  const [weekTopics, setWeekTopics] = useState({})
-
-  const [evalTargets, setEvalTargets] = useState([]) // 🌟 개별 발표자가 아닌 타겟 단위 배열
-  const [selectedTargetId, setSelectedTargetId] = useState(null) 
+  const identity = useMember()
+  const toast = useToast()
+  const [run, saving] = useAsyncAction()
+  const [state, setState] = useState({ status: 'loading', error: '' })
+  const [semester, setSemester] = useState(null)
+  const [week, setWeek] = useState(null)
+  const [weekState, setWeekState] = useState({ status: 'idle', error: '' })
+  const [evalTargets, setEvalTargets] = useState([])
+  const [selectedTargetId, setSelectedTargetId] = useState(null)
   const [myInfo, setMyInfo] = useState({ cluster_id: null, group_id: null })
-  const [loading, setLoading] = useState(true)
-  const [updating, setUpdating] = useState(false)
+  const [editFeedback, setEditFeedback] = useState(EMPTY_FEEDBACK)
+  const [saveError, setSaveError] = useState(false)
+  const [reloadKey, setReloadKey] = useState(0)
+  // 다시 불러와도 보던 대상을 유지하기 위해 기억한다
+  const selectedRef = useRef(null)
 
-  const [editFeedback, setEditFeedback] = useState({
-    originalMessage: '',
-    insightPlus: '', insightMinus: '',
-    graphicPlus: '', graphicMinus: '',
-    deliveryPlus: '', deliveryMinus: '',
-    memo: ''
-  })
-
-  const weeks = Array.from({ length: 12 }, (_, i) => i + 1);
+  const myName = identity.member?.name || identity.session?.user?.user_metadata?.name || ''
 
   useEffect(() => {
-    const init = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) { router.push('/login') } 
-      else { 
-        const currentUser = session.user;
-        setUser(currentUser);
-        
-        const sem = await fetchSystemData();
-
-        // 🌟 현재 학기 안에서만 주차를 추론한다 (과거 학기 기록이 잡히면 데이터가 섞임)
-        const { data: lastScore } = await supabase.from('scores').select('presentation_id').eq('voter_name', currentUser.user_metadata.name).order('created_at', { ascending: false }).limit(1);
+    if (identity.status !== 'ready') return undefined
+    if (!identity.session) {
+      router.replace('/login?next=%2Fvote%2Ffeedback')
+      return undefined
+    }
+    let active = true
+    async function load() {
+      try {
+        const current = await fetchCurrentSemester()
+        // 처음 주차: 주소의 ?week= → 이번 학기에 마지막으로 채점한 주차 → 이번 학기 최근 발표 주차
         let resolved = null
-        if (lastScore && lastScore.length > 0) {
-          const { data: p } = await supabase.from('presentations').select('week, semester').eq('id', lastScore[0].presentation_id).single();
-          if (p && (!sem || p.semester === sem)) resolved = p.week;
+        const { data: lastScore } = await supabase.from('scores').select('presentation_id').eq('voter_name', myName).order('created_at', { ascending: false }).limit(1)
+        if (lastScore?.length) {
+          const { data: presentation } = await supabase.from('presentations').select('week, semester').eq('id', lastScore[0].presentation_id).maybeSingle()
+          if (presentation && presentation.semester === current.code) resolved = presentation.week
         }
         if (resolved === null) {
-          const { data: latestP } = await supabase.from('presentations').select('week').eq('semester', sem || '').order('created_at', { ascending: false }).limit(1);
-          if (latestP && latestP.length > 0) resolved = latestP[0].week;
+          const { data: latest } = await supabase.from('presentations').select('week').eq('semester', current.code).order('created_at', { ascending: false }).limit(1)
+          resolved = latest?.[0]?.week ?? 1
         }
-        if (resolved !== null) setWeek(resolved);
+        const initial = weekFromParam(new URLSearchParams(window.location.search).get('week'), current.totalWeeks, resolved)
+        if (!active) return
+        setSemester(current)
+        setWeek(Math.max(1, initial))
+        setState({ status: 'ready', error: '' })
+      } catch (error) {
+        if (active) setState({ status: 'error', error: error.message })
       }
     }
-    init()
-  }, [])
+    load()
+    return () => { active = false }
+  }, [identity.status, identity.session, myName, router])
 
-  const fetchSystemData = async () => {
-    const { data: configData } = await supabase.from('pr_config').select('*')
-    let sem = ''
-    if (configData) {
-      sem = configData.find(c => c.key === 'current_semester')?.value || ''
-      const topics = configData.find(c => c.key === 'week_topics')?.value
-      if (sem) setCurrentSemester(sem)
-      if (topics) setWeekTopics(JSON.parse(topics))
-    }
-    return sem
-  }
-
-  useEffect(() => { if (user?.user_metadata?.name && currentSemester) fetchMyData() }, [user, week, currentSemester])
-
-  // 🌟 타겟 그룹핑 및 평가 데이터 로드 로직
-  const fetchMyData = async () => {
-    setLoading(true)
-    const userName = user.user_metadata.name;
-    // 🌟 학기 필터 필수: 같은 주차라도 학기가 다르면 order_index가 겹쳐 팀으로 잘못 묶인다
-    const { data: pAll } = await supabase.from('presentations').select('*').eq('week', week).eq('semester', currentSemester).order('order_index', { ascending: true });
-    
-    if (!pAll || pAll.length === 0) { setEvalTargets([]); setLoading(false); return; }
-
-    // 1. 타겟 그룹핑 로직 (score 화면과 동일)
-    const tMap = new Map();
-    pAll.forEach(p => {
-      if (!tMap.has(p.order_index)) {
-        tMap.set(p.order_index, {
-          id: `tgt-${p.order_index}`,
-          order_index: p.order_index,
-          cluster_id: p.cluster_id,
-          group_id: p.group_id,
-          team_id: p.team_id,
-          topic: p.topic,
-          week: p.week,
-          members: [],
-          pids: [] 
-        });
+  useEffect(() => {
+    if (!semester || week == null || !myName) return undefined
+    let active = true
+    async function loadWeek() {
+      setWeekState({ status: 'loading', error: '' })
+      try {
+        // 학기 필터 필수: 같은 주차라도 학기가 다르면 order_index가 겹쳐 팀으로 잘못 묶인다
+        const { data: presentations, error } = await supabase.from('presentations').select('*').eq('week', week).eq('semester', semester.code).order('order_index', { ascending: true })
+        if (error) throw error
+        const map = new Map()
+        ;(presentations || []).forEach((row) => {
+          if (!map.has(row.order_index)) map.set(row.order_index, { id: `tgt-${row.order_index}`, order_index: row.order_index, cluster_id: row.cluster_id, group_id: row.group_id, team_id: row.team_id, topic: row.topic, week: row.week, members: [], pids: [] })
+          const target = map.get(row.order_index)
+          target.members.push(row.presenter_name)
+          target.pids.push(row.id)
+        })
+        const allTargets = [...map.values()]
+        const myTarget = allTargets.find((target) => target.members.includes(myName))
+        const { data: scoreRows, error: scoreError } = await supabase.from('scores').select('*').eq('voter_name', myName)
+        if (scoreError) throw scoreError
+        const combined = allTargets
+          .filter((target) => target.cluster_id === myTarget?.cluster_id && !target.members.includes(myName))
+          .map((target) => {
+            // 팀원 수만큼 같은 내용으로 저장되므로 첫 기록을 대표로 쓴다
+            const record = (scoreRows || []).find((row) => target.pids.includes(row.presentation_id))
+            return { id: target.id, target_info: target, score_record_id: record?.id || null, scored: Boolean(record?.details?.scores), details: record?.details || {} }
+          })
+        if (!active) return
+        setMyInfo({ cluster_id: myTarget?.cluster_id ?? null, group_id: myTarget?.group_id ?? null })
+        setEvalTargets(combined)
+        const keep = combined.find((item) => item.id === selectedRef.current) || combined[0]
+        selectedRef.current = keep?.id || null
+        setSelectedTargetId(keep?.id || null)
+        setEditFeedback(toFeedback(keep?.details?.qualitative))
+        setSaveError(false)
+        setWeekState({ status: 'ready', error: '' })
+      } catch (error) {
+        if (active) setWeekState({ status: 'error', error: error.message })
       }
-      const tgt = tMap.get(p.order_index);
-      tgt.members.push(p.presenter_name);
-      tgt.pids.push(p.id);
-    });
-    
-    const allTargets = Array.from(tMap.values());
-    const myTarget = allTargets.find(t => t.members.includes(userName));
-    
-    setMyInfo({ cluster_id: myTarget?.cluster_id, group_id: myTarget?.group_id });
-
-    // 2. 내 클러스터에 속한 사람들 점수 불러오기
-    const { data: sData } = await supabase.from('scores').select('*').eq('voter_name', userName);
-    const clusterTargets = allTargets.filter(t => t.cluster_id === myTarget?.cluster_id && !t.members.includes(userName));
-    
-    const combined = clusterTargets.map(tgt => {
-      // 🌟 타겟에 속한 여러 명 중 첫 번째 사람의 점수 기록을 대표로 가져옴 (어차피 동일하게 저장됨)
-      const scoreRecord = sData?.find(s => tgt.pids.includes(s.presentation_id));
-      
-      return {
-        id: tgt.id,
-        target_info: tgt,
-        score_record_id: scoreRecord?.id || null, // 대표 ID (안 쓸 수도 있음, pids로 일괄 업데이트)
-        is_submitted: scoreRecord?.is_submitted || false,
-        total_score: scoreRecord?.total_score || 0,
-        details: scoreRecord?.details || {}
-      };
-    });
-    
-    setEvalTargets(combined);
-
-    if (selectedTargetId) {
-      const current = combined.find(c => c.id === selectedTargetId);
-      if (current) selectRecord(current);
-    } else if (combined.length > 0) {
-      selectRecord(combined[0]);
     }
-    setLoading(false)
+    loadWeek()
+    return () => { active = false }
+  }, [semester, week, myName, reloadKey])
+
+  const current = evalTargets.find((item) => item.id === selectedTargetId)
+  const savedFeedback = toFeedback(current?.details?.qualitative)
+  const dirty = Boolean(current) && !sameJson(savedFeedback, editFeedback)
+  useUnsavedChanges(dirty, '저장하지 않은 피드백이 있습니다. 이 화면을 떠날까요?')
+
+  function confirmDiscard() {
+    return !dirty || confirm('저장하지 않은 피드백이 있습니다. 버리고 이동할까요?')
   }
 
-  const selectRecord = (item) => {
+  function changeWeek(value) {
+    if (value === week || !confirmDiscard()) return
+    setWeek(value)
+    const params = new URLSearchParams(window.location.search)
+    params.set('week', String(value))
+    window.history.replaceState(window.history.state, '', `${window.location.pathname}?${params.toString()}`)
+    rememberWeekContext(value, 'regular')
+  }
+
+  function selectTarget(item) {
+    if (item.id === selectedTargetId || !confirmDiscard()) return
+    selectedRef.current = item.id
     setSelectedTargetId(item.id)
-    const qual = item.details?.qualitative || {}
-    setEditFeedback({
-      originalMessage: qual.originalMessage || '',
-      insightPlus: qual.insightPlus || '', insightMinus: qual.insightMinus || '',
-      graphicPlus: qual.graphicPlus || '', graphicMinus: qual.graphicMinus || '',
-      deliveryPlus: qual.deliveryPlus || '', deliveryMinus: qual.deliveryMinus || '',
-      memo: qual.memo || ''
+    setEditFeedback(toFeedback(item.details?.qualitative))
+    setSaveError(false)
+  }
+
+  // 타겟에 속한 모든 발표(팀원)의 기록을 함께 갱신한다. 채점 전이면 점수 없는 임시 기록을 만든다
+  function save({ quiet = false } = {}) {
+    if (!current) return
+    run(async () => {
+      const pids = current.target_info.pids
+      let error = null
+      if (current.score_record_id) {
+        const result = await supabase.from('scores')
+          .update({ is_submitted: false, details: { ...current.details, qualitative: editFeedback } })
+          .in('presentation_id', pids)
+          .eq('voter_name', myName)
+          .select('id')
+        error = result.error || (!result.data?.length ? { message: '저장할 권한이 없거나 기록을 찾지 못했습니다.' } : null)
+      } else {
+        // semester를 넣지 않는다: 순위 집계(semester 기준)에 0점 임시 기록이 섞이지 않게
+        const result = await supabase.from('scores').insert(pids.map((pid) => ({
+          presentation_id: pid,
+          voter_name: myName,
+          voter_member_id: identity.member?.id || null,
+          total_score: 0,
+          is_submitted: false,
+          details: { version: 'v1', qualitative: editFeedback },
+        })))
+        error = result.error
+      }
+      if (error) {
+        setSaveError(true)
+        toast.error(`피드백을 저장하지 못했습니다: ${error.message}`)
+        return
+      }
+      setSaveError(false)
+      if (!quiet) toast.success('피드백을 임시 저장했습니다. 영상 화면의 피드백 작성에서 이어서 쓸 수 있습니다.')
+      setReloadKey((value) => value + 1)
     })
   }
 
-  // 🌟 일괄 피드백 업데이트 로직 (타겟에 속한 모든 PID 동시에 업데이트)
-  const handleUpdate = async () => {
-    if (!selectedTargetId) return
-    
-    const currentTargetItem = evalTargets.find(c => c.id === selectedTargetId);
-    if (!currentTargetItem) return;
+  if (identity.status !== 'ready' || state.status === 'loading' || week == null) return <MemberPage><LoadingState label="피드백 작성실을 불러오는 중입니다." /></MemberPage>
+  if (state.status === 'error') return <MemberPage><ErrorState title="피드백 작성실을 불러오지 못했습니다." description={state.error} onRetry={() => window.location.reload()} /></MemberPage>
 
-    setUpdating(true)
-    const updatedDetails = { ...currentTargetItem.details, qualitative: editFeedback }
-    const targetPids = currentTargetItem.target_info.pids;
-
-    try {
-      if (currentTargetItem.score_record_id) {
-        // 이미 저장된 점수가 있다면 해당 PID들을 일괄 업데이트
-        const { error } = await supabase.from('scores')
-          .update({ is_submitted: false, details: updatedDetails })
-          .in('presentation_id', targetPids)
-          .eq('voter_name', user.user_metadata.name);
-        if (error) throw error;
-      } else {
-        // 임시저장 내역도 없을 경우 최초 생성 (일괄 Insert)
-        const inserts = targetPids.map(pid => ({
-            presentation_id: pid,
-            voter_name: user.user_metadata.name,
-            total_score: 0,
-            is_submitted: false,
-            details: { version: 'v1', qualitative: editFeedback }
-        }));
-        const { error } = await supabase.from('scores').insert(inserts);
-        if (error) throw error;
-      }
-      
-      alert("영상 댓글용 피드백이 안전하게 저장됐어! 📝✨");
-      await fetchMyData(); 
-    } catch (err) {
-      alert("저장 실패: " + err.message);
-    } finally {
-      setUpdating(false);
-    }
-  }
-
-  // 🌟 메모 자동저장 (일괄 업데이트)
-  const handleAutoSaveMemo = async (newMemo) => {
-    if (!selectedTargetId) return;
-    const currentTargetItem = evalTargets.find(c => c.id === selectedTargetId);
-    if (!currentTargetItem) return;
-
-    const updatedDetails = { ...currentTargetItem.details, qualitative: { ...editFeedback, memo: newMemo } };
-    const targetPids = currentTargetItem.target_info.pids;
-
-    if (currentTargetItem.score_record_id) {
-      await supabase.from('scores')
-        .update({ details: updatedDetails, is_submitted: false })
-        .in('presentation_id', targetPids)
-        .eq('voter_name', user.user_metadata.name);
-    } else {
-      const inserts = targetPids.map(pid => ({
-        presentation_id: pid,
-        voter_name: user.user_metadata.name,
-        total_score: 0,
-        is_submitted: false,
-        details: { version: 'v1', qualitative: { ...editFeedback, memo: newMemo } }
-      }));
-      await supabase.from('scores').insert(inserts);
-    }
-  }
-
-  if (!user) return <div className="p-8 text-center font-bold text-slate-400">데이터 로딩 중...</div>
-  
-  const currentTargetData = evalTargets.find(t => t.id === selectedTargetId);
-  const isSameGroup = currentTargetData?.target_info?.group_id === myInfo.group_id;
-
-  // 이름 포맷팅 헬퍼 함수
-  // 🌟 팀 표기는 team_id가 실제로 있을 때만 (개인 평가인데 데이터가 겹쳐 팀처럼 보이는 것 방지)
-  const getSidebarName = (t) => (t.team_id && t.members.length > 1) ? `Team #${t.team_id} (${t.members.join(', ')})` : t.members.join(', ');
+  const weeks = Array.from({ length: Math.max(1, semester.totalWeeks) }, (_, index) => index + 1)
+  const isSameGroup = current?.target_info?.group_id === myInfo.group_id
 
   return (
-    <div className="bg-white min-h-screen text-slate-900 font-sans pb-32">
-      <InternalNav />
+    <MemberPage>
+      <MemberHeader
+        eyebrow="평가"
+        title="정성 피드백 작성실"
+        description="같은 클러스터 발표에 대한 피드백을 미리 써 두는 곳입니다. 같은 조 발표는 항목별 피드백을, 다른 조 발표는 메모를 남깁니다."
+        actions={<Button href="/vote/score">정량 평가로</Button>}
+      >
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          <StatusBadge tone="gray">{semester.name}</StatusBadge>
+          {myInfo.cluster_id && <StatusBadge tone="teal">클러스터 {myInfo.cluster_id} · {myInfo.group_id}조</StatusBadge>}
+        </div>
+      </MemberHeader>
 
-      <div className="max-w-[1600px] mx-auto px-6 mt-12">
-        
-        {/* 🌟 2. 헤더 구역 (중앙 정렬, 선 기반) */}
-        <header className="w-full mb-16 flex flex-col items-center">
-          
-          <div className="w-full flex justify-end items-center mb-6">
-            <div className="flex items-center gap-3">
-              {currentSemester && <span className="text-[11px] font-black text-teal-800 uppercase tracking-widest">{currentSemester}</span>}
-              <span className="w-px h-3 bg-slate-400"></span>
-              <span className="text-[11px] font-black text-slate-500 uppercase tracking-widest">DRAFT ROOM</span>
-              <span className="w-px h-3 bg-slate-400"></span>
-              <span className="text-[11px] font-black text-teal-600 uppercase tracking-widest">C#{myInfo.cluster_id} / G#{myInfo.group_id}</span>
-            </div>
-          </div>
-          
-          <h1 className="text-4xl md:text-5xl font-extrabold uppercase text-teal-900 tracking-tight mb-12 text-center">Feedback Draft Room</h1>
-          
-          <div className="w-full border-y-2 border-teal-800 py-10 flex flex-col items-center">
-            <span className="text-xs font-extrabold text-teal-700 uppercase tracking-widest mb-6">Select Active Week</span>
-            
-            <div className="flex flex-wrap justify-center gap-4 md:gap-6 mb-10 w-full max-w-4xl">
-              {weeks.map((w) => (
-                <button 
-                  key={w} 
-                  onClick={() => setWeek(w)} 
-                  className={`pb-1 text-base md:text-lg font-black transition-all ${week === w ? 'text-teal-800 border-b-[3px] border-teal-800 scale-110' : 'text-slate-400 border-b-[3px] border-transparent hover:text-slate-700 hover:scale-105'}`}
-                >
-                  W{w}
-                </button>
-              ))}
-            </div>
-            
-            <div className="flex flex-col items-center">
-              <span className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Target Topic</span>
-              <p className="text-2xl font-extrabold text-slate-900">{weekTopics[week] || "자유 주제"}</p>
-            </div>
-          </div>
-        </header>
+      <div className="rounded-lg border border-slate-200 bg-white p-3">
+        <div className="flex gap-2 overflow-x-auto pb-1" role="group" aria-label="주차 선택">
+          {weeks.map((value) => (
+            <button key={value} type="button" aria-pressed={value === week} onClick={() => changeWeek(value)} className={`min-h-9 shrink-0 rounded-md border px-3 text-sm font-bold ${value === week ? 'border-teal-700 bg-teal-700 text-white' : 'border-slate-200 text-slate-600 hover:border-teal-400'}`}>W{value}</button>
+          ))}
+        </div>
+        <p className="mt-2 px-1 text-sm text-slate-600">W{week} 주제 <span className="font-bold text-slate-900">{evalTargets[0]?.target_info?.topic || displayTopic(semester.weekTopics, week, 'regular') || '주제 미정'}</span></p>
+      </div>
 
-        {/* 🌟 3. 레이아웃: [좌] 명단 사이드바 / [우] 작성 폼 */}
-        <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr] xl:grid-cols-[350px_1fr] gap-12 items-start">
-          
-          {/* [좌] 대상 명단 사이드바 (상자 제거, 선 기반) */}
-          <aside className="w-full sticky top-24 pt-2">
-            <h3 className="text-xs font-black text-slate-400 uppercase mb-6 border-b border-slate-300 pb-3 tracking-widest">My Target List</h3>
-            <div className="space-y-1">
-              {evalTargets.map((item) => {
-                const targetInfo = item.target_info;
-                return (
-                  <button 
-                    key={targetInfo.id} 
-                    onClick={() => selectRecord(item)} 
-                    className="w-full flex items-center justify-between py-4 border-b border-slate-200 last:border-0 group transition-colors hover:bg-slate-50 px-2"
-                  >
-                    <div className="flex items-center gap-4">
-                      <span className={`text-[15px] font-extrabold truncate transition-colors ${selectedTargetId === item.id ? 'text-teal-800' : 'text-slate-500 group-hover:text-slate-800'}`}>
-                        {getSidebarName(targetInfo)}
-                      </span>
-                      {targetInfo.group_id === myInfo.group_id && <span className="text-[10px] text-teal-500">★</span>}
-                    </div>
-                    <span className="text-[10px] font-bold text-slate-400">W{targetInfo.week}</span>
+      {weekState.status === 'loading' && <LoadingState className="mt-6" />}
+      {weekState.status === 'error' && <div className="mt-6"><ErrorState title="이 주차 발표를 불러오지 못했습니다." description={weekState.error} onRetry={() => setReloadKey((value) => value + 1)} /></div>}
+      {weekState.status === 'ready' && evalTargets.length === 0 && (
+        <div className="mt-6"><EmptyState title="이 주차에 피드백할 발표가 없습니다." description="발표 순서가 등록되지 않았거나, 내 클러스터에 다른 발표가 없습니다." /></div>
+      )}
+
+      {weekState.status === 'ready' && evalTargets.length > 0 && (
+        <div className="mt-6 grid items-start gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
+          <aside className="rounded-lg border border-slate-200 bg-white p-3 lg:sticky lg:top-24">
+            <h2 className="px-1 text-sm font-bold text-slate-900">피드백 대상</h2>
+            <ul className="mt-2 space-y-1">
+              {evalTargets.map((item) => (
+                <li key={item.id}>
+                  <button type="button" aria-current={item.id === selectedTargetId ? 'true' : undefined} onClick={() => selectTarget(item)} className={`w-full rounded-md px-2 py-2 text-left text-sm ${item.id === selectedTargetId ? 'bg-teal-50 font-bold text-teal-800' : 'text-slate-700 hover:bg-slate-50'}`}>
+                    <span className="block break-keep">{targetName(item.target_info)}</span>
+                    <span className="mt-0.5 flex flex-wrap gap-1">
+                      {item.target_info.group_id === myInfo.group_id && <StatusBadge tone="teal">같은 조</StatusBadge>}
+                      {item.scored && <StatusBadge tone="green">채점 완료</StatusBadge>}
+                      {!item.scored && item.score_record_id && <StatusBadge tone="amber">임시 저장</StatusBadge>}
+                    </span>
                   </button>
-                )
-              })}
-              {evalTargets.length === 0 && <p className="text-xs text-slate-400 font-bold text-center py-6 border-b border-slate-200">이번 주차 평가 대상이 없습니다.</p>}
-            </div>
+                </li>
+              ))}
+            </ul>
           </aside>
 
-          {/* [우] 피드백 폼 (상자 제거, 선 기반) */}
-          <div className="w-full space-y-12 max-w-4xl mx-auto">
-            {!currentTargetData ? (
-              <div className="text-center py-24 border-y border-slate-300 font-bold text-slate-400 text-xl tracking-widest uppercase">
-                좌측에서 대상을 선택해 주세요.
-              </div>
-            ) : (
-              <div className="space-y-12 relative">
-                
-                <div className="flex justify-between items-end border-b-[3px] border-slate-900 pb-6 mb-12">
-                  <div>
-                    <h2 className="text-4xl font-black text-teal-800 tracking-tight">{getSidebarName(currentTargetData.target_info)}</h2>
-                    <p className="text-sm text-slate-500 font-bold mt-2">Topic: {currentTargetData.target_info.topic}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className={`text-[10px] font-black uppercase mb-1.5 tracking-widest ${isSameGroup ? 'text-teal-600' : 'text-slate-400'}`}>
-                      {isSameGroup ? 'Detail Feedback' : 'Simple Memo'}
-                    </p>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest bg-slate-100 px-2 py-1 inline-block">Draft Box</p>
-                  </div>
+          {!current ? (
+            <EmptyState title="왼쪽에서 피드백할 발표를 고르세요." />
+          ) : (
+            <section className="min-w-0 rounded-lg border border-slate-200 bg-white p-4 sm:p-5">
+              <div className="flex flex-col gap-2 border-b border-slate-200 pb-3 sm:flex-row sm:items-end sm:justify-between">
+                <div className="min-w-0">
+                  <h2 className="break-keep text-xl font-extrabold text-teal-800">{targetName(current.target_info)}</h2>
+                  <p className="text-sm text-slate-500">주제 {current.target_info.topic || displayTopic(semester.weekTopics, week, 'regular') || '미정'} · {isSameGroup ? '같은 조 상세 피드백' : '다른 조 메모'}</p>
                 </div>
+                <SaveStatus state={saving ? 'saving' : saveError ? 'error' : dirty ? 'dirty' : 'clean'} dirtyCount={1} />
+              </div>
 
-                <div className="space-y-10">
-                  {isSameGroup ? (
-                    <>
-                      <div>
-                        <label className="text-xs font-black text-slate-500 uppercase tracking-widest block mb-3">Original Message</label>
-                        <input 
-                          type="text" 
-                          value={editFeedback.originalMessage} 
-                          onChange={(e)=>setEditFeedback({...editFeedback, originalMessage: e.target.value})} 
-                          className="w-full border-b-[3px] border-slate-300 py-3 text-base font-bold outline-none focus:border-teal-700 bg-transparent placeholder:text-slate-300 transition-colors" 
-                          placeholder="발표를 들으며 핵심 메시지를 미리 기록해 보세요." 
-                        />
-                      </div>
-                      <FeedbackSection title="1. Insight" subtitle="독창성, 적합성" plusVal={editFeedback.insightPlus} minusVal={editFeedback.insightMinus} onPlusChange={(v)=>setEditFeedback({...editFeedback, insightPlus: v})} onMinusChange={(v)=>setEditFeedback({...editFeedback, insightMinus: v})} />
-                      <FeedbackSection title="2. Graphic" subtitle="가독성, 가시성" plusVal={editFeedback.graphicPlus} minusVal={editFeedback.graphicMinus} onPlusChange={(v)=>setEditFeedback({...editFeedback, graphicPlus: v})} onMinusChange={(v)=>setEditFeedback({...editFeedback, graphicMinus: v})} />
-                      <FeedbackSection title="3. Delivery" subtitle="목소리, 흐름" plusVal={editFeedback.deliveryPlus} minusVal={editFeedback.deliveryMinus} onPlusChange={(v)=>setEditFeedback({...editFeedback, deliveryPlus: v})} onMinusChange={(v)=>setEditFeedback({...editFeedback, deliveryMinus: v})} />
-                      
-                      <div className="pt-12 border-t-[3px] border-slate-900 mt-16">
-                        <button 
-                          onClick={handleUpdate} 
-                          disabled={updating} 
-                          className="w-full max-w-sm mx-auto block py-5 border-[3px] border-teal-800 text-teal-900 font-black text-xl uppercase tracking-widest hover:bg-teal-800 hover:text-white transition-all active:scale-95"
-                        >
-                          {updating ? '저장 중...' : '임시 저장하기 💾'}
-                        </button>
-                      </div>
-                    </>
-                  ) : (
-                    <div>
-                      <label className="text-xs font-black text-slate-500 uppercase tracking-widest mb-3 block">Evaluation Memo</label>
-                      <textarea 
-                        value={editFeedback.memo || ''} 
-                        onChange={(e)=>setEditFeedback({...editFeedback, memo: e.target.value})} 
-                        onBlur={(e)=>handleAutoSaveMemo(e.target.value)}
-                        className="w-full border-y-[3px] border-slate-200 py-6 text-base font-medium min-h-[500px] outline-none focus:border-slate-400 transition-colors placeholder:text-slate-300 resize-none bg-transparent leading-relaxed" 
-                        placeholder="이 발표자에 대해 자유롭게 메모를 남겨주세요. (입력 시 자동 저장됩니다)" 
-                      />
-                    </div>
-                  )}
+              {isSameGroup ? (
+                <div className="mt-5 space-y-6">
+                  <label className="block">
+                    <span className="mb-1 block text-sm font-bold text-slate-700">핵심 메시지</span>
+                    <input value={editFeedback.originalMessage} onChange={(event) => setEditFeedback({ ...editFeedback, originalMessage: event.target.value })} className="w-full border-b-2 border-slate-300 bg-transparent py-2 text-base font-semibold outline-none focus:border-teal-700" placeholder="발표를 들으며 핵심 메시지를 기록해 보세요." />
+                  </label>
+                  {SECTIONS.map((section) => (
+                    <fieldset key={section.title} className="space-y-2">
+                      <legend className="text-sm font-bold text-slate-800">{section.title} <span className="text-xs font-semibold text-slate-500">{section.subtitle}</span></legend>
+                      <textarea aria-label={`${section.title} 장점`} value={editFeedback[section.plus]} onChange={(event) => setEditFeedback({ ...editFeedback, [section.plus]: event.target.value })} className="min-h-16 w-full resize-y rounded-md border border-emerald-200 p-2.5 text-sm leading-6 outline-none focus:border-emerald-600" placeholder="(+) 장점 및 인상 깊었던 점" />
+                      <textarea aria-label={`${section.title} 개선점`} value={editFeedback[section.minus]} onChange={(event) => setEditFeedback({ ...editFeedback, [section.minus]: event.target.value })} className="min-h-16 w-full resize-y rounded-md border border-red-200 p-2.5 text-sm leading-6 outline-none focus:border-red-600" placeholder="(-) 아쉬운 점 및 개선 아이디어" />
+                    </fieldset>
+                  ))}
                 </div>
-                
+              ) : (
+                <label className="mt-5 block">
+                  <span className="mb-1 block text-sm font-bold text-slate-700">메모 <span className="text-xs font-semibold text-slate-500">입력창을 벗어나면 자동 저장됩니다</span></span>
+                  <textarea value={editFeedback.memo} onChange={(event) => setEditFeedback({ ...editFeedback, memo: event.target.value })} onBlur={() => { if (dirty) save({ quiet: true }) }} className="min-h-80 w-full resize-y rounded-md border border-slate-200 p-3 text-sm leading-6 outline-none focus:border-teal-600" placeholder="이 발표에 대해 자유롭게 메모를 남기세요." />
+                </label>
+              )}
+
+              <div className="mt-5 flex justify-end border-t border-slate-200 pt-4">
+                <Button variant="primary" icon={Save} loading={saving} disabled={!dirty} onClick={() => save()}>임시 저장</Button>
               </div>
-            )}
-          </div>
+            </section>
+          )}
         </div>
-      </div>
-    </div>
-  )
-}
-
-// 🌟 얇은 컬러 밑줄 기반 텍스트 에어리어
-function FeedbackSection({ title, subtitle, plusVal, minusVal, onPlusChange, onMinusChange }) {
-  return (
-    <div className="space-y-4">
-      <div className="flex items-end gap-3">
-        <p className="text-sm font-black text-slate-800 uppercase tracking-widest">{title}</p>
-        <p className="text-[10px] font-bold text-slate-400 mb-0.5">{subtitle}</p>
-      </div>
-      <div className="flex flex-col gap-4">
-        <textarea 
-          value={plusVal} 
-          onChange={(e)=>onPlusChange(e.target.value)} 
-          className="w-full border-b-[3px] border-emerald-400 py-2 px-1 text-sm font-bold min-h-[50px] outline-none focus:border-emerald-700 transition-colors bg-transparent placeholder:text-slate-300 placeholder:font-medium resize-none" 
-          placeholder="(+) 장점 및 인상 깊었던 점" 
-        />
-        <textarea 
-          value={minusVal} 
-          onChange={(e)=>onMinusChange(e.target.value)} 
-          className="w-full border-b-[3px] border-red-400 py-2 px-1 text-sm font-bold min-h-[50px] outline-none focus:border-red-700 transition-colors bg-transparent placeholder:text-slate-300 placeholder:font-medium resize-none" 
-          placeholder="(-) 아쉬운 점 및 개선 아이디어" 
-        />
-      </div>
-    </div>
+      )}
+    </MemberPage>
   )
 }

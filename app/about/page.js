@@ -157,15 +157,22 @@ export default function AboutPage() {
                 >
                   <div className="space-y-4">
                     <p className="text-[#32a4a1] font-black text-[12px] uppercase tracking-widest">
-                      {alumnus.generation}기 / {alumnus.university} {alumnus.dept}
+                      {String(alumnus.generation || '').replace(/기$/, '')}기 / {alumnus.university} {alumnus.dept}
                     </p>
                     <h4 className="text-xl font-black group-hover:text-white transition-colors">{alumnus.name} Alumni님</h4>
                     <div className="h-px w-8 bg-[#32a4a1] group-hover:w-full transition-all duration-500"></div>
-                    <p className="text-sm text-slate-500 group-hover:text-slate-300 leading-relaxed break-keep font-medium whitespace-pre-wrap">
-                      "{alumnus.short_quote}"
-                    </p>
+                    {alumnus.summary_line ? (
+                      <div>
+                        <p className="text-[11px] font-bold text-slate-400 group-hover:text-slate-400">인터뷰 한 줄 요약</p>
+                        <p className="mt-1 text-sm text-slate-500 group-hover:text-slate-300 leading-relaxed break-keep font-medium">{alumnus.summary_line}</p>
+                      </div>
+                    ) : alumnus.short_quote ? (
+                      <p className="text-sm text-slate-500 group-hover:text-slate-300 leading-relaxed break-keep font-medium whitespace-pre-wrap">
+                        “{alumnus.short_quote}”
+                      </p>
+                    ) : null}
                   </div>
-                  <div className="mt-8 flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-[#32a4a1] opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="mt-8 flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-[#32a4a1] opacity-70 group-hover:opacity-100 transition-opacity">
                     View Full Interview <span>→</span>
                   </div>
                 </Link>

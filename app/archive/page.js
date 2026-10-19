@@ -1,21 +1,24 @@
 'use client'
 import { useCallback, useEffect, useState, Suspense } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import Link from 'next/link'
+import { ArrowLeft, Download, ExternalLink, FileText, FolderOpen, FolderPlus, Pencil, Plus, Trash2, X } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
-import InternalNav from '@/app/components/InternalNav'
 import { CLUB_RULES } from '@/lib/clubRules'
-import { fetchCurrentSemester, parseJson } from '@/lib/semester'
+import { fetchCurrentSemester, formatKst, parseJson } from '@/lib/semester'
 import { FOLDER_PLACEHOLDER_TITLE, deleteSubmittedFile } from '@/lib/archive'
+import { canWrite } from '@/lib/permissions'
+import { MemberHeader, MemberPage, useMember } from '@/app/components/MemberShell'
+import FileThumbnail from '@/app/components/FileThumbnail'
+import { Button, EmptyState, ErrorState, Field, inputClass, LoadingState, SegmentedControl, Tabs, useAsyncAction, useToast } from '@/app/components/ui'
 import PastArchive from './_components/PastArchive'
 import ArchiveModal from './_components/ArchiveModal'
 
 const TABS = [
-  { id: 'past', icon: '📦', label: '과거 자료실' },
-  { id: 'edu', icon: '📘', label: '교육자료실' },
-  { id: 'special', icon: '🌟', label: '특별세션 자료실' },
-  { id: 'template', icon: '📑', label: '양식 자료실' },
-  { id: 'rules', icon: '📜', label: '회칙 열람실' },
+  { key: 'past', label: '과거 자료실' },
+  { key: 'edu', label: '교육자료실' },
+  { key: 'special', label: '특별세션 자료실' },
+  { key: 'template', label: '양식 자료실' },
+  { key: 'rules', label: '회칙 열람실' },
 ]
 const EDU_SECTIONS = ['Insight', 'Graphic', 'Delivery', '기타']
 const GOOGLE_DRIVE_FOLDER_URL = 'https://drive.google.com/drive/folders/1N4BAGYNk5PQEdPxQP5zUAuPehWQkr5bV?usp=drive_link'
@@ -27,7 +30,7 @@ const EMPTY_ARCHIVE = { currentCode: '', pastFiles: [], semesters: [], weekRows:
 
 export default function ArchivePage() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-white flex items-center justify-center font-black text-slate-400">아카이브 여는 중... 🔄</div>}>
+    <Suspense fallback={<MemberPage><LoadingState label="아카이브를 여는 중입니다." /></MemberPage>}>
       <ArchiveUserPage />
     </Suspense>
   )
@@ -37,14 +40,17 @@ function ArchiveUserPage() {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
-  // 탭은 URL(?tab=)이 단일 기준이라 GNB 드롭다운과 탭 버튼이 같은 상태를 본다
+  const identity = useMember()
+  const toast = useToast()
+  const [run, busy] = useAsyncAction()
+  // 탭은 URL(?tab=)이 단일 기준이라 상단 메뉴와 탭 버튼이 같은 상태를 본다
   const tabParam = searchParams.get('tab')
-  const activeTab = TABS.some((tab) => tab.id === tabParam) ? tabParam : 'past'
+  const activeTab = TABS.some((tab) => tab.key === tabParam) ? tabParam : 'past'
 
-  const [user, setUser] = useState(null)
-  const [loading, setLoading] = useState(true)
+  const [state, setState] = useState({ status: 'loading', error: '' })
   const [archive, setArchive] = useState(EMPTY_ARCHIVE)
   const [editResource, setEditResource] = useState(null)
+  const [creatingFolder, setCreatingFolder] = useState(false)
   // 탭 버튼을 다시 누르면 그 탭의 첫 화면(학기 선택·폴더 목록)으로 돌아간다
   const [tabResetKey, setTabResetKey] = useState(0)
 
@@ -59,6 +65,8 @@ function ArchiveUserPage() {
       supabase.from('semester_weeks').select('semester_id, week_no, topic, weekday_topic'),
       supabase.from('club_rules').select('content').order('updated_at', { ascending: false }).limit(1),
     ])
+    const failed = [pastRes, archiveRes, semesterRes].find((result) => result.error)
+    if (failed) throw failed.error
 
     const semesters = semesterRes.data || []
     const pastSemesterIds = semesters.filter((row) => row.code !== current.code).map((row) => row.id)
@@ -78,127 +86,162 @@ function ArchiveUserPage() {
       absenceRows: absenceRes.data || [],
       rules: Array.isArray(parsedRules) ? parsedRules : rulesContent ? [{ id: 1, chapter: '회칙', content: rulesContent }] : [],
     })
-    setLoading(false)
   }, [])
 
   useEffect(() => {
+    if (identity.status !== 'ready') return undefined
+    if (!identity.session) {
+      router.replace('/login?next=%2Farchive')
+      return undefined
+    }
     let active = true
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (!active || !session) return
-      setUser(session.user)
-      await loadArchive()
-    })
+    async function load() {
+      try {
+        await loadArchive()
+        if (active) setState({ status: 'ready', error: '' })
+      } catch (error) {
+        if (active) setState({ status: 'error', error: error.message })
+      }
+    }
+    load()
     return () => { active = false }
-  }, [loadArchive])
+  }, [identity.status, identity.session, router, loadArchive])
 
-  const myName = user?.user_metadata?.name
+  const myName = identity.member?.name || identity.session?.user?.user_metadata?.name || ''
+  const adminCanManage = canWrite(identity.admin?.role)
+  const canManageResource = (row) => adminCanManage || (Boolean(myName) && row.uploader_name === myName)
+  const canManageFile = (file) => adminCanManage || (identity.member && file.uploader_member_id ? file.uploader_member_id === identity.member.id : Boolean(myName) && file.uploader === myName)
+
+  const refresh = async () => {
+    try {
+      await loadArchive()
+    } catch (error) {
+      toast.error(`목록을 새로 불러오지 못했습니다: ${error.message}`)
+    }
+  }
 
   const addResource = async (row) => {
     const { error } = await supabase.from('archive_files').insert([{ uploader_name: myName, semester: '상시', ...row }])
     if (error) {
-      alert('등록 실패: ' + error.message)
+      toast.error(`등록하지 못했습니다: ${error.message}`)
       return false
     }
-    await loadArchive()
+    await refresh()
     return true
   }
 
-  const handleCreateFolder = async () => {
-    const folderName = prompt('새로운 특별세션 폴더 이름을 입력해 줘! 📁')
-    if (!folderName?.trim()) return
-    if (await addResource({ category: 'special', file_type: folderName.trim(), title: FOLDER_PLACEHOLDER_TITLE, file_url: '' })) alert('폴더 생성 완료! ✨')
-  }
+  const handleCreateFolder = (folderName) => run(async () => {
+    const name = folderName.trim()
+    if (!name) return
+    if (archive.archiveFiles.some((row) => row.category === 'special' && row.file_type === name)) {
+      toast.error('같은 이름의 폴더가 이미 있습니다.')
+      return
+    }
+    if (await addResource({ category: 'special', file_type: name, title: FOLDER_PLACEHOLDER_TITLE, file_url: '' })) {
+      toast.success(`'${name}' 폴더를 만들었습니다.`)
+      setCreatingFolder(false)
+    }
+  })
 
-  const handleSaveResource = async (form) => {
-    if (!form.title.trim() || !form.file_url.trim()) return alert('제목과 링크는 필수야! 🔗')
-    const { error } = await supabase.from('archive_files')
+  const handleSaveResource = (form) => run(async () => {
+    if (!form.title.trim() || !form.file_url.trim()) {
+      toast.error('제목과 링크를 모두 입력하세요.')
+      return
+    }
+    const { data, error } = await supabase.from('archive_files')
       .update({ title: form.title.trim(), file_url: form.file_url.trim(), description: form.description })
       .eq('id', editResource.id)
-    if (error) return alert('수정 실패: ' + error.message)
+      .select('id')
+    if (error || !data?.length) {
+      toast.error(`수정하지 못했습니다${error ? `: ${error.message}` : ' (권한이 없거나 이미 삭제됨)'}`)
+      return
+    }
+    toast.success('자료를 수정했습니다.')
     setEditResource(null)
-    loadArchive()
+    await refresh()
+  })
+
+  const handleDeleteResource = (row) => {
+    if (!confirm(`'${row.title}' 자료를 삭제할까요?\n드라이브·유튜브 원본은 지워지지 않습니다.`)) return
+    run(async () => {
+      const { data, error } = await supabase.from('archive_files').delete().eq('id', row.id).select('id')
+      if (error || !data?.length) {
+        toast.error(`삭제하지 못했습니다${error ? `: ${error.message}` : ' (권한이 없거나 이미 삭제됨)'}`)
+        return
+      }
+      toast.success('자료를 삭제했습니다.')
+      await refresh()
+    })
   }
 
-  const handleDeleteResource = async (row) => {
-    if (!confirm(`'${row.title}' 자료를 삭제할까요?`)) return
-    const { error } = await supabase.from('archive_files').delete().eq('id', row.id)
-    if (error) alert('삭제 실패: ' + error.message)
-    else loadArchive()
-  }
-
-  const handleDeletePast = async (file) => {
+  const handleDeletePast = (file) => {
     if (!confirm(`'${file.file_name}' 자료를 삭제할까요?`)) return
-    const { error } = await deleteSubmittedFile(file)
-    if (error) alert('삭제 실패: ' + error.message)
-    else loadArchive()
+    run(async () => {
+      const { error, storageError } = await deleteSubmittedFile(file)
+      if (error) {
+        toast.error(`삭제하지 못했습니다: ${error.message}`)
+        return
+      }
+      if (storageError) toast.warning('목록에서는 지웠지만 저장소 파일 삭제에 실패했습니다. 운영진에게 알려 주세요.')
+      else toast.success('자료를 삭제했습니다.')
+      await refresh()
+    })
   }
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center font-black text-slate-400">아카이브 여는 중... 🔄</div>
+  const changeTab = (key) => {
+    setTabResetKey((value) => value + 1)
+    router.replace(`${pathname}?tab=${key}`, { scroll: false })
+  }
 
-  const resourceProps = { myName, onAdd: addResource, onEdit: setEditResource, onDelete: handleDeleteResource }
+  if (identity.status !== 'ready' || state.status === 'loading') return <MemberPage><LoadingState label="아카이브를 여는 중입니다." /></MemberPage>
+  if (state.status === 'error') return <MemberPage><ErrorState title="아카이브를 불러오지 못했습니다." description={state.error} onRetry={() => window.location.reload()} /></MemberPage>
+
+  const resourceProps = { canManage: canManageResource, onAdd: addResource, onEdit: setEditResource, onDelete: handleDeleteResource }
   const resources = archive.archiveFiles
 
   return (
-    <>
-      <InternalNav />
-      <div className="bg-white min-h-screen text-slate-900 font-sans pb-32">
+    <MemberPage>
+      <MemberHeader
+        eyebrow="아카이브"
+        title="학회 자료실"
+        description="지난 학기 제출물, 교육·특별세션 자료, 양식과 회칙을 한곳에서 봅니다."
+        actions={<Button href="/archive/absence" icon={FileText}>사유서 게시판</Button>}
+      />
 
-        <header className="max-w-[1200px] mx-auto px-6 md:px-8 mt-12 mb-8 flex flex-col md:flex-row md:justify-between md:items-end gap-4">
-          <div>
-            <h1 className="text-3xl md:text-4xl font-extrabold text-teal-800 tracking-tight">Resource Archive</h1>
-            <p className="text-sm font-medium text-slate-500 mt-2">학회 통합 자료 열람 공간입니다.</p>
-          </div>
-          <Link href="/archive/absence" className="shrink-0 px-5 py-2.5 border border-slate-300 text-slate-700 text-xs font-bold hover:border-teal-700 hover:text-teal-800 transition-colors flex items-center gap-2 w-fit">
-            📝 사유서 게시판 →
-          </Link>
-        </header>
+      <Tabs tabs={TABS} value={activeTab} onChange={changeTab} label="자료실 종류" />
 
-        <div className="max-w-[1200px] mx-auto px-6 md:px-8">
-          <div className="flex gap-1 border-b border-slate-200 overflow-x-auto no-scrollbar">
-            {TABS.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => { setTabResetKey((key) => key + 1); router.replace(`${pathname}?tab=${tab.id}`, { scroll: false }) }}
-                className={`px-5 py-3 text-sm font-bold shrink-0 border-b-[3px] -mb-px transition-colors ${activeTab === tab.id ? 'border-teal-800 text-teal-800' : 'border-transparent text-slate-400 hover:text-slate-700'}`}
-              >
-                <span className="mr-1.5">{tab.icon}</span>{tab.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* 탭 컴포넌트는 탭을 바꿀 때 언마운트되므로 하위 탐색·업로드 폼 상태가 자동으로 초기화된다 */}
-        <main key={tabResetKey} className="max-w-[1200px] mx-auto px-6 md:px-8 mt-10">
-          {activeTab === 'past' && (
-            <PastArchive
-              currentCode={archive.currentCode}
-              files={archive.pastFiles}
-              semesters={archive.semesters}
-              weekRows={archive.weekRows}
-              archiveRows={resources}
-              absenceRows={archive.absenceRows}
-              myName={myName}
-              onDeleteFile={handleDeletePast}
-            />
-          )}
-          {activeTab === 'edu' && <EduTab resources={resources} {...resourceProps} />}
-          {activeTab === 'special' && <SpecialTab resources={resources} onCreateFolder={handleCreateFolder} {...resourceProps} />}
-          {activeTab === 'template' && (
-            <ResourceSection
-              title="양식 자료실"
-              desc="기획서 양식·학회 로고 등 공통 양식을 드라이브 링크로 공유하세요."
-              emptyText="등록된 양식이 없습니다."
-              rows={resources.filter((row) => row.category === 'template')}
-              target={{ category: 'template', file_type: 'common' }}
-              {...resourceProps}
-            />
-          )}
-          {activeTab === 'rules' && <RulesTab rules={archive.rules.length > 0 ? archive.rules : CLUB_RULES} />}
-        </main>
+      {/* 탭 컴포넌트는 탭을 바꿀 때 언마운트되므로 하위 탐색·업로드 폼 상태가 자동으로 초기화된다 */}
+      <div key={tabResetKey} className="mt-6">
+        {activeTab === 'past' && (
+          <PastArchive
+            currentCode={archive.currentCode}
+            files={archive.pastFiles}
+            semesters={archive.semesters}
+            weekRows={archive.weekRows}
+            archiveRows={resources}
+            absenceRows={archive.absenceRows}
+            canManage={canManageFile}
+            onDeleteFile={handleDeletePast}
+          />
+        )}
+        {activeTab === 'edu' && <EduTab resources={resources} {...resourceProps} />}
+        {activeTab === 'special' && <SpecialTab resources={resources} onCreateFolder={() => setCreatingFolder(true)} {...resourceProps} />}
+        {activeTab === 'template' && (
+          <ResourceSection
+            title="양식 자료실"
+            desc="기획서 양식·학회 로고 등 공통 양식을 드라이브 링크로 공유하세요."
+            emptyText="등록된 양식이 없습니다."
+            rows={resources.filter((row) => row.category === 'template')}
+            target={{ category: 'template', file_type: 'common' }}
+            {...resourceProps}
+          />
+        )}
+        {activeTab === 'rules' && <RulesTab rules={archive.rules.length > 0 ? archive.rules : CLUB_RULES} />}
       </div>
 
-      {editResource && <EditResourceModal resource={editResource} onSave={handleSaveResource} onClose={() => setEditResource(null)} />}
-    </>
+      {editResource && <EditResourceModal resource={editResource} saving={busy} onSave={handleSaveResource} onClose={() => setEditResource(null)} />}
+      {creatingFolder && <CreateFolderModal saving={busy} onSave={handleCreateFolder} onClose={() => setCreatingFolder(false)} />}
+    </MemberPage>
   )
 }
 
@@ -212,13 +255,7 @@ function EduTab({ resources, ...resourceProps }) {
       rows={resources.filter((row) => row.category === 'edu' && row.file_type === section)}
       target={{ category: 'edu', file_type: section }}
       allowYoutube
-      toolbar={(
-        <div className="flex gap-2 overflow-x-auto no-scrollbar">
-          {EDU_SECTIONS.map((item) => (
-            <button key={item} onClick={() => setSection(item)} className={`px-5 py-2 text-xs font-bold shrink-0 border transition-colors ${section === item ? 'bg-teal-800 text-white border-teal-800' : 'bg-white text-slate-500 border-slate-200 hover:border-teal-400'}`}>{item}</button>
-          ))}
-        </div>
-      )}
+      toolbar={<SegmentedControl label="교육 분야" value={section} onChange={setSection} options={EDU_SECTIONS.map((item) => ({ value: item, label: item }))} />}
       {...resourceProps}
     />
   )
@@ -230,8 +267,8 @@ function SpecialTab({ resources, onCreateFolder, ...resourceProps }) {
 
   if (folder) {
     return (
-      <div className="space-y-6">
-        <button onClick={() => setFolder(null)} className="text-xs font-black text-slate-400 hover:text-teal-800 uppercase tracking-widest">← 폴더 목록</button>
+      <div className="space-y-5">
+        <Button size="sm" variant="ghost" icon={ArrowLeft} onClick={() => setFolder(null)}>폴더 목록</Button>
         <ResourceSection
           title={folder}
           desc="이 세션의 자료를 드라이브 파일 또는 유튜브 링크로 공유하세요."
@@ -246,164 +283,177 @@ function SpecialTab({ resources, onCreateFolder, ...resourceProps }) {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-end border-b border-slate-200 pb-4">
-        <div>
-          <h2 className="text-2xl font-extrabold text-slate-900">특별세션 자료실</h2>
-          <p className="text-xs font-medium text-slate-400 mt-1">특강·행사 폴더를 만들고 자료를 모아두세요.</p>
+    <div className="space-y-5">
+      <SectionHeader title="특별세션 자료실" desc="특강·행사 폴더를 만들고 자료를 모아두세요." action={<Button variant="primary" icon={FolderPlus} onClick={onCreateFolder}>새 폴더</Button>} />
+      {folders.length === 0 ? <EmptyState icon={FolderOpen} title="만든 세션 폴더가 없습니다." description="새 폴더를 만들어 특강·행사 자료를 모아 보세요." /> : (
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
+          {folders.map((name) => {
+            const count = resources.filter((row) => row.category === 'special' && row.file_type === name && row.title !== FOLDER_PLACEHOLDER_TITLE).length
+            return (
+              <button key={name} type="button" onClick={() => setFolder(name)} className="flex min-h-28 flex-col items-start justify-between gap-3 rounded-lg border border-slate-200 bg-white p-4 text-left transition hover:border-teal-600 hover:bg-teal-50/40">
+                <FolderOpen className="h-6 w-6 text-teal-700" aria-hidden="true" />
+                <span className="w-full">
+                  <span className="block break-keep text-base font-bold text-slate-900">{name}</span>
+                  <span className="text-xs text-slate-500">자료 {count}건</span>
+                </span>
+              </button>
+            )
+          })}
         </div>
-        <button onClick={onCreateFolder} className="shrink-0 px-5 py-2.5 bg-teal-800 text-white text-xs font-bold hover:bg-teal-900 transition-colors">+ 새 폴더</button>
-      </div>
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-        {folders.length === 0 ? <p className="col-span-full text-slate-400 font-medium text-center py-12">생성된 세션 폴더가 없습니다.</p> : folders.map((name) => (
-          <button key={name} onClick={() => setFolder(name)} className="border border-slate-200 hover:border-teal-700 hover:bg-teal-50 p-8 font-extrabold text-lg text-slate-700 hover:text-teal-800 transition-all flex flex-col items-center gap-3">
-            <span className="text-3xl">📂</span>{name}
-          </button>
-        ))}
-      </div>
+      )}
     </div>
   )
 }
 
 function RulesTab({ rules }) {
   return (
-    <div className="space-y-6">
-      <div className="border-b border-slate-200 pb-4 flex flex-col sm:flex-row sm:justify-between sm:items-end gap-3">
-        <div>
-          <h2 className="text-2xl font-extrabold text-slate-900">인사이트그라피 회칙</h2>
-          <p className="text-xs font-medium text-slate-400 mt-1">학회 활동의 근간이 되는 공식 회칙입니다. (26.07.04 기준)</p>
-        </div>
-        <a href="/files/IG_%ED%9A%8C%EC%B9%99_260704.docx" download className="shrink-0 px-5 py-2.5 border border-slate-300 text-slate-700 text-xs font-bold hover:border-teal-700 hover:text-teal-800 transition-colors flex items-center gap-2 w-fit">
-          📄 회칙 원문 다운로드
-        </a>
-      </div>
-      <div className="space-y-6">
+    <div className="space-y-5">
+      <SectionHeader
+        title="인사이트그라피 회칙"
+        desc="학회 활동의 근간이 되는 공식 회칙입니다. (26.07.04 기준)"
+        action={<a href="/files/IG_%ED%9A%8C%EC%B9%99_260704.docx" download className="inline-flex h-9 items-center gap-1.5 whitespace-nowrap rounded-md border border-slate-300 bg-white px-3 text-sm font-bold text-slate-700 hover:bg-slate-50"><Download className="h-4 w-4" aria-hidden="true" />회칙 원문 받기</a>}
+      />
+      <div className="space-y-4">
         {rules.map((rule) => (
-          <div key={rule.id} className="border border-slate-200 p-8">
-            <h3 className="text-lg font-black text-teal-800 mb-4 border-l-[3px] border-teal-800 pl-3">{rule.chapter}</h3>
-            <p className="text-sm font-medium text-slate-700 leading-loose whitespace-pre-wrap">{rule.content}</p>
-          </div>
+          <article key={rule.id} className="rounded-lg border border-slate-200 bg-white p-5 sm:p-6">
+            <h3 className="mb-3 border-l-[3px] border-teal-700 pl-3 text-base font-bold text-teal-800">{rule.chapter}</h3>
+            <p className="whitespace-pre-wrap text-sm leading-7 text-slate-700">{rule.content}</p>
+          </article>
         ))}
       </div>
     </div>
   )
 }
 
-// 교육·특별세션·양식 자료실 공통: 섹션 헤더 + 링크 등록 폼 + 자료 목록
-function ResourceSection({ title, desc, emptyText, rows, target, allowYoutube = false, toolbar, myName, onAdd, onEdit, onDelete }) {
+function SectionHeader({ title, desc, action }) {
+  return (
+    <div className="flex flex-col gap-3 border-b border-slate-200 pb-4 sm:flex-row sm:items-end sm:justify-between">
+      <div className="min-w-0">
+        <h2 className="break-keep text-xl font-bold text-slate-900">{title}</h2>
+        {desc && <p className="mt-1 text-sm text-slate-500">{desc}</p>}
+      </div>
+      {action && <div className="shrink-0">{action}</div>}
+    </div>
+  )
+}
+
+// 교육·특별세션·양식 자료실 공통: 섹션 헤더 + 링크 등록 폼 + 미리보기 카드 목록
+function ResourceSection({ title, desc, emptyText, rows, target, allowYoutube = false, toolbar, canManage, onAdd, onEdit, onDelete }) {
+  const toast = useToast()
   const [adding, setAdding] = useState(false)
   const [form, setForm] = useState({ title: '', url: '', description: '' })
   const [type, setType] = useState('drive')
   const [uploading, setUploading] = useState(false)
   const isYt = allowYoutube && type === 'youtube'
 
-  const submit = async () => {
+  const submit = async (event) => {
+    event.preventDefault()
+    if (uploading) return
     const url = form.url.trim()
-    if (!form.title.trim() || !url) return alert('제목과 링크를 모두 입력해 줘! 🔗')
+    if (!form.title.trim() || !url) {
+      toast.error('제목과 링크를 모두 입력하세요.')
+      return
+    }
     if (isYt ? !isYoutubeUrl(url) : !isDriveUrl(url)) {
-      return alert(`올바른 ${isYt ? '유튜브' : '구글 드라이브'} 링크가 아닌 것 같아! 다시 확인해 봐! 🤔`)
+      toast.error(`${isYt ? '유튜브' : '구글 드라이브'} 링크가 아닙니다. 주소를 다시 확인하세요.`)
+      return
     }
     setUploading(true)
-    const ok = await onAdd({ ...target, title: form.title, file_url: url, description: form.description })
+    const ok = await onAdd({ ...target, title: form.title.trim(), file_url: url, description: form.description })
     setUploading(false)
     if (!ok) return
-    alert('자료 등록 완료! 🎉')
+    toast.success('자료를 등록했습니다.')
     setForm({ title: '', url: '', description: '' })
     setAdding(false)
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-end border-b border-slate-200 pb-4">
-        <div>
-          <h2 className="text-2xl font-extrabold text-slate-900">{title}</h2>
-          <p className="text-xs font-medium text-slate-400 mt-1">{desc}</p>
-        </div>
-        <button onClick={() => setAdding((value) => !value)} className={`shrink-0 px-5 py-2.5 text-xs font-bold transition-colors ${adding ? 'bg-slate-100 text-slate-600 hover:bg-slate-200' : 'bg-teal-800 text-white hover:bg-teal-900'}`}>
-          {adding ? '닫기 ✕' : '+ 자료 등록'}
-        </button>
-      </div>
+    <div className="space-y-5">
+      <SectionHeader
+        title={title}
+        desc={desc}
+        action={<Button variant={adding ? 'secondary' : 'primary'} icon={adding ? X : Plus} onClick={() => setAdding((value) => !value)} aria-expanded={adding}>{adding ? '닫기' : '자료 등록'}</Button>}
+      />
 
       {toolbar}
 
       {adding && (
-        <div className="border border-slate-200 bg-slate-50 p-5 space-y-3">
-          {allowYoutube && (
-            <div className="flex gap-2">
-              <button onClick={() => setType('drive')} className={`flex-1 py-2 text-xs font-bold border transition-colors ${!isYt ? 'bg-teal-800 text-white border-teal-800' : 'bg-white text-slate-500 border-slate-200'}`}>📁 구글 드라이브</button>
-              <button onClick={() => setType('youtube')} className={`flex-1 py-2 text-xs font-bold border transition-colors ${isYt ? 'bg-red-600 text-white border-red-600' : 'bg-white text-slate-500 border-slate-200'}`}>🎬 유튜브</button>
-            </div>
-          )}
-          <div className="flex flex-col sm:flex-row gap-2">
-            {!isYt && (
-              <a href={GOOGLE_DRIVE_FOLDER_URL} target="_blank" rel="noopener noreferrer" className="shrink-0 px-4 py-3 bg-white border border-slate-200 hover:border-teal-400 text-slate-700 text-xs font-bold flex items-center justify-center gap-2">📁 드라이브에 올리기</a>
-            )}
-            <input type="text" placeholder="자료 제목" value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} className="w-full sm:w-1/3 border border-slate-300 p-3 font-bold text-sm outline-none bg-white focus:border-teal-600" />
-            <input type="text" placeholder={isYt ? '유튜브 공유 링크 붙여넣기!' : '구글 드라이브 링크 붙여넣기!'} value={form.url} onChange={(event) => setForm({ ...form, url: event.target.value })} className={`flex-1 border border-slate-300 p-3 font-bold text-sm outline-none bg-white ${isYt ? 'text-red-600 focus:border-red-400' : 'text-teal-700 focus:border-teal-600'}`} />
+        <form onSubmit={submit} className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
+          {allowYoutube && <SegmentedControl label="링크 종류" value={type} onChange={setType} options={[{ value: 'drive', label: '구글 드라이브' }, { value: 'youtube', label: '유튜브' }]} />}
+          <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
+            <Field label="자료 제목" htmlFor={`resource-title-${title}`}>
+              <input id={`resource-title-${title}`} value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} className={inputClass} />
+            </Field>
+            <Field label={isYt ? '유튜브 링크' : '구글 드라이브 링크'} htmlFor={`resource-url-${title}`} hint={isYt ? undefined : '드라이브에 먼저 올린 뒤 공유 링크를 붙여 넣으세요. 공유를 바꾸지 않아도 등록은 됩니다.'}>
+              <input id={`resource-url-${title}`} value={form.url} onChange={(event) => setForm({ ...form, url: event.target.value })} placeholder={isYt ? 'https://youtu.be/…' : 'https://drive.google.com/…'} className={inputClass} />
+            </Field>
           </div>
-          <div className="flex flex-col sm:flex-row gap-2">
-            <input type="text" placeholder="간단한 설명 (선택)" value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} className="flex-1 border border-slate-300 p-3 font-bold text-sm outline-none bg-white focus:border-teal-600" />
-            <button onClick={submit} disabled={uploading} className={`shrink-0 px-8 py-3 text-white text-sm font-bold transition-colors active:scale-95 ${isYt ? 'bg-red-600 hover:bg-red-700' : 'bg-teal-800 hover:bg-teal-900'}`}>
-              {uploading ? '제출 중...' : '등록 🚀'}
-            </button>
+          <Field label="간단한 설명 (선택)" htmlFor={`resource-desc-${title}`}>
+            <input id={`resource-desc-${title}`} value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} className={inputClass} />
+          </Field>
+          <div className="flex flex-wrap justify-end gap-2">
+            {!isYt && <Button href={GOOGLE_DRIVE_FOLDER_URL} target="_blank" icon={ExternalLink}>공유 드라이브 열기</Button>}
+            <Button type="submit" variant="primary" loading={uploading}>등록</Button>
           </div>
-        </div>
+        </form>
       )}
 
-      <div className="border-t border-slate-200">
-        {rows.length === 0 ? <p className="text-slate-400 font-medium py-12 text-center">{emptyText}</p> : rows.map((row) => (
-          <ResourceRow key={row.id} row={row} mine={row.uploader_name === myName} onEdit={() => onEdit(row)} onDelete={() => onDelete(row)} />
-        ))}
-      </div>
+      {rows.length === 0 ? <p className="rounded-lg border border-dashed border-slate-300 px-4 py-12 text-center text-sm text-slate-500">{emptyText}</p> : (
+        <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {rows.map((row) => (
+            <ResourceCard key={row.id} row={row} manage={canManage(row)} onEdit={() => onEdit(row)} onDelete={() => onDelete(row)} />
+          ))}
+        </ul>
+      )}
     </div>
   )
 }
 
-function ResourceRow({ row, mine, onEdit, onDelete }) {
-  const isYt = row.file_url && isYoutubeUrl(row.file_url)
+function ResourceCard({ row, manage, onEdit, onDelete }) {
   return (
-    <div className="flex items-center justify-between py-4 border-b border-slate-200 hover:bg-slate-50/60 transition-colors group gap-4 px-2">
-      <a href={row.file_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-4 flex-1 min-w-0">
-        <span className={`shrink-0 text-[9px] font-black px-2 py-1 uppercase tracking-widest ${isYt ? 'bg-red-100 text-red-600' : 'bg-teal-100 text-teal-800'}`}>{isYt ? 'YT' : 'DRIVE'}</span>
-        <div className="min-w-0">
-          <h4 className="text-sm font-bold text-slate-800 truncate group-hover:text-teal-800 transition-colors">{row.title}</h4>
-          {row.description && <p className="text-xs text-slate-400 font-medium truncate">{row.description}</p>}
-        </div>
-      </a>
-      <div className="flex items-center gap-5 shrink-0">
-        <span className="text-xs font-medium text-slate-400 hidden sm:block">{row.uploader_name}</span>
-        {mine && (
-          <div className="flex gap-3 sm:opacity-0 group-hover:opacity-100 transition-opacity">
-            <button onClick={onEdit} className="text-[11px] font-bold text-slate-400 hover:text-teal-800 transition-colors">수정</button>
-            <button onClick={onDelete} className="text-[11px] font-bold text-slate-400 hover:text-red-600 transition-colors">삭제</button>
-          </div>
-        )}
+    <li className="min-w-0 rounded-lg border border-slate-200 bg-white p-3">
+      <FileThumbnail url={row.file_url} title={row.title} />
+      <div className="mt-2 min-w-0">
+        <p className="truncate text-sm font-bold text-slate-900" title={row.title}>{row.title}</p>
+        {row.description && <p className="line-clamp-2 text-xs leading-5 text-slate-500">{row.description}</p>}
+        <p className="mt-0.5 text-xs text-slate-500">{row.uploader_name || '작성자 미상'}{row.created_at ? ` · ${formatKst(row.created_at, { year: true })}` : ''}</p>
       </div>
-    </div>
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        <Button size="sm" href={row.file_url} target="_blank" icon={ExternalLink}>원본 열기</Button>
+        {manage && <Button size="sm" icon={Pencil} onClick={onEdit}>수정</Button>}
+        {manage && <Button size="sm" variant="danger" icon={Trash2} onClick={onDelete}>삭제</Button>}
+      </div>
+    </li>
   )
 }
 
-function EditResourceModal({ resource, onSave, onClose }) {
+function EditResourceModal({ resource, saving, onSave, onClose }) {
   const [form, setForm] = useState({ title: resource.title || '', file_url: resource.file_url || '', description: resource.description || '' })
   const fields = [
     { key: 'title', label: '제목' },
-    { key: 'file_url', label: '링크', className: 'text-teal-700' },
+    { key: 'file_url', label: '링크' },
     { key: 'description', label: '설명 (선택)' },
   ]
   return (
-    <ArchiveModal title="내 자료 수정" onClose={onClose} size="max-w-md">
+    <ArchiveModal title="자료 수정" onClose={onClose} size="max-w-md" footer={<><Button onClick={onClose}>취소</Button><Button variant="primary" loading={saving} onClick={() => onSave(form)}>저장</Button></>}>
       <div className="space-y-4">
         {fields.map((field) => (
-          <div key={field.key}>
-            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">{field.label}</label>
-            <input type="text" value={form[field.key]} onChange={(event) => setForm({ ...form, [field.key]: event.target.value })} className={`w-full border border-slate-300 p-3 font-bold text-sm outline-none focus:border-teal-600 ${field.className || ''}`} />
-          </div>
+          <Field key={field.key} label={field.label} htmlFor={`edit-${field.key}`}>
+            <input id={`edit-${field.key}`} value={form[field.key]} onChange={(event) => setForm({ ...form, [field.key]: event.target.value })} className={inputClass} />
+          </Field>
         ))}
       </div>
-      <div className="flex gap-2 mt-6">
-        <button onClick={() => onSave(form)} className="flex-1 py-2.5 bg-teal-800 text-white font-bold text-xs hover:bg-teal-900 transition-colors">저장</button>
-        <button onClick={onClose} className="flex-1 py-2.5 bg-slate-100 text-slate-600 font-bold text-xs hover:bg-slate-200 transition-colors">취소</button>
-      </div>
+    </ArchiveModal>
+  )
+}
+
+function CreateFolderModal({ saving, onSave, onClose }) {
+  const [name, setName] = useState('')
+  return (
+    <ArchiveModal title="새 특별세션 폴더" onClose={onClose} size="max-w-md" footer={<><Button onClick={onClose}>취소</Button><Button variant="primary" loading={saving} disabled={!name.trim()} onClick={() => onSave(name)}>만들기</Button></>}>
+      <Field label="폴더 이름" htmlFor="folder-name" hint="예: 2026 여름 특강, 외부 연사 세션">
+        <input id="folder-name" value={name} onChange={(event) => setName(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && name.trim()) onSave(name) }} className={inputClass} />
+      </Field>
     </ArchiveModal>
   )
 }

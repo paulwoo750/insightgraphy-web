@@ -2,34 +2,49 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import InternalNav from '@/app/components/InternalNav'
-import { currentSemesterIdFilter, fetchCurrentSemester, fetchSemesterMembers, formatDateTime, groupDeadlines, memberGroup, nearestDeadlineWeek, submissionTopic } from '@/lib/semester'
+import { currentSemesterIdFilter, displayTopic, fetchCurrentSemester, fetchSemesterMembers, formatDateTime, fromKstInput, groupDeadlines, memberGroup, nearestDeadlineWeek, submissionTopic, weekFromParam } from '@/lib/semester'
+import { MemberHeader, MemberPage, rememberWeekContext, useMember } from '@/app/components/MemberShell'
+import WeekOverviewCard from '@/app/components/WeekOverviewCard'
+import { Button, inputClass, useToast } from '@/app/components/ui'
+import { SubmissionList, WeekSelector } from '../_components/shared'
+
+// 주소(?week=&session=)를 지금 보는 주차·세션으로 맞추고, 다른 자료실 메뉴에도 이어지게 기억한다
+function syncWeekUrl(week, mode) {
+  const params = new URLSearchParams(window.location.search)
+  params.set('week', String(week))
+  if (mode === 'weekday') params.set('session', 'weekday')
+  else params.delete('session')
+  window.history.replaceState(window.history.state, '', `${window.location.pathname}?${params.toString()}`)
+  rememberWeekContext(week, mode)
+}
 
 export default function VideoRoom() {
   const router = useRouter()
+  const identity = useMember()
+  const toast = useToast()
   const [user, setUser] = useState(null)
   const [files, setFiles] = useState([])
   const [uploading, setUploading] = useState(false)
-  
-  const [selectedWeek, setSelectedWeek] = useState(1) 
-  const [targetWeek, setTargetWeek] = useState(1) 
-  
-  const [activeMembers, setActiveMembers] = useState([]) 
-  const [selectedTargetId, setSelectedTargetId] = useState('') 
-  const [ytUrl, setYtUrl] = useState('') 
+
+  const [selectedWeek, setSelectedWeek] = useState(1)
+  const [targetWeek, setTargetWeek] = useState(1)
+
+  const [activeMembers, setActiveMembers] = useState([])
+  const [selectedTargetId, setSelectedTargetId] = useState('')
+  const [ytUrl, setYtUrl] = useState('')
 
   const [currentSemester, setCurrentSemester] = useState('')
-  const [totalWeeks, setTotalWeeks] = useState(12) 
+  const [totalWeeks, setTotalWeeks] = useState(0)
   const [deadlines, setDeadlines] = useState({})
-  const [weekTopics, setWeekTopics] = useState({}) 
+  const [weekTopics, setWeekTopics] = useState({})
   const [weeklySetup, setWeeklySetup] = useState({})
 
   const [editItem, setEditItem] = useState(null)
   const [newTitle, setNewTitle] = useState('')
 
   const [viewingFile, setViewingFile] = useState(null)
-  const [draftFeedback, setDraftFeedback] = useState(null) 
-  
+  const [draftFeedback, setDraftFeedback] = useState(null)
+
   const [comments, setComments] = useState([])
   const [newCommentData, setNewCommentData] = useState({
     originalMessage: '',
@@ -42,6 +57,7 @@ export default function VideoRoom() {
 
   // 🌟 방학학기: 정규세션/평일세션 모드
   const [semesterType, setSemesterType] = useState('regular')
+  const [semesterInfo, setSemesterInfo] = useState(null)
   const [sessionMode, setSessionMode] = useState('regular') // 'regular' | 'weekday'
   const fileCategory = sessionMode === 'weekday' ? 'weekday_video' : 'video'
 
@@ -55,8 +71,8 @@ export default function VideoRoom() {
     if (sessionMode === 'weekday') {
       const t = myWeekdayTeam(week)
       if (!t) return null
-      if (t.videoDl) return t.videoDl
-      return t.date ? `${t.date}T23:59` : null
+      if (t.videoDl) return fromKstInput(t.videoDl)
+      return t.date ? fromKstInput(`${t.date}T23:59`) : null
     }
     return deadlines[week]?.video || null
   }
@@ -82,10 +98,15 @@ export default function VideoRoom() {
     setWeeklySetup(semester.weeklySetup)
 
     const { data: dlData } = await supabase.from('pr_deadlines').select('*').or(currentSemesterIdFilter(semester))
-    const initialWeek = nearestDeadlineWeek(dlData, 'video')
+    const params = new URLSearchParams(window.location.search)
+    const initialWeek = weekFromParam(params.get('week'), semester.totalWeeks, nearestDeadlineWeek(dlData, 'video'))
+    const initialMode = semester.type === 'vacation' && params.get('session') === 'weekday' ? 'weekday' : 'regular'
     setDeadlines(groupDeadlines(dlData))
     setSelectedWeek(initialWeek)
     setTargetWeek(initialWeek)
+    setSessionMode(initialMode)
+    setSemesterInfo(semester)
+    rememberWeekContext(initialWeek, initialMode)
     return semester
   }, [])
 
@@ -112,21 +133,21 @@ export default function VideoRoom() {
   const handleUpdateFile = async () => {
     if (!newTitle) return
     const { error } = await supabase.from('files_metadata').update({ file_name: newTitle }).eq('id', editItem.id)
-    if (!error) { 
-      alert("파일 이름 수정 완료!"); 
-      setEditItem(null); 
-      refreshFiles(); 
+    if (!error) {
+      toast.success("파일 이름을 바꿨습니다.");
+      setEditItem(null);
+      refreshFiles();
     }
   }
 
   const handleRegisterYoutube = async () => {
-    if (!selectedTargetId || !ytUrl.trim()) return alert("업로드 대상과 유튜브 링크를 모두 입력해줘! 🔗")
-    
+    if (!selectedTargetId || !ytUrl.trim()) return toast.error("업로드 대상과 유튜브 링크를 모두 입력하세요.")
+
     setUploading(true)
     const currentTopic = submissionTopic(weekTopics, targetWeek, sessionMode)
     const target = uploadTargets.find(t => t.id === selectedTargetId);
-    if (!target) { setUploading(false); return alert("업로드 대상을 다시 선택해줘! 🔗") }
-    
+    if (!target) { setUploading(false); return toast.error("업로드 대상을 다시 선택하세요.") }
+
     const sessionTag = sessionMode === 'weekday' ? ' [평일세션]' : ''
     const autoTitle = `${targetWeek}W${sessionTag} (${currentTopic}) ${target.id} 발표영상`;
     const myGroup = target.group_id;
@@ -139,21 +160,24 @@ export default function VideoRoom() {
       file_url: ytUrl.trim(),
       week: targetWeek,
       file_category: fileCategory,
-      is_archive: false, 
+      is_archive: false,
       uploader: target.id,
+      // 명단에서 고른 개인이면 그 학회원 ID를 함께 남긴다 (팀 영상은 팀 이름만)
+      uploader_member_id: activeMembers.find(m => m.name === target.id)?.id || null,
+      semester_id: semesterInfo?.id || null,
       storage_path: 'youtube',
       semester: currentSemester,
       is_late: isLate,
-      group_id: myGroup 
+      group_id: myGroup
     }])
-    if (!error) { 
-      alert('영상 등록 완료!'); 
-      setYtUrl(''); 
-      setSelectedTargetId(''); 
+    if (!error) {
+      toast.success(isLate ? '영상을 등록했습니다. 마감 이후라 지각으로 기록됩니다.' : '영상을 등록했습니다.');
+      setYtUrl('');
+      setSelectedTargetId('');
       setSelectedWeek(targetWeek);
-      refreshFiles(); 
+      refreshFiles();
     }
-    else { alert("등록 실패: " + error.message); }
+    else { toast.error("등록하지 못했습니다: " + error.message); }
     setUploading(false)
   }
 
@@ -164,14 +188,14 @@ export default function VideoRoom() {
       const tId = Number(file.uploader.replace('Team ', ''));
       const setup = weeklySetup[file.week] || {};
       const mTeams = setup.memberTeams || setup.members || {};
-      return Number(mTeams[userName]) === tId; 
+      return Number(mTeams[userName]) === tId;
     }
     return false;
   }
 
   const handleOpenVideo = async (file) => {
     setViewingFile(file);
-    setDraftFeedback(null); 
+    setDraftFeedback(null);
     fetchComments(file.id);
 
     const userName = user?.user_metadata?.name;
@@ -186,7 +210,7 @@ export default function VideoRoom() {
       query = query.eq('presenter_name', file.uploader);
     }
 
-    const { data: pData } = await query.limit(1); 
+    const { data: pData } = await query.limit(1);
     if (pData && pData.length > 0) {
       const { data: myDraft } = await supabase.from('scores').select('*').eq('presentation_id', pData[0].id).eq('voter_name', userName).single();
       if (myDraft) setDraftFeedback(myDraft.details?.qualitative || null);
@@ -199,34 +223,34 @@ export default function VideoRoom() {
   }
 
   const handleAddComment = async () => {
-    if (!newCommentData.originalMessage.trim()) return alert("Original Message는 필수 입력입니다.");
-    
+    if (!newCommentData.originalMessage.trim()) return toast.error("Original Message는 꼭 입력해야 합니다.");
+
     const realName = user.user_metadata.name || '알 수 없는 유저';
     const { error } = await supabase.from('file_comments').insert([{
       file_id: viewingFile.id,
       user_id: user.id,
-      user_name: realName, 
-      details: newCommentData 
+      user_name: realName,
+      details: newCommentData
     }]);
 
     if (!error) {
       setNewCommentData({ originalMessage: '', insightPlus: '', insightMinus: '', graphicPlus: '', graphicMinus: '', deliveryPlus: '', deliveryMinus: '' });
       fetchComments(viewingFile.id);
-      alert("피드백 등록 완료!");
-    } else { alert("오류: " + error.message); }
+      toast.success("피드백을 등록했습니다.");
+    } else { toast.error("피드백을 등록하지 못했습니다: " + error.message); }
   }
 
   const handleToggleRead = async (commentId, currentDetails) => {
     const isCurrentlyRead = currentDetails?.is_read || false;
     const now = new Date().toISOString();
-    
+
     const updatedDetails = { ...currentDetails, is_read: !isCurrentlyRead, read_at: !isCurrentlyRead ? now : null };
 
     const { error } = await supabase.from('file_comments').update({ details: updatedDetails }).eq('id', commentId);
     if (!error) {
       fetchComments(viewingFile.id);
     } else {
-      alert("상태 변경 실패: " + error.message);
+      toast.error("상태를 바꾸지 못했습니다: " + error.message);
     }
   }
 
@@ -243,21 +267,25 @@ export default function VideoRoom() {
     return (match && match[2].length === 11) ? match[2] : null;
   }
 
-  const handleDeleteFile = async (e, id) => {
-    e.stopPropagation();
-    if (!confirm("해당 영상을 삭제하시겠습니까?")) return
-    await supabase.from('files_metadata').delete().eq('id', id); refreshFiles(); 
+  const handleDeleteFile = async (fileRow) => {
+    if (!confirm(`'${fileRow.file_name}' 영상 등록을 지울까요? 유튜브 원본은 지워지지 않습니다.`)) return
+    const { data, error } = await supabase.from('files_metadata').delete().eq('id', fileRow.id).select('id')
+    if (error || !data?.length) toast.error(`삭제하지 못했습니다${error ? `: ${error.message}` : ' (권한이 없거나 이미 삭제됨)'}`)
+    else toast.success('영상 등록을 지웠습니다.')
+    refreshFiles()
   }
 
   const handleWeekChange = (w) => {
     setSelectedWeek(w);
     setTargetWeek(w);
     setSelectedTargetId('');
+    syncWeekUrl(w, sessionMode)
   }
 
   const handleSessionModeChange = (mode) => {
     setSessionMode(mode);
     setSelectedTargetId('');
+    syncWeekUrl(selectedWeek, mode)
   }
 
   if (!user) return <div className="p-8 text-center font-bold text-slate-500">데이터 로딩 중...</div>
@@ -272,10 +300,9 @@ export default function VideoRoom() {
     if (sessionMode === 'weekday') {
       const t = myWeekdayTeam(weekNum)
       if (!t) return null
-      if (t.fbDl) return t.fbDl
+      if (t.fbDl) return fromKstInput(t.fbDl)
       if (!t.date) return null
-      const nd = new Date(`${t.date}T23:59`); nd.setDate(nd.getDate() + 1)
-      return nd.toISOString()
+      return new Date(new Date(fromKstInput(`${t.date}T23:59`)).getTime() + 24 * 60 * 60 * 1000).toISOString()
     }
     return deadlines[weekNum]?.vote_feedback || deadlines[weekNum]?.feedback;
   }
@@ -285,231 +312,66 @@ export default function VideoRoom() {
   }
 
   const filesThisWeek = files.filter(f => f.week === selectedWeek && (f.file_category || 'video') === fileCategory)
-  const groupedFiles = {}
-  
-  let maxGroup = 0
-  if (weeklySetup[selectedWeek]) {
-    const gc = sessionMode === 'weekday'
-      ? (weeklySetup[selectedWeek].weekdayGroupCount || weeklySetup[selectedWeek].groupCount)
-      : weeklySetup[selectedWeek].groupCount
-    if (gc) maxGroup = Number(gc)
-  }
-
-  const getDynamicGroup = (file) => {
-    if (file.group_id) return file.group_id;
-    const setup = weeklySetup[file.week] || {};
-    if (file.uploader.startsWith('Team ')) {
-       const tId = Number(file.uploader.replace('Team ', ''));
-       return setup.teamGroups?.[tId] || null;
-    } else {
-       const tId = setup.memberTeams?.[file.uploader] || setup.members?.[file.uploader];
-       if (tId && !isNaN(Number(tId))) return setup.teamGroups?.[tId] || tId; // 개인모드는 tId가 곧 gId
-    }
-    return null;
-  }
-  
-  filesThisWeek.forEach(f => {
-    const dGroup = getDynamicGroup(f)
-    if (dGroup && dGroup > maxGroup) maxGroup = dGroup
-  })
-
-  for (let i = 1; i <= maxGroup; i++) {
-    groupedFiles[i] = []
-  }
-  groupedFiles['미분류'] = [] 
-
-  filesThisWeek.forEach(f => {
-    const dGroup = getDynamicGroup(f)
-    if (dGroup && groupedFiles[dGroup]) {
-      groupedFiles[dGroup].push(f)
-    } else {
-      groupedFiles['미분류'].push(f)
-    }
-  })
+  const myTeamNo = (() => {
+    const setup = weeklySetup[selectedWeek] || {}
+    return setup.evalMode === 'team' ? (setup.memberTeams || setup.members || {})[user?.user_metadata?.name] : null
+  })()
+  const myRegularGroup = memberGroup(weeklySetup, selectedWeek, user?.user_metadata?.name)
+  const myWeekdayGroup = memberGroup(weeklySetup, selectedWeek, user?.user_metadata?.name, 'weekday')
 
   return (
-    <div className="bg-white min-h-screen text-slate-900 font-sans pb-32">
-      <InternalNav />
+    <MemberPage>
+      <MemberHeader eyebrow="주차별 자료실" title="발표영상" description="주차별 발표 영상을 등록하고, 조원 영상에 정성 피드백·내 영상에 셀프 피드백을 남깁니다." />
+      <WeekSelector weeks={weeks} week={selectedWeek} onChange={handleWeekChange} session={sessionMode} onSession={handleSessionModeChange} allowWeekday={semesterType === 'vacation'} weekTopics={weekTopics} />
 
-      <header className="max-w-[1200px] mx-auto px-6 md:px-8 mt-12 mb-10">
-        <div className="mb-8 flex flex-col md:flex-row md:items-end md:justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-extrabold text-teal-800 tracking-tight">Video Board</h1>
-            <p className="text-sm font-medium text-slate-500 mt-2">주차별 발표 영상을 확인하고 피드백을 진행합니다.</p>
-          </div>
-
-          {/* 🌟 방학학기: 정규/평일 세션 전환 */}
-          {semesterType === 'vacation' && (
-            <div className="flex border border-slate-300 w-fit">
-              <button onClick={() => handleSessionModeChange('regular')} className={`px-5 py-2 text-xs font-bold transition-colors ${sessionMode === 'regular' ? 'bg-teal-800 text-white' : 'bg-white text-slate-500 hover:text-teal-800'}`}>
-                📚 정규세션
-              </button>
-              <button onClick={() => handleSessionModeChange('weekday')} className={`px-5 py-2 text-xs font-bold transition-colors border-l border-slate-300 ${sessionMode === 'weekday' ? 'bg-teal-800 text-white' : 'bg-white text-slate-500 hover:text-teal-800'}`}>
-                🏖️ 평일세션
-              </button>
-            </div>
-          )}
-        </div>
-
-        <div className="border-y border-slate-200 py-6 flex flex-col xl:flex-row justify-between items-center gap-6">
-          <div className="flex flex-col gap-2 w-full xl:w-auto">
-            <div className="flex items-center gap-4">
-              <select 
-                value={targetWeek} 
-                onChange={(e) => handleWeekChange(Number(e.target.value))} 
-                className="font-extrabold text-2xl text-slate-900 bg-transparent outline-none cursor-pointer appearance-none hover:text-red-800 transition-colors pl-1"
-              >
-                {weeks.map(w => <option key={w} value={w}>Week {w}</option>)}
-              </select>
-              <h2 className="text-xl font-bold text-slate-700 tracking-tight">
-                {sessionMode === 'weekday'
-                  ? (weekTopics[`weekday_${targetWeek}`] || '평일세션 주제 미설정')
-                  : submissionTopic(weekTopics, targetWeek)}
-              </h2>
-            </div>
-            
-            <div className="flex flex-wrap items-center gap-x-5 gap-y-1 mt-2">
-              <p className="text-xs font-medium text-slate-500 flex items-center gap-1.5 whitespace-nowrap">
-                <span className="font-bold text-slate-400">{sessionMode === 'weekday' ? '평일세션 마감 |' : '등록 마감 |'}</span>
-                <span className="text-slate-800">{activeUploadDeadline(targetWeek) ? formatDateTime(activeUploadDeadline(targetWeek)) : '미설정'}</span>
-              </p>
-              <p className="text-xs font-medium text-slate-500 flex items-center gap-1.5 whitespace-nowrap">
-                <span className="font-bold text-slate-400">조원 평가 |</span>
-                <span className="text-slate-800">{getQualitativeDeadline(targetWeek) ? formatDateTime(getQualitativeDeadline(targetWeek)) : '미설정'}</span>
-              </p>
-              <p className="text-xs font-medium text-slate-500 flex items-center gap-1.5 whitespace-nowrap">
-                <span className="font-bold text-slate-400">본인 평가 |</span>
-                <span className="text-slate-800">{getSelfDeadline(targetWeek) ? formatDateTime(getSelfDeadline(targetWeek)) : '미설정'}</span>
-              </p>
-              {sessionMode === 'weekday' && (
-                <p className="text-xs font-bold text-teal-700 break-keep">정량평가 없이 정성·셀프 피드백만 진행합니다.</p>
-              )}
-            </div>
-          </div>
-
-          <div className="flex flex-col sm:flex-row gap-3 w-full xl:w-auto shrink-0">
-            <select 
-              value={selectedTargetId} 
-              onChange={(e) => setSelectedTargetId(e.target.value)} 
-              className="border border-slate-300 px-4 py-2.5 text-sm font-bold text-slate-700 outline-none focus:border-slate-500 bg-white cursor-pointer rounded-none"
-            >
-              <option value="">업로드 대상 선택</option>
-              {uploadTargets.map((t, idx) => (
-                <option key={t.id || idx} value={t.id}>{t.label}</option>
-              ))}
+      <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1fr)_380px]">
+        <WeekOverviewCard
+          semesterName={semesterInfo?.name || currentSemester}
+          week={selectedWeek}
+          sessionMode={sessionMode}
+          topic={displayTopic(weekTopics, selectedWeek, sessionMode)}
+          cancelled={semesterInfo?.weeks?.[selectedWeek]?.status === 'cancelled'}
+          scheduleDate={sessionMode === 'weekday' ? myWeekdayTeam(selectedWeek)?.date : undefined}
+          attendance={sessionMode === 'weekday' ? {} : { open: deadlines[selectedWeek]?.attendance_start, late: deadlines[selectedWeek]?.session_start, end: deadlines[selectedWeek]?.attendance_end }}
+          groupLabel={sessionMode === 'weekday' ? (myWeekdayGroup ? `평일 ${myWeekdayGroup}조` : '') : myTeamNo ? `${myTeamNo}팀` : myRegularGroup ? `${myRegularGroup}조` : ''}
+          deadlines={[
+            { key: 'video', label: sessionMode === 'weekday' ? '평일 영상 마감' : '발표영상 등록', at: activeUploadDeadline(selectedWeek) },
+            { key: 'vote_feedback', label: '조원 정성 피드백', at: getQualitativeDeadline(selectedWeek) },
+            { key: 'video_comment', label: '셀프 피드백', at: getSelfDeadline(selectedWeek) },
+          ]}
+        />
+        <form onSubmit={(event) => { event.preventDefault(); handleRegisterYoutube() }} className="space-y-3 rounded-lg border border-slate-200 p-4">
+          <h2 className="text-base font-bold text-slate-900">W{targetWeek} 영상 등록</h2>
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-bold text-slate-700">업로드 대상</span>
+            <select value={selectedTargetId} onChange={(e) => setSelectedTargetId(e.target.value)} className={inputClass}>
+              <option value="">대상 선택</option>
+              {uploadTargets.map((t, idx) => <option key={t.id || idx} value={t.id}>{t.label}</option>)}
             </select>
-            <div className="flex w-full sm:w-auto">
-              <input 
-                type="text" 
-                value={ytUrl}
-                onChange={(e) => setYtUrl(e.target.value)}
-                placeholder="유튜브 링크 붙여넣기" 
-                className="border-y border-l border-slate-300 px-4 py-2.5 text-sm font-medium outline-none focus:border-slate-500 w-full sm:w-[250px] bg-white transition-colors rounded-none" 
-              />
-              <button 
-                onClick={handleRegisterYoutube} 
-                disabled={uploading} 
-                className="bg-[#0f172a] hover:bg-slate-800 text-white px-6 py-2.5 font-bold text-sm transition-colors whitespace-nowrap rounded-none"
-              >
-                {uploading ? '등록 중...' : '+ 신규 등록'}
-              </button>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      <div className="max-w-[1200px] mx-auto px-6 md:px-8 flex flex-col lg:flex-row gap-10 items-start">
-        <aside className="w-full lg:w-[200px] shrink-0 sticky top-24 hidden lg:flex flex-col">
-          <h3 className="text-xs font-extrabold text-slate-400 uppercase tracking-widest mb-4 border-b border-slate-200 pb-2">Select Week</h3>
-          <div className="flex flex-col gap-2 max-h-[60vh] overflow-y-auto no-scrollbar py-2">
-            {weeks.map(w => (
-              <button 
-                key={w} 
-                onClick={() => handleWeekChange(w)} 
-                className={`text-left text-sm font-semibold transition-colors py-1 ${selectedWeek === w ? 'text-red-700 underline underline-offset-4 decoration-2' : 'text-slate-500 hover:text-slate-800'}`}
-              >
-                {w === 0 ? 'OT / 자유 주제' : `Week ${String(w).padStart(2, '0')}`}
-              </button>
-            ))}
-          </div>
-        </aside>
-
-        <div className="lg:hidden w-full flex gap-4 overflow-x-auto pb-2 mb-6 border-b border-slate-200 no-scrollbar">
-          {weeks.map(w => (
-            <button 
-              key={w} 
-              onClick={() => handleWeekChange(w)} 
-              className={`pb-3 text-sm font-semibold transition-colors shrink-0 ${selectedWeek === w ? 'text-red-700 border-b-2 border-red-700' : 'text-slate-500'}`}
-            >
-              W{w}
-            </button>
-          ))}
-        </div>
-
-        <main className="flex-1 w-full min-w-0 space-y-12">
-          {filesThisWeek.length === 0 ? (
-            <div className="text-center py-20 text-slate-400 font-medium">
-              해당 주차에 등록된 영상이 없습니다.
-            </div>
-          ) : (
-            <div className="space-y-10">
-              {Array.from({ length: maxGroup }, (_, i) => i + 1).map(gId => {
-                const groupList = groupedFiles[gId]
-                const isGroupSetup = weeklySetup[selectedWeek] && weeklySetup[selectedWeek].groupCount >= gId;
-                if (groupList.length === 0 && !isGroupSetup) return null 
-                
-                return (
-                  <div key={gId} className="border-t-2 border-red-800 pt-4">
-                    <div className="flex justify-between items-end mb-4">
-                      <h3 className="text-lg font-extrabold text-red-800">Group {String(gId).padStart(2, '0')}</h3>
-                      <span className="text-xs font-bold text-slate-400">Total {groupList.length}</span>
-                    </div>
-                    <div className="border-t border-slate-200">
-                      {groupList.length === 0 ? (
-                        <div className="py-6 text-center text-xs font-medium text-slate-400 border-b border-slate-200">
-                          등록된 영상이 없습니다.
-                        </div>
-                      ) : groupList.map(file => (
-                        <VideoListItem 
-                          key={file.id} 
-                          file={file} 
-                          onOpen={() => handleOpenVideo(file)}
-                          onEdit={(e) => { e.stopPropagation(); setEditItem(file); setNewTitle(file.file_name); }}
-                          onDelete={(e) => { e.stopPropagation(); handleDeleteFile(e, file.id); }}
-                          formatDateTime={formatDateTime}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                )
-              })}
-
-              {groupedFiles['미분류'].length > 0 && (
-                <div className={`border-t-2 border-slate-300 pt-4 transition-opacity ${maxGroup === 0 ? '' : 'opacity-70 hover:opacity-100'}`}>
-                  <div className="flex justify-between items-end mb-4">
-                    <h3 className={`text-lg font-extrabold ${maxGroup === 0 ? 'text-red-800' : 'text-slate-600'}`}>
-                      {maxGroup === 0 ? '영상 목록 (조 미편성)' : '개별 / 미분류 영상'}
-                    </h3>
-                    <span className="text-xs font-bold text-slate-400">Total {groupedFiles['미분류'].length}</span>
-                  </div>
-                  <div className="border-t border-slate-200">
-                    {groupedFiles['미분류'].map(file => (
-                      <VideoListItem 
-                        key={file.id} 
-                        file={file} 
-                        onOpen={() => handleOpenVideo(file)}
-                        onEdit={(e) => { e.stopPropagation(); setEditItem(file); setNewTitle(file.file_name); }}
-                        onDelete={(e) => { e.stopPropagation(); handleDeleteFile(e, file.id); }}
-                        formatDateTime={formatDateTime}
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </main>
+          </label>
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-bold text-slate-700">유튜브 링크</span>
+            <input value={ytUrl} onChange={(e) => setYtUrl(e.target.value)} placeholder="https://youtu.be/…" className={inputClass} />
+          </label>
+          <Button type="submit" variant="primary" className="w-full" loading={uploading}>등록</Button>
+          {sessionMode === 'weekday' && <p className="text-xs text-teal-700">평일세션은 정량평가 없이 정성·셀프 피드백만 진행합니다.</p>}
+        </form>
       </div>
+
+      <section className="mt-8" aria-label={`W${selectedWeek} 영상 목록`}>
+        <SubmissionList
+          files={filesThisWeek}
+          weeklySetup={weeklySetup}
+          week={selectedWeek}
+          session={sessionMode}
+          owner={{ member: identity.member, name: user?.user_metadata?.name, team: myTeamNo }}
+          admin={identity.admin}
+          onOpen={handleOpenVideo}
+          onEdit={(fileRow) => { setEditItem(fileRow); setNewTitle(fileRow.file_name) }}
+          onDelete={handleDeleteFile}
+          emptyText="이 주차에 등록된 영상이 없습니다."
+        />
+      </section>
 
       {editItem && (
         <div className="fixed inset-0 bg-slate-900/60 flex items-center justify-center p-4 z-[110]">
@@ -528,7 +390,7 @@ export default function VideoRoom() {
         <div className="fixed inset-0 bg-white/95 backdrop-blur-sm flex items-center justify-center p-4 z-[100]">
           <div className="bg-white w-full max-w-[1500px] h-[90vh] flex flex-col lg:flex-row overflow-hidden relative shadow-2xl border border-slate-400 rounded-sm">
             <button onClick={() => setViewingFile(null)} className="absolute top-4 right-4 z-50 px-3 py-1.5 bg-slate-100 text-slate-600 text-xs font-bold hover:bg-slate-900 hover:text-white transition-colors rounded-sm border border-slate-300">닫기 ✕</button>
-            
+
             <div className="flex-[1.5] bg-black flex flex-col border-r border-slate-300 overflow-hidden">
               <div className={`w-full ${draftFeedback ? 'aspect-video shrink-0' : 'flex-1'} bg-black transition-all`}>
                 <iframe className="w-full h-full" src={`https://www.youtube.com/embed/${getYoutubeId(viewingFile.file_url)}?autoplay=1`} frameBorder="0" allowFullScreen></iframe>
@@ -541,7 +403,7 @@ export default function VideoRoom() {
                   </h3>
                   <div className="space-y-6">
                     <div>
-                      <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Original Message</p>
+                      <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Original Message</p>
                       <p className="text-sm font-medium text-slate-300 leading-relaxed border-l-2 border-slate-600 pl-3">{draftFeedback.originalMessage || '작성된 내용이 없습니다.'}</p>
                     </div>
                     <DraftBox title="Insight" plus={draftFeedback.insightPlus} minus={draftFeedback.insightMinus} />
@@ -558,18 +420,18 @@ export default function VideoRoom() {
                 <p className="text-xs text-slate-500 font-semibold mt-2 truncate">{viewingFile.file_name}</p>
                 <div className="flex flex-col sm:flex-row gap-2 mt-3">
                   {getQualitativeDeadline(viewingFile.week) && (
-                    <span className="text-[10px] font-bold text-red-600 border border-red-200 bg-red-50 px-2 py-0.5 rounded-sm w-fit">
+                    <span className="text-xs font-bold text-red-600 border border-red-200 bg-red-50 px-2 py-0.5 rounded-sm w-fit">
                       조원 마감: {formatDateTime(getQualitativeDeadline(viewingFile.week))}
                     </span>
                   )}
                   {deadlines[viewingFile.week]?.video_comment && (
-                    <span className="text-[10px] font-bold text-red-600 border border-red-200 bg-red-50 px-2 py-0.5 rounded-sm w-fit">
+                    <span className="text-xs font-bold text-red-600 border border-red-200 bg-red-50 px-2 py-0.5 rounded-sm w-fit">
                       본인 마감: {formatDateTime(deadlines[viewingFile.week].video_comment)}
                     </span>
                   )}
                 </div>
               </div>
-              
+
               <div className="flex-1 overflow-y-auto p-6 space-y-8">
                 <div>
                   <h4 className="text-sm font-extrabold text-slate-800 border-b-2 border-slate-800 pb-2 mb-4">셀프 피드백 (본인/팀원)</h4>
@@ -585,13 +447,13 @@ export default function VideoRoom() {
                   {peerFeedbacks.map((c) => {
                     const isLate = getQualitativeDeadline(viewingFile.week) && new Date(c.created_at) > new Date(getQualitativeDeadline(viewingFile.week));
                     return (
-                      <FeedbackCard 
-                        key={c.id} 
-                        commentId={c.id} 
-                        name={c.user_name} 
-                        data={c.details} 
-                        date={c.created_at} 
-                        isLate={isLate} 
+                      <FeedbackCard
+                        key={c.id}
+                        commentId={c.id}
+                        name={c.user_name}
+                        data={c.details}
+                        date={c.created_at}
+                        isLate={isLate}
                         isPeerFeedback={true}
                         isVideoOwner={isMeVideoOwner}
                         onToggleRead={handleToggleRead}
@@ -609,19 +471,19 @@ export default function VideoRoom() {
                 <h4 className="text-sm font-extrabold text-slate-800 mb-4 border-l-4 border-red-700 pl-2">피드백 작성</h4>
                 <div className="space-y-5">
                   <div>
-                    <label className="text-[10px] font-bold text-slate-500 mb-1 block uppercase tracking-wider">Original Message (필수)</label>
-                    <input 
-                      type="text" 
-                      value={newCommentData.originalMessage} 
-                      onChange={(e)=>setNewCommentData({...newCommentData, originalMessage: e.target.value})} 
-                      className="w-full border-b border-slate-300 py-1 text-sm font-medium outline-none focus:border-red-800 bg-transparent" 
-                      placeholder="전체적인 핵심 메시지 및 느낀 점" 
+                    <label className="text-xs font-bold text-slate-500 mb-1 block uppercase tracking-wider">Original Message (필수)</label>
+                    <input
+                      type="text"
+                      value={newCommentData.originalMessage}
+                      onChange={(e)=>setNewCommentData({...newCommentData, originalMessage: e.target.value})}
+                      className="w-full border-b border-slate-300 py-1 text-sm font-medium outline-none focus:border-red-800 bg-transparent"
+                      placeholder="전체적인 핵심 메시지 및 느낀 점"
                     />
                   </div>
                   <FeedbackInputSection title="Insight" plus={newCommentData.insightPlus} minus={newCommentData.insightMinus} onChange={(k, v)=>setNewCommentData({...newCommentData, [k]: v})} />
                   <FeedbackInputSection title="Graphic" plus={newCommentData.graphicPlus} minus={newCommentData.graphicMinus} onChange={(k, v)=>setNewCommentData({...newCommentData, [k]: v})} />
                   <FeedbackInputSection title="Delivery" plus={newCommentData.deliveryPlus} minus={newCommentData.deliveryMinus} onChange={(k, v)=>setNewCommentData({...newCommentData, [k]: v})} />
-                  
+
                   <button onClick={handleAddComment} className="w-full py-3 bg-slate-900 text-white font-bold text-sm hover:bg-red-800 transition-colors rounded-sm mt-4">댓글 등록</button>
                 </div>
               </div>
@@ -630,37 +492,7 @@ export default function VideoRoom() {
           </div>
         </div>
       )}
-    </div>
-  )
-}
-
-function VideoListItem({ file, onOpen, onEdit, onDelete, formatDateTime }) {
-  return (
-    <div 
-      className="flex flex-col sm:flex-row sm:items-center justify-between py-4 px-6 border-b border-slate-100 hover:bg-red-50/30 transition-colors cursor-pointer group gap-4 last:border-b-0" 
-      onClick={onOpen}
-    >
-      <div className="flex items-center gap-4 flex-1 min-w-0">
-        <span className="shrink-0 font-black text-[10px] text-red-600 uppercase w-8 text-center">
-          YT
-        </span>
-        <div className="flex flex-col min-w-0 gap-0.5">
-          <div className="flex items-center gap-2">
-            <h4 className="text-sm font-semibold text-slate-800 truncate group-hover:text-red-700 transition-colors">{file.file_name}</h4>
-            {file.is_late && <span className="border border-red-300 text-red-600 bg-red-50 text-[9px] font-black px-1.5 py-0.5 rounded-sm shrink-0">LATE</span>}
-          </div>
-          <span className="text-xs font-medium text-slate-500">{file.uploader}</span>
-        </div>
-      </div>
-
-      <div className="flex items-center justify-between sm:justify-end gap-6 shrink-0 w-full sm:w-auto pl-14 sm:pl-0">
-        <span className="text-xs font-medium text-slate-400">{formatDateTime(file.created_at)}</span>
-        <div className="flex items-center gap-3 sm:opacity-0 group-hover:opacity-100 transition-opacity">
-          <button onClick={(e) => { e.stopPropagation(); onEdit(e); }} className="text-[11px] font-bold text-slate-400 hover:text-red-600 transition-colors">수정</button>
-          <button onClick={(e) => { e.stopPropagation(); onDelete(e); }} className="text-[11px] font-bold text-slate-400 hover:text-red-600 transition-colors">삭제</button>
-        </div>
-      </div>
-    </div>
+    </MemberPage>
   )
 }
 
@@ -668,7 +500,7 @@ function DraftBox({ title, plus, minus }) {
   if (!plus && !minus) return null;
   return (
     <div>
-      <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">{title}</p>
+      <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">{title}</p>
       <div className="grid gap-2 border-l-2 border-slate-600 pl-3">
         {plus && <p className="text-xs font-medium text-emerald-300 leading-relaxed"><span className="font-bold text-emerald-400 mr-1">+)</span> {plus}</p>}
         {minus && <p className="text-xs font-medium text-red-300 leading-relaxed"><span className="font-bold text-red-400 mr-1">-)</span> {minus}</p>}
@@ -682,19 +514,19 @@ function FeedbackInputSection({ title, plus, minus, onChange }) {
   const kM = title.toLowerCase() + 'Minus';
   return (
     <div className="space-y-2">
-      <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{title}</p>
+      <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">{title}</p>
       <div className="grid grid-cols-1 gap-2">
-        <textarea 
-          value={plus} 
-          onChange={(e)=>onChange(kP, e.target.value)} 
-          placeholder="(+) 좋았던 점 및 배울 점" 
-          className="w-full border-b-2 border-emerald-400 p-2 text-xs font-medium outline-none focus:border-emerald-600 min-h-[40px] resize-none bg-transparent" 
+        <textarea
+          value={plus}
+          onChange={(e)=>onChange(kP, e.target.value)}
+          placeholder="(+) 좋았던 점 및 배울 점"
+          className="w-full border-b-2 border-emerald-400 p-2 text-xs font-medium outline-none focus:border-emerald-600 min-h-[40px] resize-none bg-transparent"
         />
-        <textarea 
-          value={minus} 
-          onChange={(e)=>onChange(kM, e.target.value)} 
-          placeholder="(-) 아쉬운 점 및 개선 제안" 
-          className="w-full border-b-2 border-red-400 p-2 text-xs font-medium outline-none focus:border-red-600 min-h-[40px] resize-none bg-transparent" 
+        <textarea
+          value={minus}
+          onChange={(e)=>onChange(kM, e.target.value)}
+          placeholder="(-) 아쉬운 점 및 개선 제안"
+          className="w-full border-b-2 border-red-400 p-2 text-xs font-medium outline-none focus:border-red-600 min-h-[40px] resize-none bg-transparent"
         />
       </div>
     </div>
@@ -716,33 +548,33 @@ function FeedbackCard({ commentId, name, data, date, isLate, isPeerFeedback, isV
       <div className="flex justify-between items-center mb-4">
         <div className="flex items-center gap-2">
           <span className="text-sm font-bold text-slate-800">{name}</span>
-          {isLate && <span className="text-[9px] font-bold bg-red-50 text-red-600 border border-red-200 px-1 py-0.5 rounded-sm">LATE</span>}
+          {isLate && <span className="text-xs font-bold bg-red-50 text-red-600 border border-red-200 px-1 py-0.5 rounded-sm">LATE</span>}
           <span className="text-xs font-medium text-slate-400 ml-2">{dateStr}</span>
         </div>
-        
+
         <div className="flex items-center gap-3">
           {currentUserId === data.user_id && (
-             <button onClick={() => onDelete(commentId)} className="opacity-0 group-hover:opacity-100 text-[10px] font-bold text-slate-400 hover:text-red-600 transition-opacity">삭제</button>
+             <button onClick={() => onDelete(commentId)} className="opacity-100 text-xs font-bold text-slate-400 hover:text-red-600 transition-opacity">삭제</button>
           )}
 
           {isPeerFeedback && (
             <div className="flex items-center gap-2">
               {isVideoOwner ? (
-                <button onClick={() => onToggleRead(commentId, data)} className={`text-[9px] font-bold px-2 py-1 transition-colors border rounded-sm ${isRead ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 'bg-white text-slate-500 border-slate-300 hover:bg-slate-50'}`}>
+                <button onClick={() => onToggleRead(commentId, data)} className={`text-xs font-bold px-2 py-1 transition-colors border rounded-sm ${isRead ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 'bg-white text-slate-500 border-slate-300 hover:bg-slate-50'}`}>
                   {isRead ? '✅ 확인 완료' : '읽음 확인'}
                 </button>
               ) : (
-                isRead && <span className="text-[10px] font-bold text-emerald-600 border border-emerald-200 bg-emerald-50 px-2 py-0.5 rounded-sm">✅ 작성자가 확인</span>
+                isRead && <span className="text-xs font-bold text-emerald-600 border border-emerald-200 bg-emerald-50 px-2 py-0.5 rounded-sm">✅ 작성자가 확인</span>
               )}
-              {isReadLate && <span className="text-[9px] font-bold bg-orange-50 text-orange-600 border border-orange-200 px-1 py-0.5 rounded-sm">LATE 확인</span>}
+              {isReadLate && <span className="text-xs font-bold bg-orange-50 text-orange-600 border border-orange-200 px-1 py-0.5 rounded-sm">LATE 확인</span>}
             </div>
           )}
         </div>
       </div>
-      
+
       <div className="space-y-4 pl-1">
         <div>
-          <p className="text-[10px] font-bold text-slate-400 mb-1 uppercase">Original Message</p>
+          <p className="text-xs font-bold text-slate-400 mb-1 uppercase">Original Message</p>
           <p className="text-sm font-medium text-slate-700 leading-relaxed border-l-2 border-slate-300 pl-3 py-1">{data.originalMessage}</p>
         </div>
         <FeedbackBox title="Insight" plus={data.insightPlus} minus={data.insightMinus} />
@@ -757,7 +589,7 @@ function FeedbackBox({ title, plus, minus }) {
   if (!plus && !minus) return null;
   return (
     <div className="space-y-1.5 mt-2">
-      <p className="text-[10px] font-bold text-slate-400 uppercase">{title}</p>
+      <p className="text-xs font-bold text-slate-400 uppercase">{title}</p>
       <div className="grid gap-1.5 border-l-2 border-slate-200 pl-3">
         {plus && <p className="text-xs font-medium text-slate-700 leading-relaxed"><span className="font-bold text-emerald-500 mr-1">+)</span> {plus}</p>}
         {minus && <p className="text-xs font-medium text-slate-700 leading-relaxed"><span className="font-bold text-red-500 mr-1">-)</span> {minus}</p>}
@@ -819,7 +651,7 @@ function buildUploadTargets(setup, sessionMode, activeMembers) {
         group_id: null
       });
     });
-    
+
   } else {
     // 🌟 [개인 발표 모드]
     Object.keys(mTeams).forEach(name => {

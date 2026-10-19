@@ -196,15 +196,15 @@ export default function RegularSessionPage() {
               <div className="space-y-6">
                 <div className="bg-white p-6 rounded-2xl shadow-sm border-l-4 border-[#32a4a1]">
                   <p className="text-xs font-black text-slate-400 uppercase mb-2">Insight (Good/Bad)</p>
-                  <p className="text-sm font-bold">"{feedback.qualInsight || "논리적인 흐름이 매우 인상적이었습니다."}"</p>
+                  <p className="text-sm font-bold">&quot;{feedback.qualInsight || "논리적인 흐름이 매우 인상적이었습니다."}&quot;</p>
                 </div>
                 <div className="bg-white p-6 rounded-2xl shadow-sm border-l-4 border-[#1a1a1a]">
                   <p className="text-xs font-black text-slate-400 uppercase mb-2">Graphic (Good/Bad)</p>
-                  <p className="text-sm font-bold">"{feedback.qualGraphic || "장표의 가독성이 뛰어납니다."}"</p>
+                  <p className="text-sm font-bold">&quot;{feedback.qualGraphic || "장표의 가독성이 뛰어납니다."}&quot;</p>
                 </div>
                 <div className="bg-white p-6 rounded-2xl shadow-sm border-l-4 border-[#a8d0cd]">
                   <p className="text-xs font-black text-slate-400 uppercase mb-2">Delivery (Good/Bad)</p>
-                  <p className="text-sm font-bold">"{feedback.qualDelivery || "자신감 있는 목소리가 좋았습니다."}"</p>
+                  <p className="text-sm font-bold">&quot;{feedback.qualDelivery || "자신감 있는 목소리가 좋았습니다."}&quot;</p>
                 </div>
               </div>
             </div>

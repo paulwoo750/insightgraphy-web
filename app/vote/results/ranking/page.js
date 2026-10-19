@@ -1,350 +1,235 @@
 'use client'
-import { useState, useEffect } from 'react'
+// 주차별 클러스터 순위 · 성장상 · 학기 최다 1위
+import { useEffect, useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { Award, Medal, TrendingUp } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
-import { sortSemestersDesc } from '@/lib/semester'
-import Link from 'next/link'
-import InternalNav from '@/app/components/InternalNav'
+import { displayTopic, fetchCurrentSemester, sortSemestersDesc, weekFromParam } from '@/lib/semester'
+import { MemberHeader, MemberPage, useMember } from '@/app/components/MemberShell'
+import { EmptyState, ErrorState, LoadingState, StatusBadge } from '@/app/components/ui'
+
+// 정성 피드백만 임시 저장한 행(점수 없음, 0점)은 순위에 넣지 않는다
+const isRealScore = (row) => Boolean(row.details?.scores) || Number(row.total_score) > 0
+const avgOf = (rows) => (rows.length ? rows.reduce((sum, row) => sum + (row.total_score || 0), 0) / rows.length : 0)
+const MEDAL_TONES = ['text-amber-500', 'text-slate-400', 'text-orange-700']
+
+// 같은 order_index가 여러 명이면 팀 발표로 본다
+function buildEntries(presentations, scoresByPresentation) {
+  const teamMode = presentations.length > 0 && new Set(presentations.map((row) => row.order_index)).size < presentations.length
+  if (!teamMode) {
+    return presentations.map((row) => ({ key: row.id, name: row.presenter_name, members: [row.presenter_name], cluster: row.cluster_id, score: avgOf(scoresByPresentation[row.id] || []) }))
+  }
+  const map = new Map()
+  presentations.forEach((row) => {
+    if (!map.has(row.order_index)) map.set(row.order_index, { key: `team-${row.order_index}`, team: row.team_id, cluster: row.cluster_id, members: [], pids: [] })
+    const team = map.get(row.order_index)
+    team.members.push(row.presenter_name)
+    team.pids.push(row.id)
+  })
+  return [...map.values()].map((team) => ({ ...team, name: team.team ? `${team.team}팀` : team.members.join(', '), score: avgOf(team.pids.flatMap((pid) => scoresByPresentation[pid] || [])) }))
+}
 
 export default function RankingPage() {
-  const [semesters, setSemesters] = useState([])
-  const [selectedSemester, setSelectedSemester] = useState('') 
-  const [rankingWeek, setRankingWeek] = useState(1)
-  
-  const [clusterRankings, setClusterRankings] = useState([]) 
-  const [weekTopic, setWeekTopic] = useState('') 
-  const [mostImproved, setMostImproved] = useState(null)
-  
-  const [hallOfFame, setHallOfFame] = useState([]) 
-  
-  const [loading, setLoading] = useState(true)
+  const router = useRouter()
+  const identity = useMember()
+  const [state, setState] = useState({ status: 'loading', error: '' })
+  const [base, setBase] = useState({ current: null, semesterRows: [], codes: [] })
+  const [selectedSemester, setSelectedSemester] = useState(null)
+  const [semesterData, setSemesterData] = useState({ code: null, status: 'idle', error: '', presentations: [], scores: [] })
+  const [week, setWeek] = useState(null)
 
   useEffect(() => {
-    const init = async () => {
-      setLoading(true)
-      
-      const [configRes, pRes] = await Promise.all([
-        supabase.from('pr_config').select('*').eq('key', 'current_semester').single(),
-        supabase.from('presentations').select('semester').neq('semester', null)
-      ])
-
-      const adminCurrentSemester = configRes.data?.value
-      const pData = pRes.data || []
-      
-      let uniqueSemesters = [...new Set(pData.map(p => p.semester))]
-      if (adminCurrentSemester && !uniqueSemesters.includes(adminCurrentSemester)) {
-        uniqueSemesters.push(adminCurrentSemester)
-      }
-      uniqueSemesters = sortSemestersDesc(uniqueSemesters)
-      setSemesters(uniqueSemesters)
-
-      const initialSem = (adminCurrentSemester && uniqueSemesters.includes(adminCurrentSemester)) 
-        ? adminCurrentSemester 
-        : uniqueSemesters.length > 0 ? uniqueSemesters[0] : ''
-      
-      setSelectedSemester(initialSem)
-
-      if (initialSem) {
-        const { data: latestPresentation } = await supabase
-          .from('presentations')
-          .select('week')
-          .eq('semester', initialSem)
-          .order('created_at', { ascending: false })
-          .limit(1);
-
-        if (latestPresentation && latestPresentation.length > 0) {
-          setRankingWeek(latestPresentation[0].week);
-        }
-      }
-      setLoading(false)
+    if (identity.status !== 'ready') return undefined
+    if (!identity.session) {
+      router.replace('/login?next=%2Fvote%2Fresults%2Franking')
+      return undefined
     }
-    init()
-  }, [])
+    let active = true
+    async function load() {
+      try {
+        const current = await fetchCurrentSemester()
+        const [presentationRes, semesterRes] = await Promise.all([
+          supabase.from('presentations').select('semester').not('semester', 'is', null),
+          supabase.from('semesters').select('id, code, name, total_weeks, status'),
+        ])
+        if (presentationRes.error) throw presentationRes.error
+        const codes = new Set((presentationRes.data || []).map((row) => row.semester))
+        if (current.code) codes.add(current.code)
+        if (!active) return
+        setBase({ current, semesterRows: semesterRes.data || [], codes: sortSemestersDesc([...codes]) })
+        setState({ status: 'ready', error: '' })
+      } catch (error) {
+        if (active) setState({ status: 'error', error: error.message })
+      }
+    }
+    load()
+    return () => { active = false }
+  }, [identity.status, identity.session, router])
+
+  const semester = selectedSemester ?? (base.codes.includes(base.current?.code) ? base.current.code : base.codes[0] || null)
 
   useEffect(() => {
-    if (selectedSemester) fetchRankingData(rankingWeek, selectedSemester);
-  }, [rankingWeek, selectedSemester])
-
-  const fetchRankingData = async (targetWeek, targetSemester) => {
-    setLoading(true)
-    
-    const { data: presentations } = await supabase.from('presentations').select('*').eq('semester', targetSemester)
-    const { data: scores } = await supabase.from('scores').select('*').eq('semester', targetSemester)
-
-    if (presentations && scores) {
-      const currentWeekPs = presentations.filter(p => p.week === targetWeek)
-      setWeekTopic(currentWeekPs[0]?.topic || '등록된 주제 없음')
-
-      // 🌟 현재 주차가 '조별(팀) 모드'인지 판별
-      const isTeamMode = currentWeekPs.length > 0 && new Set(currentWeekPs.map(p => p.order_index)).size < currentWeekPs.length;
-
-      const getRankingsByCluster = (weekPs) => {
-        const clusters = [...new Set(weekPs.map(p => p.cluster_id))].sort((a, b) => a - b);
-        
-        return clusters.map(cId => {
-          const members = weekPs.filter(p => p.cluster_id === cId);
-          
-          let rankedItems = [];
-          
-          if (isTeamMode) {
-            // 🌟 1. 팀 모드: order_index 기준으로 팀 단위로 묶어서 랭킹 집계
-            const teamMap = new Map();
-            members.forEach(m => {
-              if (!teamMap.has(m.order_index)) {
-                teamMap.set(m.order_index, {
-                  team_id: m.team_id,
-                  members: [],
-                  pids: []
-                });
-              }
-              const team = teamMap.get(m.order_index);
-              team.members.push(m.presenter_name);
-              team.pids.push(m.id);
-            });
-            
-            rankedItems = Array.from(teamMap.values()).map(team => {
-              // 팀에 속한 모든 팀원의 평가 기록을 합산 후 평균
-              const teamScores = scores.filter(s => team.pids.includes(s.presentation_id));
-              const avg = teamScores.length > 0 
-                ? (teamScores.reduce((a, b) => a + (b.total_score || 0), 0) / teamScores.length).toFixed(2)
-                : 0;
-              return { 
-                name: `Team #${team.team_id}`, 
-                subName: team.members.join(', '), // 하단에 작게 팀원 표시
-                score: Number(avg) 
-              };
-            });
-          } else {
-            // 🌟 2. 개인 모드: 기존처럼 개인별 랭킹 집계
-            rankedItems = members.map(m => {
-              const pScores = scores.filter(s => s.presentation_id === m.id);
-              const avg = pScores.length > 0 
-                ? (pScores.reduce((a, b) => a + (b.total_score || 0), 0) / pScores.length).toFixed(2)
-                : 0;
-              return { name: m.presenter_name, subName: '', score: Number(avg) };
-            });
-          }
-
-          // 점수 높은 순으로 정렬 후 Top 3 추출
-          rankedItems = rankedItems.sort((a, b) => b.score - a.score).slice(0, 3); 
-          
-          return { clusterId: cId, ranks: rankedItems };
-        });
+    if (!semester) return undefined
+    let active = true
+    async function loadSemester() {
+      setSemesterData((prev) => ({ ...prev, status: 'loading', error: '' }))
+      try {
+        const [presentationRes, scoreRes] = await Promise.all([
+          supabase.from('presentations').select('*').eq('semester', semester),
+          supabase.from('scores').select('presentation_id, total_score, details').eq('semester', semester),
+        ])
+        const failed = presentationRes.error || scoreRes.error
+        if (failed) throw failed
+        if (!active) return
+        setSemesterData({ code: semester, status: 'ready', error: '', presentations: presentationRes.data || [], scores: (scoreRes.data || []).filter(isRealScore) })
+      } catch (error) {
+        if (active) setSemesterData((prev) => ({ ...prev, status: 'error', error: error.message }))
       }
-
-      setClusterRankings(getRankingsByCluster(currentWeekPs));
-
-      // 🌟 Most Improved (개선상) 로직
-      const getAllAvg = (ps) => ps.map(p => {
-        const pScores = scores.filter(s => s.presentation_id === p.id);
-        const avg = pScores.length > 0 ? (pScores.reduce((a,b)=>a+(b.total_score||0), 0)/pScores.length).toFixed(2) : 0;
-        return { name: p.presenter_name, score: Number(avg) };
-      });
-
-      const curAvgs = getAllAvg(currentWeekPs);
-      const prevWeekPs = presentations.filter(p => p.week === targetWeek - 1);
-      if (prevWeekPs.length > 0) {
-        const prevAvgs = getAllAvg(prevWeekPs);
-        const improvements = curAvgs.map(curr => {
-          const prev = prevAvgs.find(p => p.name === curr.name);
-          return prev && prev.score > 0 ? { name: curr.name, diff: (curr.score - prev.score).toFixed(2) } : null;
-        }).filter(Boolean).sort((a, b) => b.diff - a.diff);
-        setMostImproved(improvements[0]);
-      } else { setMostImproved(null); }
-
-      // 🌟 Hall of Fame (명예의 전당) 로직
-      const winCounts = {}; 
-      
-      for (let w = 1; w <= 12; w++) {
-        const wPs = presentations.filter(p => p.week === w);
-        if (wPs.length === 0) continue;
-        
-        const wIsTeamMode = new Set(wPs.map(p => p.order_index)).size < wPs.length;
-        const wClusters = [...new Set(wPs.map(p => p.cluster_id))];
-        
-        wClusters.forEach(cId => {
-          const cMembers = wPs.filter(p => p.cluster_id === cId);
-          let highestScore = 0;
-          let bestMembers = [];
-
-          if (wIsTeamMode) {
-            const teamMap = new Map();
-            cMembers.forEach(m => {
-              if (!teamMap.has(m.order_index)) teamMap.set(m.order_index, { members: [], pids: [] });
-              const team = teamMap.get(m.order_index);
-              team.members.push(m.presenter_name);
-              team.pids.push(m.id);
-            });
-            
-            Array.from(teamMap.values()).forEach(team => {
-              const tScores = scores.filter(s => team.pids.includes(s.presentation_id));
-              const tAvg = tScores.length > 0 ? (tScores.reduce((a, b) => a + (b.total_score || 0), 0) / tScores.length) : 0;
-              if (tAvg > highestScore) {
-                highestScore = tAvg;
-                bestMembers = team.members; // 팀원 전체가 공동 1등
-              }
-            });
-          } else {
-            cMembers.forEach(m => {
-              const mScores = scores.filter(s => s.presentation_id === m.id);
-              const mAvg = mScores.length > 0 ? (mScores.reduce((a, b) => a + (b.total_score || 0), 0) / mScores.length) : 0;
-              if (mAvg > highestScore) {
-                highestScore = mAvg;
-                bestMembers = [m.presenter_name];
-              }
-            });
-          }
-
-          if (bestMembers.length > 0 && highestScore > 0) {
-            bestMembers.forEach(winner => {
-              winCounts[winner] = (winCounts[winner] || 0) + 1;
-            });
-          }
-        });
-      }
-
-      const topWinners = Object.keys(winCounts)
-        .map(name => ({ name, count: winCounts[name] }))
-        .sort((a, b) => b.count - a.count)
-        .slice(0, 2);
-
-      setHallOfFame(topWinners);
     }
-    setLoading(false)
+    loadSemester()
+    return () => { active = false }
+  }, [semester])
+
+  const semesterRow = base.semesterRows.find((row) => row.code === semester)
+  const presentations = useMemo(() => (semesterData.code === semester ? semesterData.presentations : []), [semesterData, semester])
+  const maxWeekInData = Math.max(0, ...presentations.map((row) => Number(row.week) || 0))
+  const totalWeeks = Math.max(semesterRow?.total_weeks || 0, maxWeekInData, 1)
+  // 기본 주차: 주소의 ?week= → 가장 최근 발표 주차
+  const latestWeek = [...presentations].sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))[0]?.week ?? 1
+  const activeWeek = week ?? weekFromParam(typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('week'), totalWeeks, latestWeek)
+
+  const result = useMemo(() => {
+    const scoresByPresentation = {}
+    semesterData.scores.forEach((row) => { (scoresByPresentation[row.presentation_id] ||= []).push(row) })
+    const weekPresentations = presentations.filter((row) => row.week === activeWeek)
+    const entries = buildEntries(weekPresentations, scoresByPresentation)
+    const clusters = [...new Set(entries.map((entry) => entry.cluster))].sort((a, b) => (a ?? 0) - (b ?? 0))
+    const clusterRankings = clusters.map((cluster) => ({ cluster, ranks: entries.filter((entry) => entry.cluster === cluster && entry.score > 0).sort((a, b) => b.score - a.score).slice(0, 3) }))
+
+    // 성장상: 전주 대비 개인 평균 상승폭 1위
+    const personal = (rows) => Object.fromEntries(rows.map((row) => [row.presenter_name, avgOf(scoresByPresentation[row.id] || [])]))
+    const now = personal(weekPresentations)
+    const prev = personal(presentations.filter((row) => row.week === activeWeek - 1))
+    const improved = Object.entries(now)
+      .filter(([name, score]) => prev[name] > 0 && score > 0)
+      .map(([name, score]) => ({ name, diff: score - prev[name] }))
+      .sort((a, b) => b.diff - a.diff)[0] || null
+
+    // 학기 최다 1위 (팀 1위는 팀원 모두에게)
+    const wins = {}
+    for (let w = 1; w <= totalWeeks; w++) {
+      const weekEntries = buildEntries(presentations.filter((row) => row.week === w), scoresByPresentation)
+      ;[...new Set(weekEntries.map((entry) => entry.cluster))].forEach((cluster) => {
+        const best = weekEntries.filter((entry) => entry.cluster === cluster).sort((a, b) => b.score - a.score)[0]
+        if (best && best.score > 0) best.members.forEach((name) => { wins[name] = (wins[name] || 0) + 1 })
+      })
+    }
+    const hallOfFame = Object.entries(wins).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count).slice(0, 3)
+    return { clusterRankings, improved, hallOfFame, topic: weekPresentations[0]?.topic }
+  }, [semesterData.scores, presentations, activeWeek, totalWeeks])
+
+  function changeWeek(value) {
+    setWeek(value)
+    const params = new URLSearchParams(window.location.search)
+    params.set('week', String(value))
+    window.history.replaceState(window.history.state, '', `${window.location.pathname}?${params.toString()}`)
   }
 
-  return (
-    <div className="bg-white min-h-screen text-slate-900 font-sans pb-32">
-      <InternalNav />
+  if (identity.status !== 'ready' || state.status === 'loading') return <MemberPage><LoadingState label="순위를 불러오는 중입니다." /></MemberPage>
+  if (state.status === 'error') return <MemberPage><ErrorState title="순위를 불러오지 못했습니다." description={state.error} onRetry={() => window.location.reload()} /></MemberPage>
 
-      <div className="max-w-[1400px] mx-auto px-6 mt-12">
-        
-        {/* 🌟 헤더 (중앙 정렬 타이틀 + 박스 완전 제거) */}
-        <header className="w-full flex flex-col items-center mb-16">
-          <div className="w-full flex justify-end items-center mb-6">
-            <div className="flex items-center gap-3">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Target Semester:</label>
-              <select 
-                value={selectedSemester} 
-                onChange={(e) => setSelectedSemester(e.target.value)}
-                className="bg-transparent font-black text-sm outline-none cursor-pointer text-teal-800 border-b-2 border-teal-800 pb-1"
-              >
-                {semesters.map(s => <option key={s} value={s}>{s} 학기</option>)}
-              </select>
-            </div>
-          </div>
-          
-          <h1 className="text-4xl md:text-5xl font-extrabold uppercase tracking-tight text-teal-900 mb-12 text-center">BEST PRESENTERS</h1>
-          
-          <div className="w-full border-y-2 border-teal-800 py-10 flex flex-col items-center">
-            <span className="text-xs font-extrabold text-teal-700 uppercase tracking-widest mb-6">Select Week</span>
-            
-            <div className="flex flex-wrap justify-center gap-4 md:gap-6 mb-2 w-full max-w-4xl">
-              {Array.from({ length: 12 }, (_, i) => i + 1).map(w => (
-                <button 
-                  key={w} 
-                  onClick={() => setRankingWeek(w)} 
-                  className={`pb-1 text-base md:text-lg font-black transition-all ${rankingWeek === w ? 'text-teal-800 border-b-[3px] border-teal-800 scale-110' : 'text-slate-400 border-b-[3px] border-transparent hover:text-slate-700 hover:scale-105'}`}
-                >
-                  W{w}
-                </button>
+  const semesterName = (code) => base.semesterRows.find((row) => row.code === code)?.name || code
+  const topic = result.topic || (semester === base.current?.code ? displayTopic(base.current.weekTopics, activeWeek, 'regular') || '주제 미정' : '주제 미기록')
+
+  return (
+    <MemberPage>
+      <MemberHeader
+        eyebrow="평가 결과"
+        title="주차별 순위"
+        description="클러스터별 정량 평가 평균 상위 3명(팀)과 성장상, 학기 최다 1위를 보여 줍니다."
+        actions={(
+          <label className="flex items-center gap-2 text-sm font-semibold text-slate-600">
+            학기
+            <select value={semester || ''} onChange={(event) => { setSelectedSemester(event.target.value); setWeek(null) }} className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm font-bold text-slate-900 outline-none focus:border-teal-600">
+              {base.codes.map((code) => <option key={code} value={code}>{semesterName(code)}</option>)}
+            </select>
+          </label>
+        )}
+      />
+
+      {!semester ? <EmptyState title="순위를 볼 학기가 없습니다." /> : (
+        <>
+          <div className="rounded-lg border border-slate-200 bg-white p-3">
+            <div className="flex gap-2 overflow-x-auto pb-1" role="group" aria-label="주차 선택">
+              {Array.from({ length: totalWeeks }, (_, index) => index + 1).map((value) => (
+                <button key={value} type="button" aria-pressed={value === activeWeek} onClick={() => changeWeek(value)} className={`min-h-9 shrink-0 rounded-md border px-3 text-sm font-bold ${value === activeWeek ? 'border-teal-700 bg-teal-700 text-white' : 'border-slate-200 text-slate-600 hover:border-teal-400'}`}>W{value}</button>
               ))}
             </div>
+            <p className="mt-2 px-1 text-sm text-slate-600">W{activeWeek} 주제 <span className="font-bold text-slate-900">{topic}</span></p>
           </div>
-        </header>
 
-        {/* 🌟 동적 정렬 랭킹 리스트 (클러스터 개수에 맞춰 스마트하게 꽉 채우기) */}
-        <div className={`w-full grid gap-12 items-start mb-20 ${
-          clusterRankings.length === 1 ? 'grid-cols-1 max-w-3xl mx-auto' : 
-          clusterRankings.length === 2 ? 'grid-cols-1 md:grid-cols-2 max-w-6xl mx-auto' : 
-          'grid-cols-1 md:grid-cols-2 lg:grid-cols-3 w-full'
-        }`}>
-          {loading ? (
-            <div className="col-span-full py-20 text-center text-slate-400 font-bold uppercase tracking-widest">랭킹 데이터 분석 중... 🔄</div>
-          ) : clusterRankings.length > 0 ? (
-            clusterRankings.map((cluster) => (
-              <div key={cluster.clusterId} className="border-t-[3px] border-teal-800 pt-6">
-                <div className="text-center border-b border-slate-300 pb-4 mb-4">
-                  <h3 className="text-xs font-black text-teal-700 uppercase tracking-[0.2em] mb-2">Score Cluster #{cluster.clusterId}</h3>
-                  <p className="text-sm font-extrabold text-slate-800 truncate tracking-tight">{weekTopic}</p>
-                </div>
-                
-                <div className="space-y-0">
-                  {cluster.ranks.map((r, idx) => (
-                    <div key={r.name} className={`flex items-center justify-between py-4 border-b border-slate-200 last:border-0 ${idx === 0 ? 'bg-teal-50/50' : ''}`}>
-                      <div className="flex items-center gap-4 px-2">
-                        <span className="text-xl">{idx === 0 ? '🥇' : idx === 1 ? '🥈' : '🥉'}</span>
-                        <div className="flex flex-col">
-                          <p className={`font-extrabold text-base ${idx === 0 ? 'text-teal-900' : 'text-slate-800'}`}>{r.name} {idx === 0 && '👑'}</p>
-                          {/* 🌟 팀 모드일 때 팀원 이름 작게 표시 */}
-                          {r.subName ? (
-                            <p className="text-[10px] text-slate-400 font-bold tracking-tight">{r.subName}</p>
-                          ) : (
-                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">{idx === 0 ? 'Best Presenter' : `Top ${idx + 1}`}</p>
-                          )}
-                        </div>
-                      </div>
-                      <div className="text-right px-2">
-                        <p className={`text-xl font-black ${idx === 0 ? 'text-teal-700' : 'text-slate-700'}`}>{r.score}</p>
-                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Avg Score</p>
-                      </div>
-                    </div>
+          {semesterData.status === 'loading' && <LoadingState className="mt-6" />}
+          {semesterData.status === 'error' && <div className="mt-6"><ErrorState title="이 학기 평가 기록을 불러오지 못했습니다." description={semesterData.error} onRetry={() => setSelectedSemester(semester)} /></div>}
+
+          {semesterData.status === 'ready' && (
+            <>
+              {result.clusterRankings.every((cluster) => cluster.ranks.length === 0) ? (
+                <div className="mt-6"><EmptyState title="이 주차에는 아직 순위가 없습니다." description="발표가 등록되고 정량 평가가 모이면 표시됩니다." /></div>
+              ) : (
+                <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                  {result.clusterRankings.filter((cluster) => cluster.ranks.length > 0).map((cluster) => (
+                    <section key={String(cluster.cluster)} className="rounded-lg border border-slate-200 bg-white p-4">
+                      <h2 className="text-sm font-bold text-teal-700">클러스터 {cluster.cluster ?? '-'}</h2>
+                      <ol className="mt-2 divide-y divide-slate-100">
+                        {cluster.ranks.map((entry, index) => (
+                          <li key={entry.key} className={`flex items-center justify-between gap-3 py-3 ${index === 0 ? 'rounded-md bg-teal-50/60 px-2' : 'px-2'}`}>
+                            <div className="flex min-w-0 items-center gap-3">
+                              <Medal className={`h-5 w-5 shrink-0 ${MEDAL_TONES[index]}`} aria-label={`${index + 1}위`} />
+                              <div className="min-w-0">
+                                <p className={`truncate text-base font-bold ${index === 0 ? 'text-teal-900' : 'text-slate-800'}`}>{entry.name}</p>
+                                {entry.members.length > 1 && <p className="truncate text-xs text-slate-500">{entry.members.join(', ')}</p>}
+                              </div>
+                            </div>
+                            <p className={`shrink-0 text-lg font-extrabold ${index === 0 ? 'text-teal-700' : 'text-slate-700'}`}>{entry.score.toFixed(2)}<span className="ml-0.5 text-xs font-semibold text-slate-500">점</span></p>
+                          </li>
+                        ))}
+                      </ol>
+                    </section>
                   ))}
                 </div>
+              )}
+
+              <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                <section className="rounded-lg border border-slate-200 bg-white p-5">
+                  <h2 className="flex items-center gap-2 text-sm font-bold text-slate-600"><TrendingUp className="h-4 w-4" aria-hidden="true" />W{activeWeek} 성장상</h2>
+                  {result.improved && result.improved.diff > 0 ? (
+                    <div className="mt-3 flex items-end justify-between gap-3">
+                      <div>
+                        <p className="text-2xl font-extrabold text-teal-800">{result.improved.name} 님</p>
+                        <p className="text-sm text-slate-500">전주 대비 평균 점수가 가장 크게 올랐습니다.</p>
+                      </div>
+                      <p className="text-3xl font-extrabold text-teal-600">+{result.improved.diff.toFixed(2)}</p>
+                    </div>
+                  ) : <p className="mt-4 text-sm text-slate-500">전주와 비교할 평가 기록이 충분하지 않습니다.</p>}
+                </section>
+                <section className="rounded-lg border border-slate-200 bg-white p-5">
+                  <h2 className="flex items-center gap-2 text-sm font-bold text-slate-600"><Award className="h-4 w-4" aria-hidden="true" />{semesterName(semester)} 최다 1위</h2>
+                  {result.hallOfFame.length > 0 ? (
+                    <ol className="mt-2 divide-y divide-slate-100">
+                      {result.hallOfFame.map((hero, index) => (
+                        <li key={hero.name} className="flex items-center justify-between py-2.5">
+                          <span className="flex items-center gap-2 text-base font-bold text-slate-800">{hero.name}{index === 0 && <StatusBadge tone="amber">최다</StatusBadge>}</span>
+                          <span className="text-xl font-extrabold text-teal-700">{hero.count}<span className="ml-0.5 text-xs font-semibold text-slate-500">회</span></span>
+                        </li>
+                      ))}
+                    </ol>
+                  ) : <p className="mt-4 text-sm text-slate-500">아직 1위 기록이 없습니다.</p>}
+                </section>
               </div>
-            ))
-          ) : (
-            <div className="col-span-full py-20 text-center text-slate-400 font-bold uppercase tracking-widest border-y border-slate-200">표시할 랭킹 데이터가 없습니다. 🧐</div>
+            </>
           )}
-        </div>
-
-        {/* 🌟 하단 어워드 섹션 (박스/그라데이션 제거, 심플한 선 기반) */}
-        <div className="w-full pt-12 border-t-[3px] border-slate-900 grid grid-cols-1 lg:grid-cols-2 gap-12">
-          
-          {/* 1. Most Improved Player (개선상) */}
-          <div className="flex flex-col border-b lg:border-b-0 lg:border-r border-slate-300 pb-12 lg:pb-0 pr-0 lg:pr-12">
-            <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-10 flex items-center gap-2">● Most Improved Player</h3>
-            
-            {!loading && mostImproved && Number(mostImproved.diff) > 0 ? (
-              <div className="flex justify-between items-end border-b border-slate-200 pb-6">
-                <div>
-                  <p className="text-4xl font-extrabold mb-2 text-teal-800">{mostImproved.name} <span className="text-lg opacity-60 text-slate-500">님</span></p>
-                  <p className="text-xs text-slate-500 font-bold">전주 대비 점수가 가장 크게 상승했습니다.</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-5xl font-black text-teal-600">+{mostImproved.diff}</p>
-                  <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest mt-2">Growth</p>
-                </div>
-              </div>
-            ) : (
-              <p className="py-10 text-slate-400 font-bold text-sm text-center border-y border-slate-200">비교할 과거 데이터가 충분하지 않습니다.</p>
-            )}
-          </div>
-
-          {/* 2. Hall of Fame (명예의 전당) */}
-          <div className="flex flex-col pl-0 lg:pl-4">
-            <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-10 flex items-center gap-2">● Hall of Fame ({selectedSemester} 학기)</h3>
-            
-            {!loading && hallOfFame.length > 0 ? (
-              <div className="space-y-0 border-t border-slate-200">
-                {hallOfFame.map((hero, idx) => (
-                  <div key={hero.name} className="flex justify-between items-center py-5 border-b border-slate-200">
-                    <div>
-                      <p className={`text-2xl font-extrabold ${idx === 0 ? 'text-teal-800' : 'text-slate-700'}`}>{hero.name} <span className="text-lg opacity-80 ml-1">{idx === 0 ? '🏆' : '⭐'}</span></p>
-                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1.5">{idx === 0 ? '학기 최다 1등' : '2위'}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className={`text-4xl font-black ${idx === 0 ? 'text-teal-700' : 'text-slate-600'}`}>{hero.count}<span className="text-sm text-slate-400 ml-1">회</span></p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="py-10 text-slate-400 font-bold text-sm text-center border-y border-slate-200">아직 1등 기록이 없습니다.</p>
-            )}
-          </div>
-
-        </div>
-      </div>
-    </div>
+        </>
+      )}
+    </MemberPage>
   )
 }

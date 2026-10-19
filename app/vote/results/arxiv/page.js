@@ -1,313 +1,214 @@
 'use client'
-import { useState, useEffect } from 'react'
-import { supabase } from '@/lib/supabase'
-import { sortSemestersDesc } from '@/lib/semester'
+// 내 성장 기록: 내 발표 영상에 남은 셀프 피드백과 '읽음' 처리한 조원 피드백을 모아 본다
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
-import InternalNav from '@/app/components/InternalNav'
+import { supabase } from '@/lib/supabase'
+import { fetchCurrentSemester, formatKst, sortSemestersDesc } from '@/lib/semester'
+import { MemberHeader, MemberPage, useMember } from '@/app/components/MemberShell'
+import { EmptyState, ErrorState, LoadingState, StatusBadge } from '@/app/components/ui'
+
+const DETAIL_SECTIONS = [
+  { title: 'Insight', plus: 'insightPlus', minus: 'insightMinus' },
+  { title: 'Graphic', plus: 'graphicPlus', minus: 'graphicMinus' },
+  { title: 'Delivery', plus: 'deliveryPlus', minus: 'deliveryMinus' },
+]
 
 export default function FeedbackArxiv() {
   const router = useRouter()
-  const [user, setUser] = useState(null)
-  
-  const [allPresentations, setAllPresentations] = useState([]) 
-  const [myPresentations, setMyPresentations] = useState([]) 
-  const [selectedP, setSelectedP] = useState(null) 
-  
-  const [receivedFeedbacks, setReceivedFeedbacks] = useState([]) 
-  const [selfFeedbacks, setSelfFeedbacks] = useState([]) 
-  
-  const [semesters, setSemesters] = useState([])
-  const [selectedSemester, setSelectedSemester] = useState('all')
-  const [loading, setLoading] = useState(true)
+  const identity = useMember()
+  const [state, setState] = useState({ status: 'loading', error: '' })
+  const [presentations, setPresentations] = useState([])
+  const [currentCode, setCurrentCode] = useState('')
+  const [semesterNames, setSemesterNames] = useState({})
+  const [selectedSemester, setSelectedSemester] = useState(null)
+  const [selectedId, setSelectedId] = useState(null)
+  const [feedback, setFeedback] = useState({ id: null, status: 'idle', error: '', self: [], peer: [], videoFound: false })
+  const [retryKey, setRetryKey] = useState(0)
+
+  const myName = identity.member?.name || identity.session?.user?.user_metadata?.name || ''
 
   useEffect(() => {
-    const init = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) {
-        router.push('/login')
-        return
-      }
-      setUser(session.user)
-      const userName = session.user.user_metadata.name
-
-      const [pRes, configRes] = await Promise.all([
-        supabase.from('presentations').select('*').eq('presenter_name', userName).order('week', { ascending: false }),
-        supabase.from('pr_config').select('*').eq('key', 'current_semester').single()
-      ])
-
-      const pData = pRes.data || []
-      const adminCurrentSemester = configRes.data?.value
-
-      setAllPresentations(pData)
-
-      let uniqueSemesters = [...new Set(pData.map(p => p.semester).filter(Boolean))]
-      if (adminCurrentSemester && !uniqueSemesters.includes(adminCurrentSemester)) {
-        uniqueSemesters.push(adminCurrentSemester)
-      }
-      uniqueSemesters = sortSemestersDesc(uniqueSemesters)
-      setSemesters(uniqueSemesters)
-
-      let initialSem = 'all'
-      if (adminCurrentSemester && uniqueSemesters.includes(adminCurrentSemester)) {
-        initialSem = adminCurrentSemester
-      } else if (uniqueSemesters.length > 0) {
-        initialSem = uniqueSemesters[0]
-      }
-      
-      setSelectedSemester(initialSem)
-      setLoading(false)
+    if (identity.status !== 'ready') return undefined
+    if (!identity.session) {
+      router.replace('/login?next=%2Fvote%2Fresults%2Farxiv')
+      return undefined
     }
-    init()
-  }, [router])
+    let active = true
+    async function load() {
+      try {
+        const current = await fetchCurrentSemester()
+        const [presentationRes, semesterRes] = await Promise.all([
+          supabase.from('presentations').select('*').eq('presenter_name', myName).order('week', { ascending: false }),
+          supabase.from('semesters').select('code, name'),
+        ])
+        if (presentationRes.error) throw presentationRes.error
+        if (!active) return
+        setPresentations(presentationRes.data || [])
+        setCurrentCode(current.code)
+        setSemesterNames(Object.fromEntries((semesterRes.data || []).map((row) => [row.code, row.name || row.code])))
+        setState({ status: 'ready', error: '' })
+      } catch (error) {
+        if (active) setState({ status: 'error', error: error.message })
+      }
+    }
+    load()
+    return () => { active = false }
+  }, [identity.status, identity.session, myName, router])
 
+  const semesters = useMemo(() => {
+    const codes = new Set(presentations.map((row) => row.semester).filter(Boolean))
+    if (currentCode) codes.add(currentCode)
+    return sortSemestersDesc([...codes])
+  }, [presentations, currentCode])
+  const semester = selectedSemester ?? (semesters.includes(currentCode) ? currentCode : semesters[0] || 'all')
+  const filtered = useMemo(() => (semester === 'all' ? presentations : presentations.filter((row) => row.semester === semester)), [presentations, semester])
+  const selected = filtered.find((row) => row.id === selectedId) || filtered[0] || null
+
+  // 선택한 발표의 영상 댓글 (셀프 피드백 + 읽음 처리한 조원 피드백)
   useEffect(() => {
-    if (allPresentations.length === 0) return
-
-    const filtered = selectedSemester === 'all' 
-      ? allPresentations 
-      : allPresentations.filter(p => p.semester === selectedSemester)
-    
-    setMyPresentations(filtered)
-    
-    if (filtered.length > 0) {
-      fetchFeedbacks(filtered[0])
-    } else {
-      setSelectedP(null)
-      setReceivedFeedbacks([])
-      setSelfFeedbacks([])
-    }
-  }, [selectedSemester, allPresentations])
-
-  const fetchFeedbacks = async (presentation) => {
-    setSelectedP(presentation)
-    
-    const { data: fileData } = await supabase
-      .from('files_metadata')
-      .select('id')
-      .eq('uploader', presentation.presenter_name)
-      .eq('week', presentation.week)
-      .eq('semester', presentation.semester)
-      .eq('file_category', 'video')
-      .single()
-
-    if (fileData) {
-      const { data: commentData } = await supabase
-        .from('file_comments')
-        .select('*')
-        .eq('file_id', fileData.id)
-        .order('created_at', { ascending: true })
-
-      if (commentData) {
-        const selfFbs = commentData.filter(c => c.user_name === presentation.presenter_name)
-        setSelfFeedbacks(selfFbs)
-
-        const peerFbs = commentData.filter(c => 
-          c.user_name !== presentation.presenter_name && 
-          c.details?.is_read === true
-        )
-        setReceivedFeedbacks(peerFbs)
-      } else {
-        setSelfFeedbacks([])
-        setReceivedFeedbacks([])
+    if (!selected) return undefined
+    let active = true
+    async function loadFeedback() {
+      setFeedback((prev) => ({ ...prev, id: selected.id, status: 'loading', error: '' }))
+      try {
+        let query = supabase.from('files_metadata').select('id').eq('week', selected.week).eq('file_category', 'video').order('created_at', { ascending: false }).limit(1)
+        if (selected.semester) query = query.eq('semester', selected.semester)
+        query = identity.member?.id
+          ? query.or(`uploader_member_id.eq.${identity.member.id},uploader.eq."${selected.presenter_name}"`)
+          : query.eq('uploader', selected.presenter_name)
+        const { data: files, error } = await query
+        if (error) throw error
+        const fileId = files?.[0]?.id
+        let comments = []
+        if (fileId) {
+          const { data, error: commentError } = await supabase.from('file_comments').select('*').eq('file_id', fileId).order('created_at', { ascending: true })
+          if (commentError) throw commentError
+          comments = data || []
+        }
+        if (!active) return
+        setFeedback({
+          id: selected.id,
+          status: 'ready',
+          error: '',
+          videoFound: Boolean(fileId),
+          self: comments.filter((row) => row.user_name === selected.presenter_name),
+          peer: comments.filter((row) => row.user_name !== selected.presenter_name && row.details?.is_read === true),
+        })
+      } catch (error) {
+        if (active) setFeedback((prev) => ({ ...prev, status: 'error', error: error.message }))
       }
-    } else {
-      setSelfFeedbacks([])
-      setReceivedFeedbacks([])
     }
-  }
+    loadFeedback()
+    return () => { active = false }
+  }, [selected, identity.member?.id, retryKey])
 
-  if (loading) return <div className="p-8 text-center font-black text-black">데이터 로딩 중... 🔄</div>
+  if (identity.status !== 'ready' || state.status === 'loading') return <MemberPage><LoadingState label="성장 기록을 불러오는 중입니다." /></MemberPage>
+  if (state.status === 'error') return <MemberPage><ErrorState title="성장 기록을 불러오지 못했습니다." description={state.error} onRetry={() => window.location.reload()} /></MemberPage>
+
+  const label = (code) => semesterNames[code] || code
 
   return (
-    <div className="bg-white min-h-screen text-slate-900 font-sans pb-32">
-      <InternalNav />
+    <MemberPage>
+      <MemberHeader
+        eyebrow="평가 결과"
+        title="내 성장 기록"
+        description="내 발표 영상에 남긴 셀프 피드백과, 영상 화면에서 '읽음' 처리한 조원 피드백을 발표별로 모아 봅니다."
+        actions={(
+          <label className="flex items-center gap-2 text-sm font-semibold text-slate-600">
+            학기
+            <select value={semester} onChange={(event) => { setSelectedSemester(event.target.value); setSelectedId(null) }} className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm font-bold text-slate-900 outline-none focus:border-teal-600">
+              <option value="all">전체 누적</option>
+              {semesters.map((code) => <option key={code} value={code}>{label(code)}</option>)}
+            </select>
+          </label>
+        )}
+      />
 
-      <div className="max-w-[1400px] mx-auto px-6 mt-12">
-        
-        {/* 🌟 헤더 (중앙 정렬, 선 기반) */}
-        <header className="w-full flex flex-col items-center mb-16">
-          <div className="w-full flex justify-end items-center mb-6">
-            <div className="flex items-center gap-3">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Target Semester:</label>
-              <select 
-                value={selectedSemester} 
-                onChange={(e) => setSelectedSemester(e.target.value)}
-                className="bg-transparent font-black text-sm outline-none cursor-pointer text-teal-800 border-b-2 border-teal-800 pb-1"
-              >
-                <option value="all">전체 누적 기록</option>
-                {semesters.map(s => <option key={s} value={s}>{s} 학기</option>)}
-              </select>
-            </div>
-          </div>
-          
-          <h1 className="text-4xl md:text-5xl font-extrabold uppercase tracking-tight text-teal-900 mb-2">MY GROWTH RECORD</h1>
-          <p className="text-[11px] font-black text-slate-400 mt-4 tracking-widest uppercase">확인 완료된 조원 피드백 & 내 셀프 피드백 보관소</p>
-        </header>
-
-        <div className="flex flex-col lg:flex-row justify-center items-start gap-12">
-          
-          {/* [좌] 발표 리스트 사이드바 (상자 제거, 선 리스트) */}
-          <aside className="w-full lg:w-72 shrink-0">
-            <div className="sticky top-24 pt-2">
-              <h3 className="text-xs font-black text-slate-400 uppercase mb-6 border-b border-slate-300 pb-3 tracking-widest">
-                My Presentations
-              </h3>
-              {myPresentations.length === 0 ? (
-                <p className="text-xs text-slate-500 py-6 border-b border-slate-200 font-bold">선택한 학기에 발표 기록이 없습니다.</p>
-              ) : (
-                <div className="space-y-1">
-                  {myPresentations.map((p) => (
-                    <button 
-                      key={p.id} 
-                      onClick={() => fetchFeedbacks(p)}
-                      className="w-full flex items-center justify-between py-4 border-b border-slate-200 last:border-0 group transition-colors px-1"
-                    >
-                      <div className="flex flex-col items-start gap-1 text-left">
-                        <span className="text-[10px] font-bold opacity-60 uppercase text-slate-500 tracking-wider">{p.semester} / W{p.week}</span>
-                        <p className={`text-sm font-extrabold truncate w-48 ${selectedP?.id === p.id ? 'text-teal-800' : 'text-slate-600 group-hover:text-slate-900'}`}>{p.topic}</p>
-                      </div>
-                      <span className={`text-[9px] font-bold px-1.5 py-0.5 border ${selectedP?.id === p.id ? 'border-teal-800 text-teal-800 bg-teal-50' : 'border-slate-300 text-slate-400'}`}>G{p.group_id}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+      {filtered.length === 0 ? <EmptyState title="선택한 학기에 발표 기록이 없습니다." description="발표 순서에 등록된 발표만 표시됩니다." /> : (
+        <div className="grid items-start gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
+          <aside className="rounded-lg border border-slate-200 bg-white p-3 lg:sticky lg:top-24">
+            <h2 className="px-1 text-sm font-bold text-slate-900">내 발표</h2>
+            <ul className="mt-2 space-y-1">
+              {filtered.map((row) => (
+                <li key={row.id}>
+                  <button type="button" aria-current={selected?.id === row.id ? 'true' : undefined} onClick={() => setSelectedId(row.id)} className={`w-full rounded-md px-2 py-2 text-left ${selected?.id === row.id ? 'bg-teal-50 text-teal-800' : 'text-slate-700 hover:bg-slate-50'}`}>
+                    <span className="block text-xs font-semibold text-slate-500">{label(row.semester)} · W{row.week}{row.group_id ? ` · ${row.group_id}조` : ''}</span>
+                    <span className="block break-keep text-sm font-bold">{row.topic || '주제 미기록'}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
           </aside>
 
-          {/* [우] 피드백 본문 영역 */}
-          <main className="flex-1 w-full space-y-12 pb-32 max-w-4xl">
-            {!selectedP ? (
-              <div className="py-24 text-center border-y border-slate-300 font-bold text-slate-400 text-xl tracking-widest uppercase">
-                좌측에서 발표 주차를 선택해 주세요.
+          {selected && (
+            <section className="min-w-0 space-y-6">
+              <div className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-white p-4 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                  <p className="text-xs font-bold text-teal-700">{label(selected.semester)} · W{selected.week}</p>
+                  <h2 className="break-keep text-xl font-extrabold text-slate-900">{selected.topic || '주제 미기록'}</h2>
+                </div>
+                <div className="flex gap-2">
+                  <StatusBadge tone="teal">셀프 {feedback.self.length}건</StatusBadge>
+                  <StatusBadge tone="gray">조원 {feedback.peer.length}건</StatusBadge>
+                </div>
               </div>
-            ) : (
-              <>
-                {/* 선택된 발표 정보 (상단 박스 제거, 선 기반) */}
-                <div className="border-b-[3px] border-slate-900 pb-6 flex flex-col sm:flex-row justify-between sm:items-end gap-6">
-                  <div>
-                    <span className="text-[10px] font-black text-teal-700 uppercase tracking-widest block mb-2">
-                      {selectedP.semester} / W{selectedP.week}
-                    </span>
-                    <h2 className="text-3xl font-extrabold text-slate-900 tracking-tight">{selectedP.topic}</h2>
-                  </div>
-                  <div className="flex gap-6 text-right pb-1">
-                    <div>
-                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Self Feedback</p>
-                      <p className="text-2xl font-black text-teal-800">{selfFeedbacks.length} <span className="text-sm text-slate-400">건</span></p>
-                    </div>
-                    <div>
-                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Peer Feedback</p>
-                      <p className="text-2xl font-black text-slate-700">{receivedFeedbacks.length} <span className="text-sm text-slate-400">건</span></p>
-                    </div>
-                  </div>
-                </div>
 
-                <div className="space-y-16">
-                  
-                  {/* 셀프 피드백 섹션 */}
-                  <section>
-                    <h3 className="text-sm font-extrabold text-teal-800 mb-6 uppercase tracking-widest">
-                      📝 My Self-Feedback
-                    </h3>
-                    <div className="space-y-8">
-                      {selfFeedbacks.length === 0 ? (
-                        <div className="py-12 border-y border-slate-200">
-                          <p className="text-slate-400 font-bold text-sm">작성한 셀프 피드백이 없습니다.</p>
-                        </div>
-                      ) : (
-                        selfFeedbacks.map((fb, idx) => (
-                          <FeedbackCard key={fb.id} index={idx + 1} data={fb.details} isSelf={true} date={fb.created_at} />
-                        ))
-                      )}
-                    </div>
-                  </section>
-
-                  {/* 조원 피드백 섹션 */}
-                  <section>
-                    <h3 className="text-sm font-extrabold text-slate-800 mb-6 uppercase tracking-widest">
-                      🤝 Checked Peer Feedbacks
-                    </h3>
-                    <div className="space-y-8">
-                      {receivedFeedbacks.length === 0 ? (
-                        <div className="py-12 border-y border-slate-200 space-y-2">
-                          <p className="text-slate-500 font-bold">아직 확인을 완료한 조원 피드백이 없습니다.</p>
-                          <p className="text-[10px] text-slate-400 font-bold tracking-widest uppercase">※ Video Room 영상에 달린 댓글을 '읽음' 처리하면 이곳으로 이관됩니다.</p>
-                        </div>
-                      ) : (
-                        receivedFeedbacks.map((fb, idx) => (
-                          <FeedbackCard key={fb.id} index={idx + 1} data={fb.details} isSelf={false} date={fb.created_at} />
-                        ))
-                      )}
-                    </div>
-                  </section>
-
-                </div>
-              </>
-            )}
-          </main>
-
+              {feedback.status === 'loading' && <LoadingState />}
+              {feedback.status === 'error' && <ErrorState title="피드백을 불러오지 못했습니다." description={feedback.error} onRetry={() => setRetryKey((value) => value + 1)} />}
+              {feedback.status === 'ready' && !feedback.videoFound && (
+                <EmptyState title="이 발표의 영상 등록을 찾지 못했습니다." description="발표영상 자료실에 영상이 등록되어야 셀프·조원 피드백이 쌓입니다." />
+              )}
+              {feedback.status === 'ready' && feedback.videoFound && (
+                <>
+                  <FeedbackGroup title="내 셀프 피드백" empty="작성한 셀프 피드백이 없습니다." rows={feedback.self} self />
+                  <FeedbackGroup title="확인한 조원 피드백" empty="아직 읽음 처리한 조원 피드백이 없습니다. 발표영상 화면에서 댓글을 '읽음'으로 표시하면 이곳에 모입니다." rows={feedback.peer} />
+                </>
+              )}
+            </section>
+          )}
         </div>
-      </div>
-    </div>
+      )}
+    </MemberPage>
   )
 }
 
-// 🌟 피드백 카드 (박스 제거, 굵은 윗선과 얇은 밑선으로 영역 구분)
-function FeedbackCard({ index, data, isSelf, date }) {
-  if (!data) return null;
-  const d = date ? new Date(date) : null;
-  const dateStr = d ? `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}` : '';
-
+function FeedbackGroup({ title, empty, rows, self = false }) {
   return (
-    <div className={`border-t-[3px] pt-6 pb-10 ${isSelf ? 'border-teal-700' : 'border-slate-800'}`}>
-      
-      <div className="flex justify-between items-end border-b border-slate-200 pb-4 mb-6">
-        <div className="flex items-center gap-3">
-          <span className={`text-[11px] font-black w-5 h-5 flex items-center justify-center rounded-sm text-white ${isSelf ? 'bg-teal-700' : 'bg-slate-800'}`}>{index}</span>
-          <p className={`text-xs font-black uppercase tracking-widest ${isSelf ? 'text-teal-800' : 'text-slate-700'}`}>
-            {isSelf ? 'My Reflection' : 'Peer Feedback'}
-          </p>
-        </div>
-        <span className="text-[10px] font-bold text-slate-400 tracking-wider">{dateStr}</span>
-      </div>
-
-      <div className="space-y-8">
-        {data.originalMessage && (
-          <div>
-            <label className={`text-[10px] font-black uppercase tracking-widest mb-2 block ${isSelf ? 'text-teal-700' : 'text-slate-500'}`}>Original Message</label>
-            <p className="text-[13px] font-medium text-slate-800 bg-white border border-slate-200 p-5 rounded-sm leading-relaxed shadow-sm">{data.originalMessage}</p>
-          </div>
-        )}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 md:gap-6 pt-2 border-t border-slate-100">
-          <FeedbackDetail title="Insight" plus={data.insightPlus} minus={data.insightMinus} />
-          <FeedbackDetail title="Graphic" plus={data.graphicPlus} minus={data.graphicMinus} />
-          <FeedbackDetail title="Delivery" plus={data.deliveryPlus} minus={data.deliveryMinus} />
-        </div>
-      </div>
-    </div>
+    <section>
+      <h3 className={`mb-3 text-base font-bold ${self ? 'text-teal-800' : 'text-slate-800'}`}>{title}</h3>
+      {rows.length === 0 ? <p className="rounded-lg border border-dashed border-slate-300 px-4 py-8 text-center text-sm text-slate-500">{empty}</p> : (
+        <ol className="space-y-4">
+          {rows.map((row, index) => <FeedbackCard key={row.id} index={index + 1} data={row.details} self={self} date={row.created_at} />)}
+        </ol>
+      )}
+    </section>
   )
 }
 
-// 🌟 디테일 섹션 (심플한 선과 라벨 위주)
-function FeedbackDetail({ title, plus, minus }) {
+function FeedbackCard({ index, data, self, date }) {
+  if (!data) return null
   return (
-    <div className="space-y-4">
-      <p className="text-[11px] font-extrabold text-slate-900 border-l-2 border-slate-900 pl-2 uppercase tracking-widest">{title}</p>
-      <div className="space-y-3">
-        {plus && (
-          <div className="border-l border-emerald-300 pl-3">
-            <p className="text-[10px] font-black text-emerald-600 mb-1">(+)</p>
-            <p className="text-[11px] font-medium text-slate-700 leading-relaxed whitespace-pre-wrap">{plus}</p>
-          </div>
-        )}
-        {minus && (
-          <div className="border-l border-red-300 pl-3">
-            <p className="text-[10px] font-black text-red-500 mb-1">(-)</p>
-            <p className="text-[11px] font-medium text-slate-700 leading-relaxed whitespace-pre-wrap">{minus}</p>
-          </div>
-        )}
+    <li className={`rounded-lg border bg-white p-4 sm:p-5 ${self ? 'border-teal-200' : 'border-slate-200'}`}>
+      <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-2">
+        <p className={`text-sm font-bold ${self ? 'text-teal-800' : 'text-slate-700'}`}>{self ? '셀프 피드백' : '조원 피드백'} {index}</p>
+        {date && <span className="text-xs text-slate-500">{formatKst(date, { year: true })}</span>}
       </div>
-    </div>
+      {data.originalMessage && (
+        <div className="mt-3">
+          <p className="text-xs font-bold text-slate-500">핵심 메시지</p>
+          <p className="mt-1 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm leading-6 text-slate-800">{data.originalMessage}</p>
+        </div>
+      )}
+      <div className="mt-3 grid gap-4 md:grid-cols-3">
+        {DETAIL_SECTIONS.map((section) => (
+          <div key={section.title}>
+            <p className="border-l-2 border-slate-800 pl-2 text-sm font-bold text-slate-900">{section.title}</p>
+            {data[section.plus] && <p className="mt-2 whitespace-pre-wrap border-l border-emerald-300 pl-3 text-sm leading-6 text-slate-700"><span className="font-bold text-emerald-700">(+) </span>{data[section.plus]}</p>}
+            {data[section.minus] && <p className="mt-2 whitespace-pre-wrap border-l border-red-300 pl-3 text-sm leading-6 text-slate-700"><span className="font-bold text-red-700">(-) </span>{data[section.minus]}</p>}
+            {!data[section.plus] && !data[section.minus] && <p className="mt-2 text-xs text-slate-400">작성 없음</p>}
+          </div>
+        ))}
+      </div>
+    </li>
   )
 }

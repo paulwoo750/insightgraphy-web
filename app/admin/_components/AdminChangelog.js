@@ -1,16 +1,69 @@
 'use client'
 
 import Link from 'next/link'
-import { ArrowRight, Sparkles, X } from 'lucide-react'
+import { ArrowRight, Sparkles } from 'lucide-react'
+import { Modal } from '@/app/components/ui'
 
 // 관리자에게 보여줄 변경 안내. 새 릴리스는 맨 앞에 추가한다.
-// id가 바뀌면 모든 관리자에게 한 번 다시 표시된다.
+// id가 바뀌면 각 관리자 계정에 한 번 다시 표시된다.
 export const ADMIN_RELEASES = [
+  {
+    id: '2026-10-20-unified',
+    date: '2026.10.20',
+    title: '세션 관리와 관리자 화면을 정리했습니다',
+    summary: '주차 주제가 한곳에 저장되고, 세션 및 제출 화면이 주차 중심으로 바뀌었습니다. "화면에서 따라보기"로 바뀐 위치를 직접 짚어 드립니다.',
+    sections: [
+      {
+        title: '세션 및 제출',
+        badge: '개편',
+        href: '/admin/hub/dashboard',
+        items: [
+          '학기·주차·정규/평일을 먼저 고르고, 개요·일정 / 출석·장소 / 제출·피드백 마감 / 조·팀·평가 편성 / 제출물 탭으로 나눠 설정합니다.',
+          '제출 현황은 선택한 주차의 실제 대상 명단으로 셉니다. 편성에서 제외한 사람은 미제출로 세지 않습니다.',
+          '저장하지 않은 변경 수가 보이고, 일부라도 실패하면 성공으로 표시하지 않습니다. 다른 탭에서 먼저 저장한 값은 덮어쓰지 않습니다.',
+          '저장 전 학회원 화면 미리보기와, 저장 후 같은 주차의 실제 학회원 화면 열기를 추가했습니다.',
+        ],
+      },
+      {
+        title: '주차 주제',
+        href: '/admin/hub/semesters',
+        items: [
+          '학기 및 주차, 세션 및 제출 어디서 고쳐도 같은 학기별 주차 기록에 저장되고 자료실·투표·아카이브가 같은 주제를 읽습니다.',
+          '예전 설정값과 다른 주제가 있으면 학기 및 주차 화면에 충돌로 표시하고 기존 값을 지우지 않습니다.',
+        ],
+      },
+      {
+        title: '관리자 권한',
+        href: '/admin/hub/access',
+        roles: ['super_admin'],
+        items: [
+          '이메일 대신 학회원을 이름·기수·학교로 검색해 역할을 줍니다. 로그인 계정이 없는 학회원은 "로그인 계정 미연결"로 표시됩니다.',
+          '역할별로 할 수 있는 일을 기능별 표로 보여 줍니다.',
+        ],
+      },
+      {
+        title: '기존 기록 연결 검토',
+        badge: '신규',
+        href: '/admin/hub/records',
+        items: ['운영 현황의 경고 숫자는 실패한 SQL이 아니라 학회원과 연결되지 않은 예전 기록입니다. 지금 상태로 다시 확인하고, 근거를 골라 한 건씩 연결합니다.'],
+      },
+      {
+        title: '메인 일정 자동 노출',
+        href: '/admin/hub/landing',
+        items: ['메인 화면의 다가오는 일정은 전체 일정에 등록한 현재 학기 공개 일정 중 가까운 4개를 자동으로 보여 줍니다. 직접 고르기도 계속 쓸 수 있습니다.'],
+      },
+      {
+        title: '알럼나이 인터뷰 한 줄 요약',
+        href: '/admin/hub/about',
+        items: ['인터뷰 본문을 근거로 한 줄 요약을 만들고 직접 고친 뒤 저장합니다. 저장할 때 인터뷰 주소(ID)는 바뀌지 않습니다.'],
+      },
+    ],
+  },
   {
     id: '2026-10-19-top-menu',
     date: '2026.10.19',
     title: '관리자 화면이 새로워졌습니다',
-    summary: '메뉴 구성과 학기 운영 방식이 바뀌었습니다. 처음 한 번만 확인해 주세요.',
+    summary: '메뉴 구성과 학기 운영 방식이 바뀌었습니다.',
     sections: [
       {
         title: '메뉴 구성',
@@ -21,148 +74,112 @@ export const ADMIN_RELEASES = [
       },
       {
         title: '학기 및 주차',
-        badge: '신규',
         href: '/admin/hub/semesters',
         items: [
           '학기 생성, 주차별 주제, 현재 주차를 한 화면에서 관리합니다.',
-          '새 학기는 준비 상태로 만든 뒤 "현재 학기로 전환"으로 바꿉니다.',
-          '전환해도 지난 학기 기록은 지워지지 않고, 타임라인·주차 주제는 아카이브에 학기별로 보관됩니다.',
+          '새 학기는 준비 상태로 만든 뒤 "현재 학기로 전환"으로 바꿉니다. 지난 학기 기록은 지워지지 않습니다.',
         ],
       },
       {
-        title: '학기 마감 도구',
-        href: '/admin/hub/reset',
-        items: ['데이터를 일괄 삭제하던 기능을 없앴습니다. 이번 학기 기록이 잘 보존됐는지 점검하는 화면입니다.'],
-      },
-      {
-        title: '학회원',
-        href: '/admin/hub/members',
-        items: [
-          '기본 정보는 한 번만 등록하고, 학기별 참여 여부와 직책은 학기 명단에서 관리합니다.',
-          '가입 승인 대기·졸업 학회원 탭과 여러 명 일괄 처리가 추가됐습니다.',
-          '출결·벌금 등 활동 기록이 있는 학회원은 삭제되지 않습니다.',
-        ],
-      },
-      {
-        title: '출결·벌금 대시보드',
-        badge: '신규',
+        title: '출결·벌금·사유서',
         href: '/admin/hub/attendance',
         items: [
           '학회원별 출결과 결석 위험도를 확인하고 출결을 직접 고칠 수 있습니다.',
-          '출석 마감이 지난 세션에 기록이 없으면 자동으로 결석 처리됩니다. 인정된 사유서가 있으면 인정 결석으로 들어갑니다.',
+          '출석 마감이 지난 세션에 기록이 없으면 자동으로 결석 처리되고, 인정된 사유서가 있으면 인정 결석으로 들어갑니다.',
         ],
-      },
-      {
-        title: '사유서',
-        href: '/admin/hub/absence',
-        items: [
-          '결재하면 출결과 벌금에 바로 반영됩니다.',
-          '이번 학기 사유서만 표시됩니다. 지난 학기 사유서는 아카이브 > 과거 자료실에서 볼 수 있습니다.',
-        ],
-      },
-      {
-        title: '아카이브',
-        href: '/admin/hub/archive',
-        items: [
-          '지난 학기 제출 자료를 학기별로 보고, 검색·이름 수정·삭제할 수 있습니다.',
-          '과거 주차에 현재 학기 주제가 섞여 보이던 문제를 고쳤습니다.',
-          '회칙 편집은 "회칙 문서" 메뉴로 한 곳에 모았습니다.',
-        ],
-      },
-      {
-        title: '세션 및 제출',
-        href: '/admin/hub/dashboard',
-        items: [
-          '주차 주제를 저장하면 학기별 기록에도 함께 남아, 학기를 바꿔도 그 학기 주제가 유지됩니다.',
-          '평일세션 슬라이드가 정규세션 조로 묶이던 문제와 영상 업로드 대상 명단을 고쳤습니다.',
-        ],
-      },
-      {
-        title: '관리자 권한',
-        badge: '신규',
-        href: '/admin/hub/access',
-        roles: ['super_admin'],
-        items: ['이미 가입된 계정에 관리자 역할을 부여하거나 변경합니다. 최고관리자에게만 보입니다.'],
       },
     ],
   },
 ]
 
 export const LATEST_RELEASE_ID = ADMIN_RELEASES[0].id
-const SEEN_STORAGE_KEY = 'ig-admin-changelog-seen'
 
-// 브라우저 저장소를 쓸 수 없으면(사생활 보호 모드 등) 매번 새 안내로 취급한다
-export function hasUnseenRelease() {
+// 확인 상태는 계정별로 따로 저장한다
+function seenKey(userId) {
+  return `ig-admin-changelog-seen:${userId || 'anonymous'}`
+}
+
+// 브라우저 저장소를 쓸 수 없으면(사생활 보호 모드 등) 자동으로 띄우지 않는다 (매 페이지 반복 방지)
+export function hasUnseenRelease(userId) {
   try {
-    return window.localStorage.getItem(SEEN_STORAGE_KEY) !== LATEST_RELEASE_ID
+    return window.localStorage.getItem(seenKey(userId)) !== LATEST_RELEASE_ID
   } catch {
-    return true
+    return false
   }
 }
 
-export function markReleaseSeen() {
+export function markReleaseSeen(userId) {
   try {
-    window.localStorage.setItem(SEEN_STORAGE_KEY, LATEST_RELEASE_ID)
+    window.localStorage.setItem(seenKey(userId), LATEST_RELEASE_ID)
   } catch {
     // 저장하지 못해도 이번 페이지에서는 닫힌 상태를 유지한다
   }
 }
 
-export default function AdminChangelogDialog({ role, onClose }) {
-  const release = ADMIN_RELEASES[0]
-  const sections = release.sections.filter((section) => !section.roles || section.roles.includes(role))
+export default function AdminChangelogDialog({ role, onClose, onStartTour }) {
+  const [release, ...previous] = ADMIN_RELEASES
+  const visible = (sections) => sections.filter((section) => !section.roles || section.roles.includes(role))
 
   return (
-    <div className="fixed inset-0 z-[80] grid place-items-center bg-slate-950/45 p-4" role="dialog" aria-modal="true" aria-labelledby="admin-changelog-title">
-      <div className="flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden break-keep rounded-md border border-slate-200 bg-white shadow-xl">
-        <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4 sm:px-6">
-          <div className="flex min-w-0 items-start gap-3">
-            <div className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-teal-50 text-teal-700">
-              <Sparkles className="h-[18px] w-[18px]" aria-hidden="true" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-[11px] font-bold uppercase text-teal-700">업데이트 · {release.date}</p>
-              <h2 id="admin-changelog-title" className="text-lg font-bold text-slate-950">{release.title}</h2>
-              <p className="mt-0.5 text-xs leading-5 text-slate-500">{release.summary}</p>
-            </div>
-          </div>
-          <button type="button" onClick={onClose} className="grid h-9 w-9 shrink-0 place-items-center rounded-md text-slate-500 hover:bg-slate-100" aria-label="닫기">
-            <X className="h-5 w-5" aria-hidden="true" />
-          </button>
-        </div>
-
-        <div className="divide-y divide-slate-100 overflow-y-auto">
-          {sections.map((section) => (
-            <section key={section.title} className="px-5 py-4 sm:px-6">
-              <div className="mb-2 flex items-center justify-between gap-3">
-                <h3 className="flex items-center gap-2 text-sm font-bold text-slate-900">
-                  {section.title}
-                  {section.badge && <span className="rounded-full bg-teal-50 px-2 py-0.5 text-[10px] font-bold text-teal-800 ring-1 ring-inset ring-teal-200">{section.badge}</span>}
-                </h3>
-                {section.href && (
-                  <Link href={section.href} onClick={onClose} className="inline-flex shrink-0 items-center gap-1 text-xs font-bold text-teal-700 hover:text-teal-900">
-                    바로가기
-                    <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
-                  </Link>
-                )}
-              </div>
-              <ul className="space-y-1.5">
-                {section.items.map((item) => (
-                  <li key={item} className="flex gap-2 text-[13px] leading-5 text-slate-600">
-                    <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-slate-400" aria-hidden="true" />
-                    <span>{item}</span>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          ))}
-        </div>
-
-        <div className="flex items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 px-5 py-3 sm:px-6">
-          <p className="text-[11px] text-slate-500">상단의 업데이트 버튼으로 언제든 다시 볼 수 있습니다.</p>
-          <button type="button" onClick={onClose} className="min-h-10 shrink-0 rounded-md bg-teal-700 px-5 text-sm font-bold text-white hover:bg-teal-800">확인했어요</button>
-        </div>
+    <Modal
+      title={release.title}
+      description={`업데이트 · ${release.date} — ${release.summary}`}
+      onClose={onClose}
+      size="lg"
+      footer={
+        <>
+          <p className="mr-auto hidden self-center text-xs text-slate-500 sm:block">상단의 도움말 버튼으로 언제든 다시 볼 수 있습니다.</p>
+          <button type="button" onClick={onClose} className="min-h-10 rounded-md border border-slate-300 bg-white px-4 text-sm font-bold text-slate-700 hover:bg-slate-50">닫기</button>
+          {onStartTour && (
+            <button type="button" onClick={onStartTour} className="inline-flex min-h-10 items-center gap-2 rounded-md bg-teal-700 px-4 text-sm font-bold text-white hover:bg-teal-800">
+              <Sparkles className="h-4 w-4" aria-hidden="true" />
+              화면에서 따라보기
+            </button>
+          )}
+        </>
+      }
+    >
+      <div className="divide-y divide-slate-100 break-keep">
+        {visible(release.sections).map((section) => <ReleaseSection key={section.title} section={section} onClose={onClose} />)}
       </div>
-    </div>
+      {previous.length > 0 && (
+        <details className="border-t border-slate-200 bg-slate-50/60">
+          <summary className="cursor-pointer px-5 py-3 text-sm font-bold text-slate-600 hover:text-slate-900">이전 업데이트 보기</summary>
+          {previous.map((item) => (
+            <div key={item.id} className="divide-y divide-slate-100 border-t border-slate-200 bg-white">
+              <p className="px-5 pt-4 text-xs font-bold text-slate-500">{item.date} · {item.title}</p>
+              {visible(item.sections).map((section) => <ReleaseSection key={section.title} section={section} onClose={onClose} />)}
+            </div>
+          ))}
+        </details>
+      )}
+    </Modal>
+  )
+}
+
+function ReleaseSection({ section, onClose }) {
+  return (
+    <section className="px-5 py-4">
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <h3 className="flex items-center gap-2 text-sm font-bold text-slate-900">
+          {section.title}
+          {section.badge && <span className="rounded-full bg-teal-50 px-2 py-0.5 text-xs font-bold text-teal-800 ring-1 ring-inset ring-teal-200">{section.badge}</span>}
+        </h3>
+        {section.href && (
+          <Link href={section.href} onClick={onClose} className="inline-flex shrink-0 items-center gap-1 text-sm font-bold text-teal-700 hover:text-teal-900">
+            바로가기
+            <ArrowRight className="h-4 w-4" aria-hidden="true" />
+          </Link>
+        )}
+      </div>
+      <ul className="space-y-1.5">
+        {section.items.map((item) => (
+          <li key={item} className="flex gap-2 text-sm leading-6 text-slate-600">
+            <span className="mt-2.5 h-1 w-1 shrink-0 rounded-full bg-slate-400" aria-hidden="true" />
+            <span>{item}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
   )
 }

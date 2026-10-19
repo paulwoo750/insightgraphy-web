@@ -211,6 +211,100 @@ where semester_id = (select id from public.semesters where status = 'active')
   and week_no = N;
 ```
 
+## 15. 주차 주제·세션 계획 저장 일원화
+
+`운영 기준 > 학기 및 주차`와 `세션 및 제출` 화면이 같은 저장 경로(`semester_weeks`)로 주제를 저장하게 한다. 행을 지우지 않는다.
+
+- `semesters.ot_topic` 컬럼을 추가해 W0(OT) 주제를 학기별로 보관한다. 운영 학기는 `pr_config.week_topics`의 `0`, 지난 학기는 학기 마감 스냅샷의 `topics`에서 **비어 있을 때만** 채운다.
+- 운영 학기의 `semester_weeks` 주제 중 **비어 있는 칸만** `pr_config.week_topics`에서 채운다. 지난 학기는 현재 설정으로 채우지 않는다. 양쪽 값이 다른 칸은 바꾸지 않고 확인 2에 나열한다.
+- `admin_save_semester_configuration`은 요청에 들어 있는 주차의 주제만 바꾼다. 화면에서 건드리지 않은 주제를 빈 값으로 덮어쓰지 않는다. 다른 탭에서 먼저 같은 칸을 바꿨다면 저장 전체를 되돌리고 `WEEK_TOPIC_CONFLICT`로 알린다.
+- `admin_save_week_plan`을 추가한다. 세션 및 제출 화면의 한 주차(주제·조 편성·마감·장소 즐겨찾기)를 한 트랜잭션으로 저장하고, 충돌하면 `WEEK_PLAN_CONFLICT`로 되돌린다.
+- 취소한 주차, 평일세션 주제, 지난 학기 스냅샷은 그대로 둔다.
+
+**STEP 12 다음에 실행한다.** STEP 11·12가 없으면 `Run STEP_11…first` / `Run STEP_12…first` 오류로 중단되고 아무것도 바뀌지 않는다. 이 단계를 실행하기 전에는 새 앱의 `학기 및 주차` 저장 버튼이 잠겨 있고, `세션 및 제출` 저장은 "STEP 15를 먼저 실행" 안내와 함께 실패한다(데이터는 바뀌지 않는다).
+
+```powershell
+Get-Content -Raw -Encoding UTF8 .\supabase\STEP_15_WEEK_PLAN_SINGLE_SOURCE.sql | Set-Clipboard
+```
+
+- 확인 1: 학기별 `weeks_with_topic`·`has_w0_topic`. 운영 학기는 기존 `week_topics`에 있던 주차 수만큼 채워져 있어야 한다.
+- 확인 2: 행이 없으면 정상이다. 행이 있으면 같은 주차의 주제가 두 곳에서 다르다는 뜻이며, `학기 및 주차` 화면의 "예전 설정값과 다른 주제" 표에서 어느 쪽을 쓸지 고른다.
+- 확인 3: 다섯 값이 모두 `true`인지 확인한다.
+  - `ot_topic_column_ready`
+  - `week_plan_function_ready`
+  - `legacy_refresh_ready`
+  - `semester_save_keeps_topics_ready`
+  - `week_topics_include_w0_ready`
+
+## 16. 학회원 선택으로 관리자 권한 부여
+
+이메일을 입력하는 대신 학회원을 검색해서 그 학회원의 로그인 계정에 권한을 준다. 로그인 계정이 연결되지 않은 학회원은 거절하며, 이름으로 계정을 만들거나 연결하지 않는다. 기존 `admin_users` 행과 이메일 방식 권한 부여 함수는 그대로 둔다. 모든 부여는 `admin_access_audit`에 학회원 ID와 함께 남는다.
+
+**STEP 7 다음에 실행한다.** STEP 7이 없으면 `Run STEP_7_ADMIN_ACCESS_MANAGEMENT.sql first` 오류로 중단된다.
+
+```powershell
+Get-Content -Raw -Encoding UTF8 .\supabase\STEP_16_ADMIN_ACCESS_BY_MEMBER.sql | Set-Clipboard
+```
+
+- 확인 1: 관리자 계정별 연결 학회원. `member_name`이 비어 있는 계정은 학회원 명단과 연결되지 않은 계정이다(권한은 그대로 유지된다).
+- 확인 2: 네 값이 모두 `true`인지 확인한다.
+  - `candidates_ready`
+  - `list_ready`
+  - `grant_member_ready`
+  - `active_super_admin_ready`
+
+## 17. 연결 확인이 필요한 기존 기록 검토
+
+`data_migration_issues`는 실패한 SQL이 아니라, 2026-08 이관 때 작성자를 학회원 한 명으로 특정하지 못한 기록 목록이다. 관리자 화면 `기록 연결 검토`에서 항목을 하나씩 확인하고 연결·종료할 수 있게 한다. 일괄 해결과 이름만으로 자동 연결하는 기능은 없다.
+
+- `admin_record_link_report()`: 읽기 전용. 열린 항목을 지금 상태로 다시 분류한다(이미 연결됨, 원본 삭제됨, 시스템 행, 가입 승인 대기, 연결 필요). 후보는 근거(같은 로그인 계정, 같은 이름)와 함께 보여 주기만 한다.
+- `admin_link_record(...)`: 관리자가 고른 학회원으로 **기록 한 건**을 연결한다. 허용된 테이블의 학회원 컬럼이 비어 있을 때만 채우고, 다시 읽어 확인한 뒤에만 항목을 닫는다.
+- `admin_close_record_issue(...)`: 사유가 지금 사실일 때만(이미 연결됨·원본 삭제·시스템 행·가입 처리 완료) 한 건을 닫는다.
+- 로그인한 학회원이 자기 자신에 대해 새로 쓰는 출석·사유서·업로드·댓글·채점 행에는 로그인 계정의 학회원 ID가 자동으로 들어간다. 다른 사람을 대신해 쓴 행은 검토 대상으로 남긴다.
+
+행을 지우지 않고, 기록에 저장된 이름도 바꾸지 않는다. 1단계(`202608220001_normalize_core.sql`) 이후 언제든 실행할 수 있다.
+
+```powershell
+Get-Content -Raw -Encoding UTF8 .\supabase\STEP_17_RECORD_LINK_REVIEW.sql | Set-Clipboard
+```
+
+- 확인 1: 열린 항목을 지금 상태(`current_state`)로 다시 센 개수. `needs_link`만 실제로 사람이 연결해야 하는 항목이다. `already_linked`·`source_deleted`·`system_row`는 화면에서 사유를 확인하고 한 건씩 닫는다.
+- 확인 2: 네 값이 모두 `true`인지 확인한다.
+  - `report_ready`
+  - `link_ready`
+  - `close_ready`
+  - `actor_triggers_ready` (출결·사유서·파일·댓글·점수 5개 트리거)
+
+## 18. 졸업생 인터뷰 한 줄 요약·랜딩 일정 자동 표시
+
+컬럼만 추가한다. 행을 바꾸거나 지우지 않는다.
+
+- `pr_about_alumni`: `summary_line`(카드에 보이는 "인터뷰 한 줄 요약"), `summary_origin`(`ai`/`manual`), `summary_source_hash`(인터뷰 내용이 바뀌면 "요약 갱신 필요" 표시), `summary_model`, `summary_generated_at`. 인터뷰이 본인의 말인 `short_quote`는 그대로 둔다.
+- `pr_landing_config.schedule_mode`: 기본값 `auto`(이번 학기 공개 일정 중 오늘 이후 4개를 자동 표시). `manual`이면 지금처럼 고른 일정(`selected_schedules`)을 보여 준다.
+
+이 단계 전에는 관리자 `학회 소개`의 요약 만들기·편집이 잠겨 있고(기존 인용구만 저장된다), `메인` 화면의 "직접 선택"이 잠겨 있다(자동 표시는 동작한다).
+
+```powershell
+Get-Content -Raw -Encoding UTF8 .\supabase\STEP_18_SITE_CONTENT_SUMMARY_AND_LANDING.sql | Set-Clipboard
+```
+
+- 확인 1: 알럼나이 인터뷰 목록. `id`가 실행 전과 같고 `summary_line`은 비어 있어야 한다.
+- 확인 2: `alumni_summary_columns_ready`·`landing_schedule_mode_ready`가 `true`, `current_landing_mode`가 `auto`인지 확인한다.
+
+## 참고: 공개 키로 읽을 수 있는 개인 기록 점검 (읽기 전용)
+
+점검 중 로그인하지 않은 공개 키(anon)로도 출결·벌금·사유서(사유·증빙 링크 포함) 행을 읽을 수 있는 것을 확인했다. 이번 작업에서는 정책을 바꾸지 않았다. 아래 조회로 현재 정책을 확인한 뒤, 막을지 여부를 결정한다. 막을 경우 학회원 화면(사유서 게시판의 공개 열람 등)에 영향이 있으므로 별도로 진행한다.
+
+```sql
+select tablename, policyname, roles, cmd, qual
+from pg_policies
+where schemaname = 'public'
+  and tablename in ('pr_attendance', 'pr_fines', 'absence_forms', 'scores', 'file_comments')
+order by tablename, policyname;
+```
+
+`roles`에 `{public}` 또는 `{anon}`이 있고 `cmd`가 `SELECT`, `qual`이 `true`인 정책이 공개 열람 정책이다.
+
 ## 중단 조건
 
 - 어느 단계에서든 빨간색 오류가 나오면 다음 단계로 넘어가지 않는다.

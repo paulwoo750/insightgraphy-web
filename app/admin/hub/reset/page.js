@@ -55,7 +55,7 @@ export default function SemesterCloseoutPage() {
   return (
     <AdminPage>
       <PageHeader
-        eyebrow="Semester Closeout"
+        eyebrow="정책 및 시스템"
         title="학기 마감 점검"
         description="현재 데이터는 삭제하지 않습니다. 기록 보존 상태를 확인한 뒤 새 학기를 준비하고 전환합니다."
         actions={
@@ -118,7 +118,7 @@ export default function SemesterCloseoutPage() {
 }
 
 function RecordCount({ label, value }) {
-  return <div className="rounded-md border border-slate-200 bg-white p-4"><p className="text-[11px] font-semibold text-slate-500">{label}</p><p className="mt-1.5 text-xl font-bold text-slate-950">{value}건</p></div>
+  return <div className="rounded-md border border-slate-200 bg-white p-4"><p className="text-xs font-semibold text-slate-500">{label}</p><p className="mt-1.5 text-xl font-bold text-slate-950">{value}건</p></div>
 }
 
 function CloseoutStep({ number, icon: Icon, title, description, href, status }) {

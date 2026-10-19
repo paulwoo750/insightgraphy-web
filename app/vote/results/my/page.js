@@ -1,422 +1,320 @@
 'use client'
-import { useState, useEffect } from 'react'
-import { supabase } from '@/lib/supabase'
-import { sortSemestersDesc } from '@/lib/semester'
-import Link from 'next/link'
-import InternalNav from '@/app/components/InternalNav'
+// 내 평가 결과: 학기별(또는 전체 누적) 점수 추이·영역 균형·분산·주차별 상세
+import { useEffect, useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, Radar,
-  ComposedChart, Bar
+  ComposedChart, Bar,
 } from 'recharts'
+import { supabase } from '@/lib/supabase'
+import { fetchCurrentSemester, sortSemestersDesc } from '@/lib/semester'
+import { MemberHeader, MemberPage, useMember } from '@/app/components/MemberShell'
+import { ErrorState, LoadingState, StatusBadge } from '@/app/components/ui'
+
+const CATEGORY_COLORS = ['#0f766e', '#0369a1', '#be185d', '#b45309', '#4338ca']
+// 종합 카테고리('종합', '4. 종합')는 영역 분석에서 뺀다
+const isSummaryCategory = (title) => String(title || '').replace(/^\d+\.\s*/, '').trim() === '종합'
+const TOOLTIP_STYLE = { borderRadius: '6px', border: '1px solid #cbd5e1', boxShadow: 'none', fontSize: 12 }
+
+// 정성 피드백만 임시 저장한 행(점수 없음, 0점)은 평가로 세지 않는다
+const isRealScore = (row) => Boolean(row.details?.scores) || Number(row.total_score) > 0
+const round1 = (value) => Math.round(value * 10) / 10
+const average = (rows) => (rows.length ? round1(rows.reduce((sum, row) => sum + (row.total_score || 0), 0) / rows.length) : 0)
 
 export default function MyAnalytics() {
-  const [user, setUser] = useState(null)
-  const [loading, setLoading] = useState(true)
-  
-  const [allPresentations, setAllPresentations] = useState([])
-  const [allScores, setAllScores] = useState([])
-  const [allFiles, setAllFiles] = useState([])
-  
-  const [semesters, setSemesters] = useState([])
-  const [selectedSemester, setSelectedSemester] = useState('all') 
-  const [configSem, setConfigSem] = useState('') 
+  const router = useRouter()
+  const identity = useMember()
+  const [state, setState] = useState({ status: 'loading', error: '' })
+  const [data, setData] = useState({ presentations: [], scores: [], files: [], semesterRows: [], criteria: [], currentCode: '' })
+  const [selectedSemester, setSelectedSemester] = useState(null)
 
-  const [categoryInfo, setCategoryInfo] = useState({ names: [], colorMap: {}, criteriaMap: {} })
-
-  const [myWeeklyTrends, setMyWeeklyTrends] = useState([])
-  const [myOverallAvg, setMyOverallAvg] = useState(null)
-  const [clubOverallAvg, setClubOverallAvg] = useState({}) 
-  const [clubAverages, setClubAverages] = useState([])
-  const [awards, setAwards] = useState([])
-  const [varianceData, setVarianceData] = useState([])
-  const [submissionStats, setSubmissionStats] = useState({ total: 0, late: 0, miss: 0 })
+  const myName = identity.member?.name || identity.session?.user?.user_metadata?.name || ''
 
   useEffect(() => {
-    const fetchData = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) return
-      setUser(session.user)
-      const userName = session.user.user_metadata.name
-
-      const [pRes, sRes, fRes, configRes, critRes] = await Promise.all([
-        supabase.from('presentations').select('*'),
-        supabase.from('scores').select('*'),
-        supabase.from('files_metadata').select('*').eq('uploader', userName),
-        supabase.from('pr_config').select('*').eq('key', 'current_semester').single(),
-        supabase.from('pr_vote_criteria').select('*')
-      ])
-
-      const pData = pRes.data || []
-      const sData = sRes.data || []
-      const fData = fRes.data || []
-      const adminCurrentSemester = configRes.data?.value 
-
-      setAllPresentations(pData)
-      setAllScores(sData)
-      setAllFiles(fData)
-      setConfigSem(adminCurrentSemester)
-
-      // 🌟 동적 카테고리 정보 매핑 ('4. 종합' 카테고리만 정확히 필터링)
-      const criteriaMap = {};
-      const catNamesSet = new Set();
-      (critRes.data || []).forEach(row => {
-        criteriaMap[row.version] = row.criteria_data;
-        row.criteria_data.forEach(cat => {
-          // 🚨 오직 '4. 종합'이라는 이름을 가진 카테고리만 분석에서 제외!
-          if (cat.title !== '4. 종합') {
-            catNamesSet.add(cat.title);
-          }
-        });
-      });
-      const names = [...catNamesSet];
-      
-      // 차트용 딥 틸(Teal) 어울리는 색상 팔레트
-      const catColors = ['#0f766e', '#0369a1', '#be185d', '#b45309', '#4338ca'];
-      const colorMap = {};
-      names.forEach((n, i) => colorMap[n] = catColors[i % catColors.length]);
-      
-      setCategoryInfo({ names, colorMap, criteriaMap });
-
-      const sSems = sData.map(s => s.semester).filter(Boolean)
-      const fSems = fData.map(f => f.semester).filter(Boolean)
-      let uniqueSemesters = [...new Set([...sSems, ...fSems])]
-
-      if (adminCurrentSemester && !uniqueSemesters.includes(adminCurrentSemester)) {
-        uniqueSemesters.push(adminCurrentSemester)
-      }
-      uniqueSemesters = sortSemestersDesc(uniqueSemesters)
-      setSemesters(uniqueSemesters)
-
-      if (adminCurrentSemester && uniqueSemesters.includes(adminCurrentSemester)) {
-        setSelectedSemester(adminCurrentSemester) 
-      } else if (uniqueSemesters.length > 0) {
-        setSelectedSemester(uniqueSemesters[0])
-      } else {
-        setSelectedSemester('all') 
-      }
-
-      setLoading(false)
+    if (identity.status !== 'ready') return undefined
+    if (!identity.session) {
+      router.replace('/login?next=%2Fvote%2Fresults%2Fmy')
+      return undefined
     }
-    fetchData()
-  }, [])
-
-  useEffect(() => {
-    const { names, criteriaMap } = categoryInfo;
-    if (!user || allPresentations.length === 0 || names.length === 0) return
-    const userName = user.user_metadata.name
-
-    const currentScores = selectedSemester === 'all' 
-      ? allScores 
-      : allScores.filter(s => s.semester === selectedSemester)
-      
-    const currentFiles = selectedSemester === 'all'
-      ? allFiles
-      : allFiles.filter(f => f.semester === selectedSemester)
-
-    const filteredPs = selectedSemester === 'all' 
-      ? allPresentations 
-      : allPresentations.filter(p => {
-          const hasScoreInSem = currentScores.some(s => s.presentation_id === p.id)
-          const isNewAndUnscored = !allScores.some(s => s.presentation_id === p.id)
-          return hasScoreInSem || (isNewAndUnscored && selectedSemester === configSem)
+    let active = true
+    async function load() {
+      try {
+        const current = await fetchCurrentSemester()
+        const fileQuery = identity.member?.id
+          ? supabase.from('files_metadata').select('id, semester, is_late, uploader, uploader_member_id').or(`uploader_member_id.eq.${identity.member.id},uploader.eq."${myName}"`)
+          : supabase.from('files_metadata').select('id, semester, is_late, uploader, uploader_member_id').eq('uploader', myName)
+        const [presentationRes, scoreRes, fileRes, semesterRes, criteriaRes] = await Promise.all([
+          supabase.from('presentations').select('*'),
+          supabase.from('scores').select('id, presentation_id, total_score, details, semester'),
+          fileQuery,
+          supabase.from('semesters').select('code, name, total_weeks, status'),
+          supabase.from('pr_vote_criteria').select('*'),
+        ])
+        const failed = [presentationRes, scoreRes, fileRes, criteriaRes].find((result) => result.error)
+        if (failed) throw failed.error
+        if (!active) return
+        setData({
+          presentations: presentationRes.data || [],
+          scores: (scoreRes.data || []).filter(isRealScore),
+          files: fileRes.data || [],
+          semesterRows: semesterRes.data || [],
+          criteria: criteriaRes.data || [],
+          currentCode: current.code,
         })
-
-    const getCatScores = (scoreRecord) => {
-      const v = scoreRecord.details?.version || 'v1';
-      const rubric = criteriaMap[v] || [];
-      const itemScores = scoreRecord.details?.scores || {};
-      const res = {};
-      names.forEach(n => res[n] = 0);
-      
-      rubric.forEach(cat => {
-        // 필터링된 이름 배열(names)에 존재하는 항목만 합산
-        if (names.includes(cat.title)) {
-          let sum = 0;
-          cat.items.forEach(item => sum += (itemScores[item.id] || 0));
-          res[cat.title] = sum;
-        }
-      });
-      return res;
-    };
-
-    const clubAvgs = {};
-    names.forEach(n => clubAvgs[n] = 0);
-    currentScores.forEach(s => {
-        const cs = getCatScores(s);
-        names.forEach(n => clubAvgs[n] += cs[n]);
-    });
-    if (currentScores.length > 0) {
-        names.forEach(n => clubAvgs[n] = parseFloat((clubAvgs[n] / currentScores.length).toFixed(1)));
+        setState({ status: 'ready', error: '' })
+      } catch (error) {
+        if (active) setState({ status: 'error', error: error.message })
+      }
     }
-    setClubOverallAvg(clubAvgs);
+    load()
+    return () => { active = false }
+  }, [identity.status, identity.session, identity.member?.id, myName, router])
 
-    const myPs = filteredPs.filter(p => p.presenter_name === userName)
-    const winList = []
-    const clubTrends = []
-    const vData = []
+  const categoryInfo = useMemo(() => {
+    const criteriaMap = {}
+    const names = []
+    data.criteria.forEach((row) => {
+      criteriaMap[row.version] = row.criteria_data || []
+      ;(row.criteria_data || []).forEach((category) => {
+        if (!isSummaryCategory(category.title) && !names.includes(category.title)) names.push(category.title)
+      })
+    })
+    const colorMap = Object.fromEntries(names.map((name, index) => [name, CATEGORY_COLORS[index % CATEGORY_COLORS.length]]))
+    return { names, colorMap, criteriaMap }
+  }, [data.criteria])
 
-    const trends = Array.from({ length: 12 }, (_, i) => i + 1).map(w => {
-      const weekPs = filteredPs.filter(p => p.week === w)
-      const weekScores = currentScores.filter(s => weekPs.some(p => p.id === s.presentation_id))
-      
-      const clubAvgTotal = weekScores.length > 0 
-        ? parseFloat((weekScores.reduce((a, b) => a + (b.total_score || 0), 0) / weekScores.length).toFixed(1)) : 0
-      clubTrends.push({ name: `${w}주`, clubTotal: clubAvgTotal })
+  const semesterOptions = useMemo(() => {
+    const codes = new Set([...data.scores.map((row) => row.semester), ...data.files.map((row) => row.semester), ...data.presentations.filter((row) => row.presenter_name === myName).map((row) => row.semester)].filter(Boolean))
+    if (data.currentCode) codes.add(data.currentCode)
+    const names = Object.fromEntries(data.semesterRows.map((row) => [row.code, row.name || row.code]))
+    return sortSemestersDesc([...codes]).map((code) => ({ code, name: names[code] || code }))
+  }, [data, myName])
 
-      if (weekScores.length > 0) {
-        const allTotals = weekScores.map(s => s.total_score || 0)
-        vData.push({ name: `${w}주`, range: [Math.min(...allTotals), Math.max(...allTotals)], avg: clubAvgTotal })
+  // 기본 학기: 현재 학기 → 기록이 있는 가장 최근 학기 → 전체
+  const semester = selectedSemester ?? (semesterOptions.some((option) => option.code === data.currentCode) ? data.currentCode : semesterOptions[0]?.code || 'all')
+
+  const report = useMemo(() => {
+    const { names, criteriaMap } = categoryInfo
+    const scores = semester === 'all' ? data.scores : data.scores.filter((row) => row.semester === semester)
+    const files = semester === 'all' ? data.files : data.files.filter((row) => row.semester === semester)
+    const presentations = semester === 'all' ? data.presentations : data.presentations.filter((row) => row.semester === semester)
+    const scoresByPresentation = {}
+    scores.forEach((row) => { (scoresByPresentation[row.presentation_id] ||= []).push(row) })
+
+    const categoryScores = (row) => {
+      const rubric = criteriaMap[row.details?.version || 'v1'] || []
+      const itemScores = row.details?.scores || {}
+      const result = Object.fromEntries(names.map((name) => [name, 0]))
+      rubric.forEach((category) => {
+        if (names.includes(category.title)) result[category.title] = category.items.reduce((sum, item) => sum + (itemScores[item.id] || 0), 0)
+      })
+      return result
+    }
+    const averageCategories = (rows) => {
+      const totals = Object.fromEntries(names.map((name) => [name, 0]))
+      rows.forEach((row) => {
+        const values = categoryScores(row)
+        names.forEach((name) => { totals[name] += values[name] })
+      })
+      return Object.fromEntries(names.map((name) => [name, rows.length ? round1(totals[name] / rows.length) : 0]))
+    }
+
+    // 실제 학기 주차 수 (전체 누적이면 기록된 가장 큰 주차)
+    const semesterRow = data.semesterRows.find((row) => row.code === semester)
+    const maxWeekInData = Math.max(0, ...presentations.map((row) => Number(row.week) || 0))
+    const totalWeeks = Math.max(semesterRow?.total_weeks || 0, maxWeekInData, 1)
+
+    const awards = []
+    const clubTrend = []
+    const variance = []
+    const weekly = Array.from({ length: totalWeeks }, (_, index) => index + 1).map((week) => {
+      const weekPresentations = presentations.filter((row) => row.week === week)
+      const weekScores = weekPresentations.flatMap((row) => scoresByPresentation[row.id] || [])
+      const clubAvg = average(weekScores)
+      clubTrend.push({ name: `${week}주`, clubTotal: clubAvg })
+      if (weekScores.length) {
+        const totals = weekScores.map((row) => row.total_score || 0)
+        variance.push({ name: `${week}주`, range: [Math.min(...totals), Math.max(...totals)], avg: clubAvg })
       }
-
-      const myWeekP = weekPs.find(p => p.presenter_name === userName)
-      if (myWeekP) {
-        const clusterPs = weekPs.filter(p => p.cluster_id === myWeekP.cluster_id)
-        const clusterRankings = clusterPs.map(p => {
-          const pS = currentScores.filter(s => s.presentation_id === p.id)
-          const avg = pS.length > 0 ? (pS.reduce((a, b) => a + (b.total_score || 0), 0) / pS.length) : 0
-          return { name: p.presenter_name, score: avg, topic: p.topic }
-        }).sort((a, b) => b.score - a.score)
-
-        if (clusterRankings.length > 0 && clusterRankings[0].name === userName && clusterRankings[0].score > 0) {
-          winList.push({ week: w, semester: myWeekP.semester || selectedSemester, topic: myWeekP.topic })
-        }
-
-        const myWeekScores = currentScores.filter(s => s.presentation_id === myWeekP.id)
-        const count = myWeekScores.length
-        
-        const weekCatScores = {};
-        names.forEach(n => weekCatScores[n] = 0);
-        
-        if (count > 0) {
-            myWeekScores.forEach(s => {
-                const cs = getCatScores(s);
-                names.forEach(n => weekCatScores[n] += cs[n]);
-            });
-            names.forEach(n => weekCatScores[n] = parseFloat((weekCatScores[n] / count).toFixed(1)));
-        }
-
-        return {
-          name: `${w}주`, week: w,
-          total: count > 0 ? parseFloat((myWeekScores.reduce((a, b) => a + (b.total_score || 0), 0) / count).toFixed(1)) : 0,
-          ...weekCatScores
-        }
-      }
-      return { name: `${w}주`, week: w, total: 0 }
+      const mine = weekPresentations.find((row) => row.presenter_name === myName)
+      if (!mine) return { name: `${week}주`, week, total: 0, presented: false }
+      const ranking = weekPresentations
+        .filter((row) => row.cluster_id === mine.cluster_id)
+        .map((row) => ({ name: row.presenter_name, score: average(scoresByPresentation[row.id] || []) }))
+        .sort((a, b) => b.score - a.score)
+      if (ranking[0]?.name === myName && ranking[0].score > 0) awards.push({ week, semester: mine.semester, topic: mine.topic })
+      const myScores = scoresByPresentation[mine.id] || []
+      return { name: `${week}주`, week, total: average(myScores), presented: true, scored: myScores.length > 0, ...averageCategories(myScores) }
     })
 
-    setMyWeeklyTrends(trends)
-    setClubAverages(clubTrends)
-    setVarianceData(vData)
-    setAwards(winList)
+    const myPresentations = presentations.filter((row) => row.presenter_name === myName)
+    const myScores = myPresentations.flatMap((row) => scoresByPresentation[row.id] || [])
+    // 만점: 내가 받은 평가표 버전 중 가장 큰 총점 (없으면 105)
+    const versionMax = (version) => (criteriaMap[version] || []).reduce((sum, category) => sum + category.items.reduce((itemSum, item) => itemSum + Math.max(0, ...item.criteria.map((criterion) => criterion.s)), 0), 0)
+    const maxTotal = Math.max(0, ...myScores.map((row) => versionMax(row.details?.version || 'v1'))) || 105
 
-    const myAllScores = currentScores.filter(s => myPs.some(p => p.id === s.presentation_id))
-    if (myAllScores.length > 0) {
-      const c = myAllScores.length
-      const myAvgs = { total: parseFloat((myAllScores.reduce((a,b)=>a+(b.total_score||0),0)/c).toFixed(1)), categories: {} };
-      names.forEach(n => myAvgs.categories[n] = 0);
-      
-      myAllScores.forEach(s => {
-          const cs = getCatScores(s);
-          names.forEach(n => myAvgs.categories[n] += cs[n]);
-      });
-      names.forEach(n => myAvgs.categories[n] = parseFloat((myAvgs.categories[n]/c).toFixed(1)));
-      
-      setMyOverallAvg(myAvgs)
-    } else { setMyOverallAvg(null) }
+    return {
+      weekly,
+      clubTrend,
+      variance,
+      awards,
+      maxTotal,
+      myOverall: myScores.length ? { total: average(myScores), categories: averageCategories(myScores) } : null,
+      clubOverall: averageCategories(scores),
+      submissions: { total: files.length, late: files.filter((row) => row.is_late).length, presented: myPresentations.length },
+    }
+  }, [categoryInfo, data, semester, myName])
 
-    setSubmissionStats({
-      total: currentFiles.length,
-      late: currentFiles.filter(f => f.is_late).length,
-      miss: (myPs.length * 3) - currentFiles.length 
-    })
+  if (identity.status !== 'ready' || state.status === 'loading') return <MemberPage><LoadingState label="평가 결과를 계산하는 중입니다." /></MemberPage>
+  if (state.status === 'error') return <MemberPage><ErrorState title="평가 결과를 불러오지 못했습니다." description={state.error} onRetry={() => window.location.reload()} /></MemberPage>
 
-  }, [allPresentations, allScores, allFiles, selectedSemester, configSem, user, categoryInfo])
-
-  if (loading) return <div className="p-8 text-center font-black text-slate-400">분석 리포트 생성 중... 📈</div>
-
-  const radarData = categoryInfo.names.map(name => ({
-    subject: name,
-    me: myOverallAvg?.categories[name] || 0,
-    base: clubOverallAvg[name] || 0
-  }));
+  const radarData = categoryInfo.names.map((name) => ({ subject: name, me: report.myOverall?.categories[name] || 0, base: report.clubOverall[name] || 0 }))
+  const scoredWeeks = report.weekly.filter((row) => row.scored)
+  const semesterLabel = semester === 'all' ? '전체 누적' : semesterOptions.find((option) => option.code === semester)?.name || semester
 
   return (
-    <div className="bg-white min-h-screen text-slate-900 font-sans pb-32">
-      <InternalNav />
+    <MemberPage>
+      <MemberHeader
+        eyebrow="평가 결과"
+        title="내 평가 리포트"
+        description="받은 정량 평가를 학기별로 모아 봅니다. 정성 피드백만 임시 저장한 기록은 점수에 포함되지 않습니다."
+        actions={(
+          <label className="flex items-center gap-2 text-sm font-semibold text-slate-600">
+            학기
+            <select value={semester} onChange={(event) => setSelectedSemester(event.target.value)} className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm font-bold text-slate-900 outline-none focus:border-teal-600">
+              <option value="all">전체 누적</option>
+              {semesterOptions.map((option) => <option key={option.code} value={option.code}>{option.name}</option>)}
+            </select>
+          </label>
+        )}
+      >
+        <div className="mt-3"><StatusBadge tone="teal">{semesterLabel} 리포트</StatusBadge></div>
+      </MemberHeader>
 
-      <div className="max-w-[1400px] mx-auto px-6 mt-12">
-        
-        {/* 🌟 헤더 (중앙 정렬 타이틀 + 박스 완전 제거) */}
-        <header className="w-full flex flex-col items-center mb-16">
-          <div className="w-full flex justify-end items-center mb-6">
-            <div className="flex items-center gap-3">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Target Semester:</label>
-              <select 
-                value={selectedSemester} 
-                onChange={(e) => setSelectedSemester(e.target.value)}
-                className="bg-transparent font-black text-sm outline-none cursor-pointer text-teal-800 border-b-2 border-teal-800 pb-1"
-              >
-                <option value="all">전체 누적 결과</option>
-                {semesters.map(s => <option key={s} value={s}>{s} 학기</option>)}
-              </select>
-            </div>
-          </div>
-          
-          <h1 className="text-4xl md:text-5xl font-extrabold uppercase tracking-tight text-teal-900 mb-2">INDIVIDUAL REPORT</h1>
-          {selectedSemester !== 'all' && <p className="text-[11px] font-black text-teal-600 mt-4 tracking-widest uppercase">● {selectedSemester} 학기 리포트 조회 중</p>}
-        </header>
-
-        <main className="w-full space-y-12">
-          
-          {/* 상단 3대장 (박스 제거, 굵은 선 기반) */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
-            
-            {/* Overall Summary */}
-            <div className="border-t-[3px] border-teal-800 pt-6 flex flex-col h-[350px]">
-              <h3 className="text-xs font-black mb-8 text-slate-500 uppercase tracking-widest">Overall Summary</h3>
-              {myOverallAvg ? (
-                <div className="flex-1 flex flex-col">
-                  <div className="text-center mb-8 border-b border-slate-300 pb-8">
-                    <p className="text-7xl font-black leading-none text-teal-800">{myOverallAvg.total}<span className="text-2xl text-slate-400 ml-2 font-bold">/ 105</span></p>
-                  </div>
-                  
-                  <div className={`grid grid-cols-2 sm:grid-cols-${Math.min(categoryInfo.names.length, 4)} gap-4 pt-2`}>
-                    {categoryInfo.names.map(catName => (
-                      <div key={catName} className="text-center">
-                        <p className="text-[10px] text-slate-500 font-bold mb-1 uppercase truncate tracking-wider">{catName}</p>
-                        <p className="text-xl font-black" style={{ color: categoryInfo.colorMap[catName] }}>
-                          {myOverallAvg.categories[catName]}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : <p className="text-sm font-bold text-slate-400 text-center mt-20">평가 기록이 없습니다.</p>}
-            </div>
-
-            {/* Submission Status */}
-            <div className="border-t-[3px] border-teal-800 pt-6 flex flex-col h-[350px]">
-              <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-10">Submission Status 📂</h3>
-              <div className="space-y-6 flex-1 flex flex-col justify-center">
-                <div className="flex justify-between items-end border-b border-slate-200 pb-4">
-                  <p className="text-slate-600 font-bold text-xs uppercase tracking-wider">총 제출 과제</p>
-                  <p className="text-3xl font-black text-teal-800">{submissionStats.total}<span className="text-sm text-slate-400 ml-1">건</span></p>
-                </div>
-                <div className="flex justify-between items-end border-b border-slate-200 pb-4">
-                  <p className="text-slate-600 font-bold text-xs uppercase tracking-wider">지각 제출 (LATE)</p>
-                  <p className="text-3xl font-black text-red-500">{submissionStats.late}<span className="text-sm text-slate-400 ml-1">건</span></p>
-                </div>
-                <div className="flex justify-between items-end border-b border-slate-200 pb-4">
-                  <p className="text-slate-600 font-bold text-xs uppercase tracking-wider">누락 / 미제출</p>
-                  <p className="text-3xl font-black text-slate-400">{submissionStats.miss > 0 ? submissionStats.miss : 0}<span className="text-sm text-slate-400 ml-1">건</span></p>
-                </div>
-              </div>
-            </div>
-
-            {/* Hall of Fame */}
-            <div className="border-t-[3px] border-teal-800 pt-6 flex flex-col h-[350px]">
-              <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-6">Hall of Fame 👑</h3>
-              <div className="flex-1 overflow-y-auto pr-2 space-y-4 no-scrollbar">
-                {awards.map((a, idx) => (
-                  <div key={idx} className="border-b border-slate-200 pb-3">
-                    <p className="text-[10px] font-black text-amber-600 mb-1 tracking-widest uppercase">{selectedSemester === 'all' && `[${a.semester}] `}{a.week}주차 CLUSTER BEST</p>
-                    <p className="text-sm font-bold text-slate-800 truncate">{a.topic}</p>
-                  </div>
-                ))}
-                {awards.length === 0 && <p className="text-slate-400 font-bold py-20 text-center text-xs uppercase tracking-widest">No awards yet</p>}
-              </div>
-              <p className="mt-4 font-black text-slate-400 text-[10px] text-right uppercase tracking-widest border-t border-slate-300 pt-4">Total: {awards.length}</p>
-            </div>
-          </div>
-
-          {/* 차트 영역 (상자 제거, 선 위주) */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 pt-8">
-            <ChartCard title="Total Growth Trend">
-              <LineChart data={myWeeklyTrends.filter(t => t.total > 0)} margin={{ right: 30, left: -10, top: 10 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#cbd5e1" />
-                <XAxis dataKey="name" tick={{fontSize: 11, fontWeight: 'bold'}} axisLine={false} tickLine={false} />
-                <YAxis domain={[0, 105]} tick={{fontSize: 11}} axisLine={false} tickLine={false} />
-                <Tooltip contentStyle={{ borderRadius: '4px', border: '1px solid #cbd5e1', boxShadow: 'none' }} />
-                <Line type="monotone" dataKey="total" name="My Score" stroke="#0f766e" strokeWidth={4} dot={{r: 5, fill: '#0f766e'}} />
-                <Line data={clubAverages.filter(c => c.clubTotal > 0)} type="monotone" dataKey="clubTotal" name="Club Avg" stroke="#94a3b8" strokeWidth={2} strokeDasharray="5 5" dot={false} />
-              </LineChart>
-            </ChartCard>
-
-            <ChartCard title="Skill Balance Comparison">
-              <RadarChart cx="50%" cy="50%" outerRadius="70%" data={radarData}>
-                <PolarGrid stroke="#cbd5e1" />
-                <PolarAngleAxis dataKey="subject" tick={{fontSize: 11, fontWeight: 'bold', fill: '#334155'}} />
-                <Radar name="My Avg" dataKey="me" stroke="#0f766e" fill="#ccfbf1" fillOpacity={0.6} strokeWidth={2} />
-                <Radar name="Club Base" dataKey="base" stroke="#94a3b8" fill="#f1f5f9" fillOpacity={0.4} />
-                <Tooltip contentStyle={{ borderRadius: '4px', border: '1px solid #cbd5e1', boxShadow: 'none' }} />
-              </RadarChart>
-            </ChartCard>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
-            <ChartCard title="Score Variance (Boxplot)">
-              <ComposedChart data={varianceData} margin={{ right: 30, left: -10, top: 10 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#cbd5e1" />
-                <XAxis dataKey="name" tick={{fontSize: 11, fontWeight: 'bold'}} axisLine={false} tickLine={false} />
-                <YAxis domain={[0, 105]} tick={{fontSize: 11}} axisLine={false} tickLine={false} />
-                <Tooltip contentStyle={{ borderRadius: '4px', border: '1px solid #cbd5e1', boxShadow: 'none' }} />
-                <Bar dataKey="range" fill="#e2e8f0" radius={[2, 2, 2, 2]} barSize={24} name="Weekly Range" />
-                <Line dataKey="avg" stroke="#0f766e" strokeWidth={3} dot={{r: 4, fill: '#0f766e'}} name="Club Avg" />
-              </ComposedChart>
-            </ChartCard>
-
-            <ChartCard title="Area Trend Analysis">
-              <LineChart data={myWeeklyTrends.filter(t => t.total > 0)} margin={{ right: 30, left: -10, top: 10 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#cbd5e1" />
-                <XAxis dataKey="name" tick={{fontSize: 11}} axisLine={false} tickLine={false} />
-                <YAxis domain={[0, 40]} tick={{fontSize: 11}} axisLine={false} tickLine={false} />
-                <Tooltip contentStyle={{ borderRadius: '4px', border: '1px solid #cbd5e1', boxShadow: 'none' }} />
-                <Legend iconType="circle" wrapperStyle={{fontSize: '11px', fontWeight: 'bold', paddingTop: '10px'}} />
+      <div className="grid gap-4 lg:grid-cols-3">
+        <section className="rounded-lg border border-slate-200 bg-white p-5">
+          <h2 className="text-sm font-bold text-slate-600">평균 점수</h2>
+          {report.myOverall ? (
+            <>
+              <p className="mt-3 text-5xl font-extrabold text-teal-800">{report.myOverall.total}<span className="ml-2 text-lg font-bold text-slate-400">/ {report.maxTotal}</span></p>
+              <dl className="mt-4 grid grid-cols-2 gap-3 border-t border-slate-100 pt-4 sm:grid-cols-3">
                 {categoryInfo.names.map((name) => (
-                  <Line key={name} name={name} type="monotone" dataKey={name} stroke={categoryInfo.colorMap[name]} strokeWidth={3} dot={{r: 4}} />
+                  <div key={name} className="min-w-0">
+                    <dt className="truncate text-xs font-semibold text-slate-500" title={name}>{name}</dt>
+                    <dd className="text-lg font-extrabold" style={{ color: categoryInfo.colorMap[name] }}>{report.myOverall.categories[name]}</dd>
+                  </div>
                 ))}
-              </LineChart>
-            </ChartCard>
-          </div>
+              </dl>
+            </>
+          ) : <p className="mt-6 text-sm text-slate-500">아직 받은 정량 평가가 없습니다.</p>}
+        </section>
 
-          {/* 주차별 상세 내역 (맨 아래에 있는 예외 박스 스타일) */}
-          <div className="border-t-[3px] border-slate-900 pt-8 bg-white p-8 shadow-sm">
-            <h3 className="text-sm font-extrabold text-slate-900 uppercase tracking-widest mb-8 border-b border-slate-200 pb-4">Weekly Detail History</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-              {myWeeklyTrends.map(t => (
-                <div key={t.week} className={`flex flex-col p-6 transition-all border-t-[3px] bg-white shadow-sm border border-slate-100 ${t.total > 0 ? 'border-t-teal-700 hover:shadow-md' : 'border-t-slate-300 opacity-50 grayscale'}`}>
-                  <div className="flex justify-between items-center border-b border-slate-100 pb-3 mb-4">
-                    <span className="font-extrabold text-slate-900 text-lg">{t.week}W</span>
-                    <span className="text-lg font-black text-teal-800">{t.total > 0 ? `${t.total} pt` : '미발표'}</span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-y-3 gap-x-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                    {categoryInfo.names.map(name => (
-                      <div key={name} className="flex justify-between">
-                        <span className="truncate pr-1">{name}</span> 
-                        <span className="text-slate-800">{t[name] || 0}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-          
-        </main>
+        <section className="rounded-lg border border-slate-200 bg-white p-5">
+          <h2 className="text-sm font-bold text-slate-600">제출 현황</h2>
+          <dl className="mt-3 divide-y divide-slate-100">
+            <div className="flex items-baseline justify-between py-2.5"><dt className="text-sm text-slate-600">제출한 자료</dt><dd className="text-2xl font-extrabold text-teal-800">{report.submissions.total}건</dd></div>
+            <div className="flex items-baseline justify-between py-2.5"><dt className="text-sm text-slate-600">지각 제출</dt><dd className="text-2xl font-extrabold text-red-700">{report.submissions.late}건</dd></div>
+            <div className="flex items-baseline justify-between py-2.5"><dt className="text-sm text-slate-600">발표 횟수</dt><dd className="text-2xl font-extrabold text-slate-700">{report.submissions.presented}회</dd></div>
+          </dl>
+          <p className="mt-1 text-xs text-slate-500">주차별 제출 여부는 마이페이지와 각 자료실에서 확인하세요.</p>
+        </section>
+
+        <section className="flex flex-col rounded-lg border border-slate-200 bg-white p-5">
+          <h2 className="text-sm font-bold text-slate-600">클러스터 1위 <span className="font-semibold text-slate-400">· {report.awards.length}회</span></h2>
+          <ul className="mt-3 max-h-56 flex-1 space-y-2 overflow-y-auto">
+            {report.awards.map((award) => (
+              <li key={`${award.semester}-${award.week}`} className="border-b border-slate-100 pb-2">
+                <p className="text-xs font-bold text-amber-700">{semester === 'all' && award.semester ? `${award.semester} · ` : ''}{award.week}주차 클러스터 1위</p>
+                <p className="truncate text-sm font-semibold text-slate-800">{award.topic || '주제 미기록'}</p>
+              </li>
+            ))}
+            {report.awards.length === 0 && <li className="py-10 text-center text-sm text-slate-500">아직 기록이 없습니다.</li>}
+          </ul>
+        </section>
       </div>
-    </div>
+
+      <div className="mt-4 grid gap-4 lg:grid-cols-2">
+        <ChartCard title="총점 추이" empty={scoredWeeks.length === 0}>
+          <LineChart data={scoredWeeks} margin={{ right: 20, left: -10, top: 10 }}>
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#cbd5e1" />
+            <XAxis dataKey="name" tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
+            <YAxis domain={[0, report.maxTotal]} tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
+            <Tooltip contentStyle={TOOLTIP_STYLE} />
+            <Legend iconType="circle" wrapperStyle={{ fontSize: 12 }} />
+            <Line type="monotone" dataKey="total" name="내 점수" stroke="#0f766e" strokeWidth={3} dot={{ r: 4, fill: '#0f766e' }} />
+            <Line data={report.clubTrend.filter((row) => row.clubTotal > 0)} type="monotone" dataKey="clubTotal" name="학회 평균" stroke="#94a3b8" strokeWidth={2} strokeDasharray="5 5" dot={false} />
+          </LineChart>
+        </ChartCard>
+
+        <ChartCard title="영역 균형 (학회 평균과 비교)" empty={!report.myOverall}>
+          <RadarChart cx="50%" cy="50%" outerRadius="70%" data={radarData}>
+            <PolarGrid stroke="#cbd5e1" />
+            <PolarAngleAxis dataKey="subject" tick={{ fontSize: 12, fill: '#334155' }} />
+            <Radar name="내 평균" dataKey="me" stroke="#0f766e" fill="#ccfbf1" fillOpacity={0.6} strokeWidth={2} />
+            <Radar name="학회 평균" dataKey="base" stroke="#94a3b8" fill="#f1f5f9" fillOpacity={0.4} />
+            <Legend iconType="circle" wrapperStyle={{ fontSize: 12 }} />
+            <Tooltip contentStyle={TOOLTIP_STYLE} />
+          </RadarChart>
+        </ChartCard>
+
+        <ChartCard title="주차별 점수 분포" empty={report.variance.length === 0}>
+          <ComposedChart data={report.variance} margin={{ right: 20, left: -10, top: 10 }}>
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#cbd5e1" />
+            <XAxis dataKey="name" tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
+            <YAxis domain={[0, report.maxTotal]} tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
+            <Tooltip contentStyle={TOOLTIP_STYLE} />
+            <Bar dataKey="range" fill="#e2e8f0" radius={[2, 2, 2, 2]} barSize={24} name="최저~최고" />
+            <Line dataKey="avg" stroke="#0f766e" strokeWidth={3} dot={{ r: 4, fill: '#0f766e' }} name="학회 평균" />
+          </ComposedChart>
+        </ChartCard>
+
+        <ChartCard title="영역별 추이" empty={scoredWeeks.length === 0}>
+          <LineChart data={scoredWeeks} margin={{ right: 20, left: -10, top: 10 }}>
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#cbd5e1" />
+            <XAxis dataKey="name" tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
+            <YAxis tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
+            <Tooltip contentStyle={TOOLTIP_STYLE} />
+            <Legend iconType="circle" wrapperStyle={{ fontSize: 12 }} />
+            {categoryInfo.names.map((name) => <Line key={name} name={name} type="monotone" dataKey={name} stroke={categoryInfo.colorMap[name]} strokeWidth={2.5} dot={{ r: 3 }} />)}
+          </LineChart>
+        </ChartCard>
+      </div>
+
+      <section className="mt-4 rounded-lg border border-slate-200 bg-white p-5">
+        <h2 className="text-base font-bold text-slate-900">주차별 상세</h2>
+        <ul className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {report.weekly.map((row) => (
+            <li key={row.week} className={`rounded-md border p-3 ${row.scored ? 'border-teal-200 bg-white' : 'border-slate-200 bg-slate-50'}`}>
+              <div className="flex items-baseline justify-between border-b border-slate-100 pb-2">
+                <span className="text-base font-bold text-slate-900">W{row.week}</span>
+                <span className={`text-sm font-bold ${row.scored ? 'text-teal-800' : 'text-slate-500'}`}>{row.scored ? `${row.total}점` : row.presented ? '평가 없음' : '발표 없음'}</span>
+              </div>
+              {row.scored && (
+                <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+                  {categoryInfo.names.map((name) => (
+                    <div key={name} className="flex justify-between gap-1">
+                      <dt className="truncate text-slate-500" title={name}>{name}</dt>
+                      <dd className="font-bold text-slate-800">{row[name] || 0}</dd>
+                    </div>
+                  ))}
+                </dl>
+              )}
+            </li>
+          ))}
+        </ul>
+      </section>
+    </MemberPage>
   )
 }
 
-// 🌟 차트 컨테이너 (박스 제거, 상단 선으로 구분)
-function ChartCard({ title, children }) {
+function ChartCard({ title, empty, children }) {
   return (
-    <div className="border-t-[3px] border-teal-800 pt-6 pb-8 h-[450px] flex flex-col">
-      <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-6">{title}</h3>
-      <div className="flex-1 w-full">
-        <ResponsiveContainer width="100%" height="100%">{children}</ResponsiveContainer>
+    <section className="flex h-[380px] flex-col rounded-lg border border-slate-200 bg-white p-5">
+      <h2 className="text-sm font-bold text-slate-600">{title}</h2>
+      <div className="mt-3 min-h-0 flex-1">
+        {empty ? <p className="grid h-full place-items-center text-sm text-slate-500">표시할 평가 기록이 없습니다.</p> : <ResponsiveContainer width="100%" height="100%">{children}</ResponsiveContainer>}
       </div>
-    </div>
+    </section>
   )
 }

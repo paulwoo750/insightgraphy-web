@@ -1,411 +1,281 @@
 'use client'
-import { useState, useEffect } from 'react'
+// 사유서: 주차별 제출 마감(세션 및 제출 화면과 같은 저장 경로)과 결재
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { ExternalLink, Save } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
-import { currentSemesterIdFilter, fetchCurrentSemester, parseJson } from '@/lib/semester'
-import Link from 'next/link'
+import { describeSaveError, fetchCurrentSemester, formatKst, fromKstInput, groupDeadlines, parseJson, saveWeekPlan, toKstInput } from '@/lib/semester'
+import { recordBelongsTo, uniqueNameSet } from '@/lib/memberRecords'
+import { useAdminRole } from '@/app/admin/_components/AdminShell'
+import {
+  AdminPage,
+  Button,
+  EmptyState,
+  ErrorState,
+  Field,
+  inputClass,
+  LoadingState,
+  Notice,
+  PageHeader,
+  Panel,
+  ReadOnlyBanner,
+  SaveStatus,
+  SegmentedControl,
+  StatusBadge,
+  textareaClass,
+  useAsyncAction,
+  useToast,
+  useUnsavedChanges,
+} from '@/app/admin/_components/AdminUI'
+
+function statusTone(status) {
+  if (status === '대기') return 'amber'
+  if (status?.includes('완전인정')) return 'green'
+  if (status?.includes('부분인정')) return 'teal'
+  return 'red'
+}
 
 export default function AbsenceAdmin() {
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-
-  // 🌟 시스템 설정 상태
-  const [currentSemester, setCurrentSemester] = useState('')
-  const [semesterId, setSemesterId] = useState(null)
-  const [totalWeeks, setTotalWeeks] = useState(12)
-  const [absenceLateFine, setAbsenceLateFine] = useState(20000) 
-  const [processingId, setProcessingId] = useState(null)
-
-  // 🌟 마감 기한 및 폴더(탭) 상태
-  const [absenceDeadlines, setAbsenceDeadlines] = useState([])
-  const [weekdayDeadlines, setWeekdayDeadlines] = useState([])
-  const [selectedFolder, setSelectedFolder] = useState('all')
-
-  // 🌟 방학학기: 정규세션 / 평일세션 구분
-  const [semesterType, setSemesterType] = useState('regular')
-  const [dlTab, setDlTab] = useState('regular')      // 마감 설정 탭
-  const [sessionFilter, setSessionFilter] = useState('all') // 결재함 필터
-  const [attendances, setAttendances] = useState([])
-
-  // 🌟 사유서 리스트 상태
+  const { role, canWrite } = useAdminRole()
+  const toast = useToast()
+  const [saveRun, saving] = useAsyncAction()
+  const [state, setState] = useState({ status: 'loading', error: '' })
+  const [semester, setSemester] = useState(null)
+  const [absenceLateFine, setAbsenceLateFine] = useState(20000)
+  const [baseDeadlines, setBaseDeadlines] = useState({})
+  const [inputs, setInputs] = useState({})
   const [absences, setAbsences] = useState([])
-  
-  // 🌟 결재 입력 폼 상태 
-  const [rejectReasons, setRejectReasons] = useState({})
-  
-  // 🌟 [변경됨] 대체 과제 상세 내용 상태 관리 (단순 boolean -> 문자열)
-  const [partialTasks, setPartialTasks] = useState({})
-  const [partialInputs, setPartialInputs] = useState({}) 
+  const [attendances, setAttendances] = useState([])
+  const [members, setMembers] = useState([])
+  const [dlTab, setDlTab] = useState('regular')
+  const [sessionFilter, setSessionFilter] = useState('all')
+  const [statusFilter, setStatusFilter] = useState('pending')
+  const [folder, setFolder] = useState('all')
+  const [forms, setForms] = useState({})
+  const [processingId, setProcessingId] = useState(null)
+  const [failedWeeks, setFailedWeeks] = useState([])
 
-  const weeks = Array.from({ length: totalWeeks + 1 }, (_, i) => i)
-
-  async function fetchData() {
-
-    // 1. 설정값 불러오기
+  const load = useCallback(async () => {
+    setState({ status: 'loading', error: '' })
     const current = await fetchCurrentSemester()
-    const wks = current.totalWeeks
-    setCurrentSemester(current.code)
-    setSemesterId(current.id)
-    setTotalWeeks(wks)
-    setSemesterType(current.type)
-    const penalties = parseJson(current.config.penalty_rules, {})
-    if (penalties.absenceLate) setAbsenceLateFine(penalties.absenceLate)
-
-    // 2. 주차별 사유서 마감일 불러오기 (정규 = absence / 평일세션 = weekday_absence)
-    const { data: dlData } = await supabase.from('pr_deadlines').select('*').or(currentSemesterIdFilter(current)).in('category', ['absence', 'weekday_absence'])
-    const regDl = Array(wks + 1).fill('')
-    const wdDl = Array(wks + 1).fill('')
-
-    if (dlData) {
-      dlData.forEach(d => {
-        if (d.week >= 0 && d.week <= wks && d.deadline_time) {
-          const date = new Date(d.deadline_time)
-          const localString = new Date(date.getTime() - (date.getTimezoneOffset() * 60000)).toISOString().slice(0, 16)
-          if (d.category === 'weekday_absence') wdDl[d.week] = localString
-          else regDl[d.week] = localString
-        }
-      })
-    }
-    setAbsenceDeadlines(regDl)
-    setWeekdayDeadlines(wdDl)
-
-    // 3. 이번 학기 사유서 결재 리스트 + 출석 기록(연동 표시용) 불러오기
-    const { data: absData } = await supabase.from('absence_forms').select('*').or(currentSemesterIdFilter(current)).order('created_at', { ascending: false })
-    if (absData) setAbsences(absData)
-
-    const { data: attData } = await supabase.from('pr_attendance').select('*').eq('semester', current.code)
-    setAttendances(attData || [])
-
-    setLoading(false)
-  }
-
-  useEffect(() => {
-    void Promise.resolve().then(fetchData)
-  }, [])
-
-  // ==========================================
-  // 🕒 마감 기한 설정 로직
-  // ==========================================
-  const handleDeadlineChange = (weekIndex, value) => {
-    if (dlTab === 'weekday') {
-      const newDl = [...weekdayDeadlines]
-      newDl[weekIndex] = value
-      setWeekdayDeadlines(newDl)
-    } else {
-      const newDl = [...absenceDeadlines]
-      newDl[weekIndex] = value
-      setAbsenceDeadlines(newDl)
-    }
-  }
-
-  const handleSaveDeadlines = async () => {
-    setSaving(true)
-
-    const dlInserts = []
-    const dlDeletes = []
-
-    const collect = (arr, category) => {
-      arr.forEach((time, idx) => {
-        if (time) dlInserts.push({ semester_id: semesterId, week: idx, category, deadline_time: new Date(time).toISOString() })
-        else dlDeletes.push({ week: idx, category })
-      })
-    }
-    collect(absenceDeadlines, 'absence')
-    if (semesterType === 'vacation') collect(weekdayDeadlines, 'weekday_absence')
-
-    if (dlInserts.length > 0) {
-      const { error } = await supabase.from('pr_deadlines').upsert(dlInserts, { onConflict: 'semester_id,week,category' })
-      if (error) alert('마감 시간 저장 오류: ' + error.message)
-    }
-
-    // 비운 마감은 이번 학기 행만 지운다 (지난 학기 같은 주차 마감은 보존)
-    if (dlDeletes.length > 0) {
-      for (const item of dlDeletes) {
-        await supabase.from('pr_deadlines').delete().or(currentSemesterIdFilter({ id: semesterId })).eq('week', item.week).eq('category', item.category)
-      }
-    }
-
-    alert('주차별 사유서 마감 기한이 저장되었습니다! 💾')
-    setSaving(false)
-  }
-
-  // ==========================================
-  // 📝 사유서 결재 로직 (부분인정 내용 포함)
-  // ==========================================
-  const handleAbsenceApproval = async (id, statusType) => {
-    const hasTask = partialTasks[id] || false
-    const taskDetail = partialInputs[id] || ''
-    const rejectReason = rejectReasons[id] || ''
-
-    if (statusType === 'partial' && hasTask && !taskDetail.trim()) {
-      return alert('대체 과제 내용과 제출 기한을 입력해주세요.')
-    }
-    if (statusType === 'reject' && !rejectReason.trim()) {
-      return alert('불허 사유를 입력해주세요.')
-    }
-
-    setProcessingId(id)
-    const { error } = await supabase.rpc('admin_resolve_absence', {
-      p_absence_id: String(id),
-      p_decision: statusType,
-      p_comment: statusType === 'reject' ? rejectReason : '',
-      p_has_makeup: hasTask,
-      p_makeup_detail: taskDetail,
-      p_fine_amount: statusType === 'reject' ? absenceLateFine : 0,
-    })
-
+    const filter = current.id ? `semester_id.eq.${current.id},semester_id.is.null` : 'semester_id.is.null'
+    const [dlResult, absResult, attResult, memberResult] = await Promise.all([
+      supabase.from('pr_deadlines').select('week, category, deadline_time').or(filter).in('category', ['absence', 'weekday_absence']),
+      supabase.from('absence_forms').select('*').or(filter).order('created_at', { ascending: false }),
+      supabase.from('pr_attendance').select('*').eq('semester', current.code),
+      supabase.from('members').select('id, name'),
+    ])
+    const error = dlResult.error || absResult.error || attResult.error
     if (error) {
-      alert(`사유서 연동 처리 실패: ${error.message}\nSupabase STEP 8 실행 여부를 확인하세요.`)
-      setProcessingId(null)
+      setState({ status: 'error', error: error.message })
       return
     }
+    const penalties = parseJson(current.config.penalty_rules, {})
+    if (penalties.absenceLate) setAbsenceLateFine(penalties.absenceLate)
+    const grouped = groupDeadlines(dlResult.data)
+    setSemester(current)
+    setBaseDeadlines(grouped)
+    setInputs(Object.fromEntries(Object.entries(grouped).map(([week, map]) => [week, Object.fromEntries(Object.entries(map).map(([category, iso]) => [category, toKstInput(iso)]))])))
+    setAbsences(absResult.data || [])
+    setAttendances(attResult.data || [])
+    setMembers(memberResult.data || [])
+    setState({ status: 'ready', error: '' })
+  }, [])
 
-    setRejectReasons(prev => ({...prev, [id]: ''}))
-    setPartialInputs(prev => ({...prev, [id]: ''}))
-    await fetchData()
-    setProcessingId(null)
+  useEffect(() => {
+    const timer = setTimeout(load, 0)
+    return () => clearTimeout(timer)
+  }, [load])
+
+  const weeks = useMemo(() => Array.from({ length: (semester?.totalWeeks || 0) + 1 }, (_, index) => index), [semester])
+  const uniqueNames = useMemo(() => uniqueNameSet(members), [members])
+  const changedWeeks = weeks.filter((week) => ['absence', 'weekday_absence'].some((category) => (inputs[week]?.[category] || '') !== toKstInput(baseDeadlines[week]?.[category])))
+  useUnsavedChanges(changedWeeks.length > 0)
+
+  function setDeadline(week, category, value) {
+    setInputs((current) => ({ ...current, [week]: { ...(current[week] || {}), [category]: value } }))
   }
 
-  // 폴더별 + 세션 유형별 필터링
-  const filteredAbsences = absences.filter(abs => {
-    if (sessionFilter !== 'all' && (abs.session_type || 'regular') !== sessionFilter) return false;
-    if (selectedFolder === 'all') return true;
-    if (selectedFolder === 'null') return abs.week === null || abs.week === undefined;
-    return abs.week === selectedFolder;
-  });
+  async function saveDeadlines() {
+    if (!canWrite || changedWeeks.length === 0) return
+    await saveRun(async () => {
+      const saved = []
+      const failed = []
+      for (const week of changedWeeks) {
+        const deadlines = {}
+        const expected = {}
+        for (const category of ['absence', 'weekday_absence']) {
+          if ((inputs[week]?.[category] || '') === toKstInput(baseDeadlines[week]?.[category])) continue
+          deadlines[category] = fromKstInput(inputs[week]?.[category])
+          expected[category] = baseDeadlines[week]?.[category] || null
+        }
+        const { data, error } = await saveWeekPlan(semester.id, week, { deadlines, expected_deadlines: expected })
+        if (error) failed.push({ week, message: describeSaveError(error) })
+        else {
+          saved.push(week)
+          setBaseDeadlines((current) => ({ ...current, [week]: data.deadlines || {} }))
+        }
+      }
+      setFailedWeeks(failed.map((item) => item.week))
+      if (failed.length) {
+        toast.error(failed.map((item) => `W${item.week}: ${item.message}`).join(' / '), { title: saved.length ? '일부 주차만 저장되었습니다' : '마감을 저장하지 못했습니다', duration: 0 })
+      } else {
+        toast.success(`W${saved.join(', W')} 사유서 마감을 저장했습니다. 세션 및 제출 화면에도 같은 값이 보입니다.`)
+      }
+    })
+  }
 
-  // 🌟 해당 사유서의 출석 기록 (연동 상태 표시용)
-  const attFor = (abs) => attendances.find(a =>
-    a.user_name === abs.user_name && a.week === abs.week &&
-    (a.session_type || 'regular') === (abs.session_type || 'regular') &&
-    (!currentSemester || !a.semester || a.semester === currentSemester)
-  );
-  // 마감 기한 대비 지각 제출 여부
-  const isLateSubmit = (abs) => {
-    const arr = (abs.session_type === 'weekday') ? weekdayDeadlines : absenceDeadlines;
-    const dl = arr[abs.week];
-    return dl ? new Date(abs.created_at) > new Date(dl) : false;
-  };
+  function updateForm(id, patch) {
+    setForms((current) => ({ ...current, [id]: { ...(current[id] || {}), ...patch } }))
+  }
 
-  if (loading) return <div className="p-10 text-center font-black text-slate-500 min-h-screen flex items-center justify-center">사유서 관리자 로딩 중... 🔄</div>
+  async function resolve(absence, decision) {
+    if (!canWrite || processingId) return
+    const form = forms[absence.id] || {}
+    if (decision === 'partial' && form.hasTask && !form.task?.trim()) {
+      toast.error('대체 과제 내용과 제출 기한을 입력하세요.')
+      return
+    }
+    if (decision === 'reject' && !form.reject?.trim()) {
+      toast.error('불허 사유를 입력하세요.')
+      return
+    }
+    const label = decision === 'full' ? '완전 인정 (출석 인정·벌금 면제)' : decision === 'partial' ? '부분 인정 (결석·벌금 면제)' : `불허 (벌금 ₩${absenceLateFine.toLocaleString()} 부과)`
+    if (!confirm(`${absence.user_name}님의 W${absence.week ?? '-'} 사유서를 '${label}'(으)로 결재할까요?\n출결과 벌금에 바로 반영됩니다.`)) return
+    setProcessingId(absence.id)
+    const { error } = await supabase.rpc('admin_resolve_absence', {
+      p_absence_id: String(absence.id),
+      p_decision: decision,
+      p_comment: decision === 'reject' ? form.reject : '',
+      p_has_makeup: Boolean(form.hasTask),
+      p_makeup_detail: form.task || '',
+      p_fine_amount: decision === 'reject' ? absenceLateFine : 0,
+    })
+    setProcessingId(null)
+    if (error) {
+      toast.error(`결재를 반영하지 못했습니다: ${error.message}`)
+      return
+    }
+    toast.success(`${absence.user_name}님 사유서를 결재했습니다. 출결·벌금에 반영되었습니다.`)
+    setForms((current) => ({ ...current, [absence.id]: {} }))
+    await load()
+  }
+
+  if (state.status === 'loading') return <AdminPage><LoadingState /></AdminPage>
+  if (state.status === 'error') return <AdminPage><ErrorState title="사유서를 불러오지 못했습니다." description={state.error} onRetry={load} /></AdminPage>
+
+  const isVacation = semester.type === 'vacation'
+  const category = dlTab === 'weekday' ? 'weekday_absence' : 'absence'
+  const filtered = absences.filter((absence) => {
+    if (sessionFilter !== 'all' && (absence.session_type || 'regular') !== sessionFilter) return false
+    if (statusFilter === 'pending' && absence.status !== '대기') return false
+    if (statusFilter === 'done' && absence.status === '대기') return false
+    if (folder === 'all') return true
+    if (folder === 'none') return absence.week === null || absence.week === undefined
+    return absence.week === folder
+  })
+  const pendingCount = absences.filter((absence) => absence.status === '대기').length
+
+  const memberOf = (absence) => members.find((member) => recordBelongsTo(absence, member, uniqueNames)) || { id: null, name: absence.user_name }
+  const attendanceFor = (absence) => {
+    const member = memberOf(absence)
+    return attendances.find((item) => item.week === absence.week && (item.session_type || 'regular') === (absence.session_type || 'regular') && recordBelongsTo(item, member, uniqueNames))
+  }
+  const isLate = (absence) => {
+    const due = baseDeadlines[absence.week]?.[absence.session_type === 'weekday' ? 'weekday_absence' : 'absence']
+    return due ? new Date(absence.created_at) > new Date(due) : false
+  }
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans p-6 md:p-12 pb-32">
-      <div className="max-w-[1400px] mx-auto space-y-12">
-        
-        <header className="border-b border-slate-200 pb-6 flex flex-col md:flex-row md:justify-between md:items-end gap-4">
-          <div>
-            <Link href="/admin/hub" className="text-xs font-black text-slate-400 hover:text-teal-600 uppercase tracking-widest mb-2 block transition-colors">← Back to Hub</Link>
-            <h1 className="text-4xl font-black uppercase tracking-tighter text-slate-800">
-              📝 Absence Form Manager
-            </h1>
-            <p className="text-xs font-bold text-slate-500 mt-2">주차별 사유서 제출 기한을 설정하고, 접수된 사유서를 결재합니다.</p>
-          </div>
-        </header>
+    <AdminPage>
+      <PageHeader
+        eyebrow="학회원 시스템"
+        title="사유서"
+        description="주차별 사유서 제출 마감을 정하고, 접수된 사유서를 결재합니다. 결재 결과는 출결과 벌금에 바로 반영됩니다."
+        actions={<Button icon={ExternalLink} href="/admin/hub/attendance">출결 대시보드</Button>}
+      />
+      <ReadOnlyBanner role={role} />
 
-        <div className="grid grid-cols-1 xl:grid-cols-[400px_1fr] gap-8 items-start">
-          
-          {/* 좌측: 마감 기한 설정 */}
-          <div className="bg-white p-8 rounded-none shadow-sm border border-slate-200 sticky top-24">
-            <div className="flex justify-between items-center mb-6 border-b border-slate-100 pb-4">
-              <h2 className="text-xl font-black text-slate-800">⏰ 주차별 마감 기한</h2>
-              <button onClick={handleSaveDeadlines} disabled={saving} className="bg-slate-900 text-white px-4 py-2 rounded-none font-black text-xs hover:bg-teal-600 transition-colors shadow-sm active:scale-95">
-                {saving ? '저장 중...' : '마감일 저장 💾'}
-              </button>
-            </div>
-
-            {/* 🌟 방학학기: 정규 / 평일세션 마감 탭 */}
-            {semesterType === 'vacation' && (
-              <div className="mb-4">
-                <div className="flex border border-slate-300">
-                  <button onClick={() => setDlTab('regular')} className={`flex-1 py-2 text-xs font-bold transition-colors ${dlTab === 'regular' ? 'bg-teal-800 text-white' : 'bg-white text-slate-500 hover:text-teal-800'}`}>📚 정규세션</button>
-                  <button onClick={() => setDlTab('weekday')} className={`flex-1 py-2 text-xs font-bold border-l border-slate-300 transition-colors ${dlTab === 'weekday' ? 'bg-teal-800 text-white' : 'bg-white text-slate-500 hover:text-teal-800'}`}>🏖️ 평일세션</button>
-                </div>
-                <p className="text-[11px] font-medium text-slate-500 mt-2 break-keep">
-                  {dlTab === 'weekday'
-                    ? '회칙: 평일세션 불참 사유서는 세션 전주 일요일 자정까지 제출.'
-                    : '회칙(제19조): 정규세션 사유서는 화요일 자정까지 제출.'}
-                </p>
-              </div>
-            )}
-
-            <div className="space-y-3 max-h-[600px] overflow-y-auto pr-2 no-scrollbar">
-              {weeks.map(w => (
-                <div key={w} className="bg-slate-50 p-4 rounded-none border border-slate-100">
-                  <div className="flex justify-between items-center mb-2">
-                    <label className="text-[10px] font-black text-teal-600 uppercase tracking-widest bg-teal-100 px-2 py-0.5 rounded">
-                      Week {w} {dlTab === 'weekday' ? '평일' : ''} 마감
-                    </label>
-                    <button 
-                      onClick={() => handleDeadlineChange(w, '')} 
-                      className="text-[9px] font-bold text-slate-400 hover:text-red-500 bg-white px-2 py-0.5 rounded-none border border-slate-200 transition-colors shadow-sm"
-                      title="날짜 지우기"
-                    >
-                      초기화 ❌
-                    </button>
-                  </div>
-                  <input 
-                    type="datetime-local" 
-                    value={(dlTab === 'weekday' ? weekdayDeadlines[w] : absenceDeadlines[w]) || ''}
-                    onChange={(e) => handleDeadlineChange(w, e.target.value)}
-                    className="w-full bg-white p-2.5 rounded-none font-bold text-sm text-slate-700 outline-none border border-slate-200 focus:border-teal-400 transition-colors cursor-pointer" 
-                  />
-                </div>
-              ))}
+      <div className="grid gap-5 xl:grid-cols-[380px_minmax(0,1fr)]">
+        <Panel
+          title="주차별 제출 마감"
+          description="한국 시간 기준 · 세션 및 제출의 사유서 마감과 같은 값"
+          className="self-start"
+          action={<div className="flex items-center gap-2"><SaveStatus state={saving ? 'saving' : failedWeeks.length ? 'error' : changedWeeks.length ? 'dirty' : 'clean'} dirtyCount={changedWeeks.length} /><Button size="sm" variant="primary" icon={Save} onClick={saveDeadlines} loading={saving} disabled={!canWrite || changedWeeks.length === 0}>저장</Button></div>}
+        >
+          <div className="space-y-3 p-4">
+            {isVacation && <SegmentedControl label="세션 종류" size="sm" value={dlTab} onChange={setDlTab} options={[{ value: 'regular', label: '정규 세션' }, { value: 'weekday', label: '평일 세션' }]} />}
+            <p className="text-xs leading-5 text-slate-500">{dlTab === 'weekday' ? '회칙: 평일세션 불참 사유서는 세션 전주 일요일 자정까지 제출합니다.' : '회칙(제19조): 정규세션 사유서는 화요일 자정까지 제출합니다.'}</p>
+            <div className="max-h-[560px] space-y-2 overflow-y-auto pr-1">
+              {weeks.map((week) => {
+                const value = inputs[week]?.[category] || ''
+                const changed = value !== toKstInput(baseDeadlines[week]?.[category])
+                return (
+                  <Field key={week} label={`W${week}${dlTab === 'weekday' ? ' 평일' : ''} 마감`} htmlFor={`absence-${category}-${week}`} hint={failedWeeks.includes(week) ? '저장 실패 — 다시 저장하세요' : value ? formatKst(fromKstInput(value)) : '설정 안 됨'}>
+                    <div className="flex gap-1.5">
+                      <input id={`absence-${category}-${week}`} type="datetime-local" value={value} onChange={(event) => setDeadline(week, category, event.target.value)} disabled={!canWrite} className={`${inputClass} ${changed ? 'border-amber-400 bg-amber-50/40' : ''}`} />
+                      {value && canWrite && <Button size="sm" onClick={() => setDeadline(week, category, '')}>지우기</Button>}
+                    </div>
+                  </Field>
+                )
+              })}
             </div>
           </div>
+        </Panel>
 
-          {/* 우측: 사유서 결재 리스트 */}
-          <div className="bg-white p-8 rounded-none shadow-sm border border-slate-200">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-black text-slate-800">📬 사유서 결재함</h2>
-              <span className="text-[10px] font-black bg-slate-100 text-slate-500 px-3 py-1 rounded-none">
-                폴더 내 {filteredAbsences.length}건
-              </span>
-            </div>
-
-            {/* 🌟 방학학기: 세션 유형 필터 */}
-            {semesterType === 'vacation' && (
-              <div className="flex border border-slate-300 mb-4 w-fit">
-                {[['all', '전체'], ['regular', '📚 정규세션'], ['weekday', '🏖️ 평일세션']].map(([v, label], i) => (
-                  <button key={v} onClick={() => setSessionFilter(v)} className={`px-5 py-2 text-xs font-bold transition-colors ${i > 0 ? 'border-l border-slate-300' : ''} ${sessionFilter === v ? 'bg-teal-800 text-white' : 'bg-white text-slate-500 hover:text-teal-800'}`}>{label}</button>
-                ))}
-              </div>
-            )}
-
-            <div className="flex gap-2 mb-6 overflow-x-auto pb-4 no-scrollbar border-b border-slate-100">
-              <button
-                onClick={() => setSelectedFolder('all')}
-                className={`px-4 py-2.5 rounded-none text-xs font-black shrink-0 transition-all border ${selectedFolder === 'all' ? 'bg-slate-800 text-white border-slate-800 shadow-sm' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}
-              >
-                전체 보기 📂
-              </button>
-              {weeks.map(w => (
-                <button 
-                  key={w} 
-                  onClick={() => setSelectedFolder(w)} 
-                  className={`px-4 py-2.5 rounded-none text-xs font-black shrink-0 transition-all border ${selectedFolder === w ? 'bg-teal-600 text-white border-teal-600 shadow-sm' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}
-                >
-                  W{w} 사유서
-                </button>
-              ))}
-              <button 
-                onClick={() => setSelectedFolder('null')} 
-                className={`px-4 py-2.5 rounded-none text-xs font-black shrink-0 transition-all border ${selectedFolder === 'null' ? 'bg-slate-400 text-white border-slate-400 shadow-sm' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}
-              >
-                미지정 (이전 데이터)
-              </button>
-            </div>
-
-            <div className="space-y-6">
-              {filteredAbsences.length === 0 ? (
-                <p className="text-slate-400 font-bold text-center py-10 border-2 border-dashed border-slate-100 rounded-none">해당 폴더에 제출된 사유서가 없습니다. 👏</p>
-              ) : filteredAbsences.map(abs => (
-                <div key={abs.id} className={`p-6 rounded-none border transition-all ${abs.status === '대기' ? 'bg-slate-50 border-teal-200 shadow-sm' : 'bg-white border-slate-100 opacity-70 hover:opacity-100'} flex flex-col lg:flex-row justify-between gap-6`}>
-                  
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-3">
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest ${abs.status === '대기' ? 'bg-teal-600 text-white' : abs.status.includes('완전인정') ? 'bg-emerald-500 text-white' : abs.status.includes('부분인정') ? 'bg-teal-500 text-white' : 'bg-red-500 text-white'}`}>
-                        {abs.status === '대기' ? '대기중' : abs.status}
-                      </span>
-                      <span className="bg-teal-100 text-teal-600 px-2 py-0.5 rounded text-[10px] font-black uppercase">
-                        {abs.week !== null && abs.week !== undefined ? `W${abs.week}` : '미지정'}
-                      </span>
-                      {abs.session_type === 'weekday' && <span className="bg-teal-800 text-white px-2 py-0.5 rounded text-[10px] font-black uppercase">평일세션</span>}
-                      <span className="bg-slate-800 text-white px-2 py-0.5 rounded text-[10px] font-black uppercase">{abs.type}</span>
-                      <span className="text-xs font-black text-slate-500">{abs.user_name} | {abs.target_date}</span>
-                      {isLateSubmit(abs) && <span className="bg-red-100 text-red-600 px-2 py-0.5 rounded text-[10px] font-black uppercase">기한 초과 제출</span>}
-                    </div>
-
-                    {/* 🌟 출석·벌금 연동 상태 */}
-                    <div className="flex items-center gap-2 mb-3 flex-wrap">
-                      <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">연동</span>
-                      {(() => { const at = attFor(abs); return (
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${at ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-slate-100 text-slate-500 border border-slate-200'}`}>
-                          출석: {at ? at.status : '기록 없음'}
-                        </span>
-                      )})()}
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                        abs.status?.includes('완전인정') || abs.status?.includes('부분인정')
-                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                          : abs.status?.includes('불허') ? 'bg-red-50 text-red-600 border border-red-200'
-                          : 'bg-amber-50 text-amber-700 border border-amber-200'}`}>
-                        벌금: {abs.status?.includes('완전인정') || abs.status?.includes('부분인정') ? '결석 벌금 면제' : abs.status?.includes('불허') ? `₩${absenceLateFine.toLocaleString()} 부과` : '결재 대기 (미적용)'}
-                      </span>
-                    </div>
-
-                    <p className="text-sm font-bold text-slate-700 whitespace-pre-wrap leading-relaxed">{abs.reason}</p>
-                    
-                    {abs.proof_url && (
-                      <a href={abs.proof_url} target="_blank" rel="noopener noreferrer" className="inline-block mt-3 px-3 py-1.5 bg-teal-50 text-teal-600 rounded-none text-[10px] font-black hover:bg-teal-100 transition-colors border border-teal-100">
-                        🔗 첨부된 증빙자료 열람하기
-                      </a>
-                    )}
-
-                    {abs.status !== '대기' && abs.admin_comment && (
-                      <div className="mt-4 p-3 bg-slate-100 rounded-none border border-slate-200">
-                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">운영진 코멘트 (결과)</p>
-                        <p className="text-xs font-bold text-slate-600 whitespace-pre-wrap">{abs.admin_comment}</p>
+        <Panel title="사유서 결재함" description={`결재 대기 ${pendingCount}건 · 표시 ${filtered.length}건`}>
+          <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 bg-slate-50 p-3">
+            <SegmentedControl label="결재 상태" size="sm" value={statusFilter} onChange={setStatusFilter} options={[{ value: 'pending', label: `대기 ${pendingCount}` }, { value: 'done', label: '처리됨' }, { value: 'all', label: '전체' }]} />
+            {isVacation && <SegmentedControl label="세션 종류" size="sm" value={sessionFilter} onChange={setSessionFilter} options={[{ value: 'all', label: '전체' }, { value: 'regular', label: '정규' }, { value: 'weekday', label: '평일' }]} />}
+            <select aria-label="주차로 거르기" value={String(folder)} onChange={(event) => setFolder(event.target.value === 'all' || event.target.value === 'none' ? event.target.value : Number(event.target.value))} className={`${inputClass} h-9 w-auto`}>
+              <option value="all">모든 주차</option>
+              {weeks.map((week) => <option key={week} value={week}>W{week}</option>)}
+              <option value="none">주차 미지정 (예전 기록)</option>
+            </select>
+          </div>
+          {filtered.length === 0 ? <EmptyState title="조건에 맞는 사유서가 없습니다." /> : (
+            <ul className="divide-y divide-slate-100">
+              {filtered.map((absence) => {
+                const form = forms[absence.id] || {}
+                const attendance = attendanceFor(absence)
+                const pending = absence.status === '대기'
+                const exempt = absence.status?.includes('완전인정') || absence.status?.includes('부분인정')
+                return (
+                  <li key={absence.id} className="grid gap-4 p-4 sm:p-5 lg:grid-cols-[minmax(0,1fr)_320px]">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <StatusBadge tone={statusTone(absence.status)}>{pending ? '결재 대기' : absence.status}</StatusBadge>
+                        <StatusBadge tone="gray">{absence.week != null ? `W${absence.week}` : '주차 미지정'}</StatusBadge>
+                        {absence.session_type === 'weekday' && <StatusBadge tone="teal">평일세션</StatusBadge>}
+                        <StatusBadge tone="dark">{absence.type}</StatusBadge>
+                        {isLate(absence) && <StatusBadge tone="red">기한 초과 제출</StatusBadge>}
                       </div>
-                    )}
-                  </div>
-                  
-                  {/* 🌟 결재 컨트롤 패널 */}
-                  <div className="flex flex-col gap-2 min-w-[300px] shrink-0 bg-white p-4 rounded-none border border-slate-100 h-fit">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 text-center border-b border-slate-100 pb-2">결재 처리</p>
-                    
-                    <button onClick={() => handleAbsenceApproval(abs.id, 'full')} disabled={processingId === abs.id} className="bg-emerald-500 text-white py-2.5 rounded-none font-black text-xs hover:bg-emerald-600 transition-colors shadow-sm disabled:opacity-50">
-                      {processingId === abs.id ? '연동 처리 중...' : '완전 인정 (출석 인정 · 벌금 면제)'}
-                    </button>
-                    
-                    {/* 🌟 부분 인정 패널 업그레이드 */}
-                    <div className="flex flex-col gap-2 mt-2 pt-2 border-t border-slate-100">
-                      <div className="flex justify-between items-center bg-teal-50 px-3 py-2 rounded-none border border-teal-100">
-                        <span className="text-[10px] font-black text-teal-700">대체 과제 부여</span>
-                        <label className="relative inline-flex items-center cursor-pointer">
-                          <input 
-                            type="checkbox" 
-                            checked={partialTasks[abs.id] || false} 
-                            onChange={(e) => setPartialTasks(prev => ({...prev, [abs.id]: e.target.checked}))} 
-                            className="sr-only peer" 
-                          />
-                          <div className="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-none peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-none after:h-4 after:w-4 after:transition-all peer-checked:bg-teal-500"></div>
-                        </label>
+                      <p className="mt-2 text-sm font-bold text-slate-900">{absence.user_name} · 대상일 {absence.target_date} · 제출 {formatKst(absence.created_at)}</p>
+                      <div className="mt-2 flex flex-wrap gap-1.5 text-xs">
+                        <span className={`rounded-full px-2 py-0.5 font-semibold ${attendance ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>출석 기록: {attendance ? attendance.status : '없음'}</span>
+                        <span className={`rounded-full px-2 py-0.5 font-semibold ${exempt ? 'bg-emerald-50 text-emerald-700' : absence.status?.includes('불허') ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-800'}`}>벌금: {exempt ? '결석 벌금 면제' : absence.status?.includes('불허') ? `₩${absenceLateFine.toLocaleString()} 부과` : '결재 전 (미적용)'}</span>
                       </div>
-                      
-                      {/* 대체 과제 체크 시 활성화되는 상세 입력 칸 */}
-                      <textarea 
-                        disabled={!partialTasks[abs.id]}
-                        placeholder={partialTasks[abs.id] ? "예) 1. 관련 아티클 3개 요약 (A4 1장)\n2. 다음 주 월요일 18:00까지 제출" : "대체 과제를 체크하면 입력할 수 있습니다."}
-                        value={partialInputs[abs.id] || ''}
-                        onChange={(e) => setPartialInputs(prev => ({...prev, [abs.id]: e.target.value}))}
-                        className={`w-full border border-slate-200 rounded-none p-3 text-xs font-bold outline-none focus:border-teal-400 transition-colors resize-none h-20 ${!partialTasks[abs.id] ? 'bg-slate-100 text-slate-400 opacity-50' : 'bg-white'}`}
-                      />
-                      <button onClick={() => handleAbsenceApproval(abs.id, 'partial')} disabled={processingId === abs.id} className="bg-teal-500 text-white py-2.5 rounded-none font-black text-xs hover:bg-teal-600 transition-colors shadow-sm mt-1 disabled:opacity-50">
-                        부분 인정 처리하기
-                      </button>
+                      <p className="mt-3 whitespace-pre-wrap break-keep text-sm leading-6 text-slate-700">{absence.reason}</p>
+                      {absence.proof_url && <a href={absence.proof_url} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex items-center gap-1 text-sm font-bold text-teal-700 underline-offset-2 hover:underline"><ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />증빙 자료 열기</a>}
+                      {!pending && absence.admin_comment && <Notice tone="neutral" className="mt-3" title="운영진 코멘트">{absence.admin_comment}</Notice>}
                     </div>
-                    
-                    <div className="flex flex-col gap-2 mt-2 pt-2 border-t border-slate-100">
-                      <input 
-                        type="text" 
-                        placeholder="불허(반려) 사유 입력..." 
-                        value={rejectReasons[abs.id] || ''} 
-                        onChange={e => setRejectReasons(prev => ({...prev, [abs.id]: e.target.value}))} 
-                        className="w-full border border-slate-200 rounded-none p-2.5 text-xs font-bold outline-none focus:border-red-400 bg-slate-50 transition-colors" 
-                      />
-                      <button onClick={() => handleAbsenceApproval(abs.id, 'reject')} disabled={processingId === abs.id} className="w-full bg-red-500 text-white py-2.5 rounded-none font-black text-xs hover:bg-red-600 transition-colors shadow-sm disabled:opacity-50">
-                        불허 (벌금 ₩{absenceLateFine.toLocaleString()} 부과)
-                      </button>
+                    <div className="space-y-2 rounded-md border border-slate-200 bg-slate-50 p-3">
+                      <p className="text-xs font-bold text-slate-600">{pending ? '결재' : '결재 다시 하기'}</p>
+                      <Button className="w-full" variant="primary" onClick={() => resolve(absence, 'full')} disabled={!canWrite || Boolean(processingId)} loading={processingId === absence.id}>완전 인정 (출석 인정)</Button>
+                      <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                        <input type="checkbox" checked={Boolean(form.hasTask)} onChange={(event) => updateForm(absence.id, { hasTask: event.target.checked })} disabled={!canWrite} className="h-4 w-4 accent-teal-700" />대체 과제 부여
+                      </label>
+                      {form.hasTask && <textarea aria-label="대체 과제 내용" value={form.task || ''} onChange={(event) => updateForm(absence.id, { task: event.target.value })} placeholder={'예) 1. 관련 아티클 3개 요약\n2. 다음 주 월요일 18:00까지 제출'} className={`${textareaClass} min-h-20`} disabled={!canWrite} />}
+                      <Button className="w-full" onClick={() => resolve(absence, 'partial')} disabled={!canWrite || Boolean(processingId)}>부분 인정 (결석·벌금 면제)</Button>
+                      <input aria-label="불허 사유" value={form.reject || ''} onChange={(event) => updateForm(absence.id, { reject: event.target.value })} placeholder="불허 사유" className={inputClass} disabled={!canWrite} />
+                      <Button className="w-full" variant="danger" onClick={() => resolve(absence, 'reject')} disabled={!canWrite || Boolean(processingId)}>불허 (₩{absenceLateFine.toLocaleString()} 부과)</Button>
                     </div>
-                  </div>
-
-                </div>
-              ))}
-            </div>
-          </div>
-
-        </div>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </Panel>
       </div>
-    </div>
+    </AdminPage>
   )
 }

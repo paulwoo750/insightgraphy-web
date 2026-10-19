@@ -1,342 +1,385 @@
 'use client'
-import { useState, useEffect } from 'react'
-import { supabase } from '@/lib/supabase'
+// 정량 평가: 같은 클러스터의 발표(팀 또는 개인)를 루브릭으로 채점한다
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
-import InternalNav from '@/app/components/InternalNav'
+import { Trophy } from 'lucide-react'
+import { supabase } from '@/lib/supabase'
+import { displayTopic, fetchCurrentSemester, weekFromParam } from '@/lib/semester'
+import { MemberHeader, MemberPage, rememberWeekContext, useMember } from '@/app/components/MemberShell'
+import { Button, EmptyState, ErrorState, LoadingState, StatusBadge, useAsyncAction, useToast } from '@/app/components/ui'
+
+const EMPTY_FEEDBACK = { originalMessage: '', insightPlus: '', insightMinus: '', graphicPlus: '', graphicMinus: '', deliveryPlus: '', deliveryMinus: '', memo: '' }
+
+// 루브릭 색상 키 → 고정 클래스 (Tailwind가 지우지 않도록 전체 문자열로 둔다)
+const COLOR_THEMES = {
+  blue: { text: 'text-teal-800', border: 'border-teal-800', lightBg: 'bg-teal-50', lightBorder: 'border-teal-200' },
+  purple: { text: 'text-purple-800', border: 'border-purple-800', lightBg: 'bg-purple-50', lightBorder: 'border-purple-200' },
+  pink: { text: 'text-pink-800', border: 'border-pink-800', lightBg: 'bg-pink-50', lightBorder: 'border-pink-200' },
+  emerald: { text: 'text-emerald-800', border: 'border-emerald-800', lightBg: 'bg-emerald-50', lightBorder: 'border-emerald-200' },
+  amber: { text: 'text-amber-700', border: 'border-amber-700', lightBg: 'bg-amber-50', lightBorder: 'border-amber-200' },
+}
+const themeOf = (color) => COLOR_THEMES[color] || COLOR_THEMES.blue
+const itemMax = (item) => Math.max(...item.criteria.map((criterion) => criterion.s), 0)
+const categoryMax = (category) => category.items.reduce((sum, item) => sum + itemMax(item), 0)
+
+// order_index가 같은 발표자(팀원)를 하나의 평가 대상으로 묶는다
+function buildTargets(presentations) {
+  const map = new Map()
+  presentations.forEach((row) => {
+    if (!map.has(row.order_index)) {
+      map.set(row.order_index, { id: `tgt-${row.order_index}`, order_index: row.order_index, cluster_id: row.cluster_id, group_id: row.group_id, team_id: row.team_id, topic: row.topic, members: [], pids: [] })
+    }
+    const target = map.get(row.order_index)
+    target.members.push(row.presenter_name)
+    target.pids.push(row.id)
+  })
+  return [...map.values()]
+}
+
+// 팀 표기는 team_id가 실제로 있을 때만 (개인 평가인데 데이터가 겹쳐 팀처럼 보이는 것 방지)
+const isTeamTarget = (target) => Boolean(target.team_id) && target.members.length > 1
+const shortName = (target) => (isTeamTarget(target) ? `${target.team_id}팀 (${target.members.join(', ')})` : target.members.join(', '))
 
 export default function ScorePage() {
   const router = useRouter()
-  const [user, setUser] = useState(null)
-  const [version, setVersion] = useState('v1') 
-  const [semester, setSemester] = useState('') 
-  const [evalTargets, setEvalTargets] = useState([]) // 🌟 개별 발표자가 아닌 '평가 타겟(팀 or 개인)' 단위 배열
-  const [votedPids, setVotedPids] = useState([]) 
+  const identity = useMember()
+  const toast = useToast()
+  const [run, submitting] = useAsyncAction()
+  const [state, setState] = useState({ status: 'loading', error: '' })
+  const [semester, setSemester] = useState(null)
+  const [week, setWeek] = useState(null)
+  const [weekState, setWeekState] = useState({ status: 'idle', error: '' })
+  const [version, setVersion] = useState('v1')
+  const [evalTargets, setEvalTargets] = useState([])
+  const [votedPids, setVotedPids] = useState([])
+  // 정성 피드백 화면에서 먼저 임시 저장한 행 (점수 없음): { [presentation_id]: row }
+  const [drafts, setDrafts] = useState({})
   const [selectedTargetId, setSelectedTargetId] = useState('')
-  const [week, setWeek] = useState(1) 
-  const [submitting, setSubmitting] = useState(false)
   const [myInfo, setMyInfo] = useState({ cluster_id: null, group_id: null })
-
-  const [dynamicRubric, setDynamicRubric] = useState([])
+  const [rubric, setRubric] = useState([])
   const [scores, setScores] = useState({})
-  const [feedback, setFeedback] = useState({ originalMessage: '', insightPlus: '', insightMinus: '', graphicPlus: '', graphicMinus: '', deliveryPlus: '', deliveryMinus: '', memo: '' })
-  const weeks = Array.from({ length: 12 }, (_, i) => i + 1);
+  const [feedback, setFeedback] = useState(EMPTY_FEEDBACK)
+  const [reloadKey, setReloadKey] = useState(0)
 
-  const getColorTheme = (colorName) => {
-    const mapping = {
-      blue: { text: 'text-teal-800', border: 'border-teal-800', lightBg: 'bg-teal-50', lightBorder: 'border-teal-200' },
-      purple: { text: 'text-purple-800', border: 'border-purple-800', lightBg: 'bg-purple-50', lightBorder: 'border-purple-200' },
-      pink: { text: 'text-pink-800', border: 'border-pink-800', lightBg: 'bg-pink-50', lightBorder: 'border-pink-200' },
-      emerald: { text: 'text-emerald-800', border: 'border-emerald-800', lightBg: 'bg-emerald-50', lightBorder: 'border-emerald-200' },
-      amber: { text: 'text-amber-700', border: 'border-amber-700', lightBg: 'bg-amber-50', lightBorder: 'border-amber-200' },
-    }
-    return mapping[colorName] || mapping.blue;
-  }
+  const myName = identity.member?.name || identity.session?.user?.user_metadata?.name || ''
 
+  // 학기 정보와 처음 볼 주차 (주소의 ?week= → 이번 학기 가장 최근 발표 주차)
   useEffect(() => {
-    const init = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) { router.push('/login') } 
-      else {
-        setUser(session.user);
-        const { data: configData } = await supabase.from('pr_config').select('value').eq('key', 'current_semester').single();
-        const sem = configData?.value || ''
-        if (sem) setSemester(sem);
-        // 🌟 반드시 현재 학기 안에서만 최신 주차를 찾는다 (과거 학기 주차가 잡히면 데이터가 섞임)
-        const { data: latestP } = await supabase.from('presentations').select('week').eq('semester', sem).order('created_at', { ascending: false }).limit(1);
-        if (latestP && latestP.length > 0) setWeek(latestP[0].week);
+    if (identity.status !== 'ready') return undefined
+    if (!identity.session) {
+      router.replace('/login?next=%2Fvote%2Fscore')
+      return undefined
+    }
+    let active = true
+    async function load() {
+      try {
+        const current = await fetchCurrentSemester()
+        const { data: latest, error } = await supabase.from('presentations').select('week').eq('semester', current.code).order('created_at', { ascending: false }).limit(1)
+        if (error) throw error
+        const fallback = latest?.[0]?.week ?? 1
+        const initial = weekFromParam(new URLSearchParams(window.location.search).get('week'), current.totalWeeks, fallback)
+        if (!active) return
+        setSemester(current)
+        setWeek(Math.max(1, initial))
+        setState({ status: 'ready', error: '' })
+      } catch (error) {
+        if (active) setState({ status: 'error', error: error.message })
       }
     }
-    init()
-  }, [router])
+    load()
+    return () => { active = false }
+  }, [identity.status, identity.session, router])
 
+  // 주차별 발표·루브릭·내 채점 기록
   useEffect(() => {
-    if (user?.user_metadata?.name && semester) fetchData(user.user_metadata.name, week, semester);
-  }, [week, user, semester]);
+    if (!semester || week == null || !myName) return undefined
+    let active = true
+    async function loadWeek() {
+      setWeekState({ status: 'loading', error: '' })
+      try {
+        // 학기 필터 필수: 같은 주차라도 학기가 다르면 order_index가 겹쳐 팀으로 잘못 묶인다
+        const { data: presentations, error } = await supabase.from('presentations').select('*').eq('week', week).eq('semester', semester.code).order('order_index', { ascending: true })
+        if (error) throw error
+        const allTargets = buildTargets(presentations || [])
+        const myTarget = allTargets.find((target) => target.members.includes(myName))
+        const myCluster = myTarget?.cluster_id || 1
+        const targets = allTargets.filter((target) => target.cluster_id === myCluster)
+        const currentVersion = presentations?.[0]?.eval_version || 'v1'
 
-  const fetchData = async (userName, targetWeek, targetSemester) => {
-    // 🌟 학기 필터 필수: 같은 주차라도 학기가 다르면 order_index가 겹쳐 팀으로 잘못 묶인다
-    const { data: pAll } = await supabase.from('presentations').select('*').eq('week', targetWeek).eq('semester', targetSemester).order('order_index', { ascending: true })
-    if (pAll && pAll.length > 0) {
-      
-      // 🌟 [핵심 로직] order_index가 같은 인원(팀원)끼리 묶어서 하나의 'Target'으로 만듦
-      const tMap = new Map();
-      pAll.forEach(p => {
-        if (!tMap.has(p.order_index)) {
-          tMap.set(p.order_index, {
-            id: `tgt-${p.order_index}`,
-            order_index: p.order_index,
-            cluster_id: p.cluster_id,
-            group_id: p.group_id,
-            team_id: p.team_id,
-            topic: p.topic,
-            members: [],
-            pids: [] // 여러 팀원의 presentation_id를 모두 보존
-          });
+        let criteria = []
+        if (presentations?.length) {
+          const { data: rubricRow, error: rubricError } = await supabase.from('pr_vote_criteria').select('criteria_data').eq('version', currentVersion).maybeSingle()
+          if (rubricError) throw rubricError
+          criteria = Array.isArray(rubricRow?.criteria_data) ? rubricRow.criteria_data : []
         }
-        const tgt = tMap.get(p.order_index);
-        tgt.members.push(p.presenter_name);
-        tgt.pids.push(p.id);
-      });
-      const allTargets = Array.from(tMap.values());
+        const { data: scoreRows, error: scoreError } = await supabase.from('scores').select('id, presentation_id, details').eq('voter_name', myName)
+        if (scoreError) throw scoreError
+        // 점수(details.scores)가 있어야 채점 완료다. 피드백만 임시 저장한 행은 채점 때 그 행을 채운다
+        const voted = (scoreRows || []).filter((row) => row.details?.scores).map((row) => row.presentation_id)
+        const draftRows = Object.fromEntries((scoreRows || []).filter((row) => !row.details?.scores).map((row) => [row.presentation_id, row]))
+        if (!active) return
 
-      const myTarget = allTargets.find(t => t.members.includes(userName))
-      const myCluster = myTarget?.cluster_id || 1
-      setMyInfo({ cluster_id: myCluster, group_id: myTarget?.group_id || 1 })
-      
-      // 내 클러스터에 속한 타겟만 필터링
-      const filteredTargets = allTargets.filter(t => t.cluster_id === myCluster) 
-      setEvalTargets(filteredTargets)
-      
-      const currentVersion = pAll[0].eval_version || 'v1'
-      setVersion(currentVersion) 
-
-      const { data: rubricData } = await supabase.from('pr_vote_criteria').select('criteria_data').eq('version', currentVersion).single()
-      if (rubricData && rubricData.criteria_data) {
-        setDynamicRubric(rubricData.criteria_data)
         const initialScores = {}
-        rubricData.criteria_data.forEach(cat => cat.items.forEach(item => { initialScores[item.id] = null }))
+        criteria.forEach((category) => category.items.forEach((item) => { initialScores[item.id] = null }))
+        // 내 팀이 아니고 아직 평가하지 않은 첫 대상
+        const next = targets.find((target) => !target.members.includes(myName) && !target.pids.some((pid) => voted.includes(pid)))
+        setMyInfo({ cluster_id: myCluster, group_id: myTarget?.group_id || 1 })
+        setEvalTargets(targets)
+        setVersion(currentVersion)
+        setRubric(criteria)
         setScores(initialScores)
+        setVotedPids(voted)
+        setDrafts(draftRows)
+        setSelectedTargetId(next?.id || '')
+        setFeedback({ ...EMPTY_FEEDBACK, ...(next ? draftRows[next.pids[0]]?.details?.qualitative : null) })
+        setWeekState({ status: 'ready', error: '' })
+      } catch (error) {
+        if (active) setWeekState({ status: 'error', error: error.message })
       }
-      
-      const { data: sData } = await supabase.from('scores').select('presentation_id').eq('voter_name', userName)
-      const votedIds = sData ? sData.map(s => s.presentation_id) : []
-      setVotedPids(votedIds)
-      
-      // 내 팀이 아니고, 아직 평가하지 않은 첫 번째 타겟 찾기
-      const nextToScore = filteredTargets.find(t => !t.members.includes(userName) && !t.pids.some(pid => votedIds.includes(pid)))
-      if (nextToScore) setSelectedTargetId(nextToScore.id)
-      else setSelectedTargetId('')
     }
-    setFeedback({ originalMessage: '', insightPlus: '', insightMinus: '', graphicPlus: '', graphicMinus: '', deliveryPlus: '', deliveryMinus: '', memo: '' })
+    loadWeek()
+    return () => { active = false }
+  }, [semester, week, myName, reloadKey])
+
+  function changeWeek(value) {
+    setWeek(value)
+    const params = new URLSearchParams(window.location.search)
+    params.set('week', String(value))
+    window.history.replaceState(window.history.state, '', `${window.location.pathname}?${params.toString()}`)
+    rememberWeekContext(value, 'regular')
   }
 
-  const handleScoreChange = (key, val) => setScores(prev => ({ ...prev, [key]: Number(val) }))
-  const handleFeedbackChange = (key, val) => setFeedback(prev => ({ ...prev, [key]: val }))
+  const categoryTotal = (category) => category.items.reduce((sum, item) => sum + (scores[item.id] || 0), 0)
+  const grandTotal = rubric.reduce((sum, category) => sum + categoryTotal(category), 0)
+  const maxPossible = rubric.reduce((sum, category) => sum + categoryMax(category), 0)
+  const scoredCount = Object.values(scores).filter((value) => value !== null).length
+  const itemCount = Object.keys(scores).length
 
-  const calculateCategoryTotal = (cat) => cat.items.reduce((sum, item) => sum + (scores[item.id] || 0), 0)
-  const grandTotal = dynamicRubric.reduce((sum, cat) => sum + calculateCategoryTotal(cat), 0)
-  const maxPossibleScore = dynamicRubric.reduce((sum, cat) => sum + cat.items.reduce((itemSum, item) => itemSum + Math.max(...item.criteria.map(c => c.s), 0), 0), 0)
-
-  // 🌟 제출 로직: 팀 평가 시 팀원 수만큼 개별 채점 데이터 Insert (나중 분석용)
-  const handleSubmit = async () => {
-    if (!selectedTargetId) return alert("채점 대상이 없습니다.")
-    if (!Object.values(scores).every(v => v !== null)) return alert("모든 항목을 평가해 주세요.")
-    setSubmitting(true)
-    
-    const currentTarget = evalTargets.find(t => t.id === selectedTargetId);
-    
-    const inserts = currentTarget.pids.map(pid => ({
-      presentation_id: pid,
-      voter_name: user.user_metadata.name,
-      total_score: grandTotal,
-      semester,
-      details: { scores, version, qualitative: feedback }
-    }));
-
-    const { error } = await supabase.from('scores').insert(inserts)
-    
-    if (!error) { alert("채점 완료!"); window.location.reload(); }
-    else { alert("오류 발생: " + error.message) }
-    setSubmitting(false)
+  // 팀 평가는 팀원 수만큼 같은 점수를 개별로 넣는다 (나중 분석용)
+  function submit() {
+    const target = evalTargets.find((row) => row.id === selectedTargetId)
+    if (!target) {
+      toast.error('채점할 대상이 없습니다.')
+      return
+    }
+    if (scoredCount < itemCount) {
+      toast.error(`아직 평가하지 않은 항목이 ${itemCount - scoredCount}개 있습니다.`)
+      return
+    }
+    run(async () => {
+      const row = (pid) => ({
+        presentation_id: pid,
+        voter_name: myName,
+        voter_member_id: identity.member?.id || null,
+        total_score: grandTotal,
+        semester: semester.code,
+        details: { scores, version, qualitative: feedback },
+      })
+      const draftPids = target.pids.filter((pid) => drafts[pid])
+      const newPids = target.pids.filter((pid) => !drafts[pid])
+      const results = await Promise.all([
+        ...draftPids.map((pid) => supabase.from('scores').update(row(pid)).eq('id', drafts[pid].id).select('id')),
+        ...(newPids.length ? [supabase.from('scores').insert(newPids.map(row))] : []),
+      ])
+      const error = results.find((result) => result.error)?.error || (results.slice(0, draftPids.length).some((result) => !result.data?.length) ? { message: '임시 저장 기록을 갱신할 권한이 없습니다.' } : null)
+      if (error) {
+        toast.error(`채점을 저장하지 못했습니다: ${error.message}`)
+        return
+      }
+      toast.success(`${shortName(target)} 채점을 저장했습니다.`)
+      setReloadKey((value) => value + 1)
+    })
   }
 
-  if (!user) return <div className="p-8 text-center font-bold text-slate-400">데이터 로딩 중...</div>
+  if (identity.status !== 'ready' || state.status === 'loading' || week == null) return <MemberPage><LoadingState label="평가 화면을 불러오는 중입니다." /></MemberPage>
+  if (state.status === 'error') return <MemberPage><ErrorState title="평가 화면을 불러오지 못했습니다." description={state.error} onRetry={() => window.location.reload()} /></MemberPage>
 
-  // 🌟 타겟 관련 변수 정의
-  const currentTarget = evalTargets.find(t => t.id === selectedTargetId)
-  const targetsToScore = evalTargets.filter(t => !t.members.includes(user?.user_metadata?.name));
-  const allEvaluated = targetsToScore.length > 0 && targetsToScore.every(t => t.pids.some(pid => votedPids.includes(pid)));
-  const isSameGroup = currentTarget?.group_id === myInfo.group_id;
-
-  // 이름 포맷팅 헬퍼 함수
-  // 🌟 팀 표기는 team_id가 실제로 있을 때만 (개인 평가인데 데이터가 겹쳐 팀처럼 보이는 것 방지)
-  const isTeamTarget = (t) => !!t.team_id && t.members.length > 1;
-  const getSidebarName = (t) => isTeamTarget(t) ? `T#${t.team_id} (${t.members.join(', ')})` : t.members.join(', ');
-  const getActiveTargetName = (t) => isTeamTarget(t) ? `Team ${t.team_id} (${t.members.join(', ')})` : `${t.members[0]} 님`;
+  const weeks = Array.from({ length: Math.max(1, semester.totalWeeks) }, (_, index) => index + 1)
+  const currentTarget = evalTargets.find((target) => target.id === selectedTargetId)
+  const targetsToScore = evalTargets.filter((target) => !target.members.includes(myName))
+  const allEvaluated = targetsToScore.length > 0 && targetsToScore.every((target) => target.pids.some((pid) => votedPids.includes(pid)))
+  const isSameGroup = currentTarget?.group_id === myInfo.group_id
+  const topic = evalTargets[0]?.topic || displayTopic(semester.weekTopics, week, 'regular') || '주제 미정'
 
   return (
-    <div className="bg-white min-h-screen text-slate-900 font-sans pb-32">
-      <InternalNav />
+    <MemberPage>
+      <MemberHeader
+        eyebrow="평가"
+        title="정량 평가"
+        description="같은 클러스터의 발표를 루브릭에 따라 채점합니다. 같은 조 발표에는 정성 피드백을, 다른 조 발표에는 간단한 메모를 남길 수 있습니다."
+        actions={<Button href="/vote/feedback">정성 피드백 작성</Button>}
+      >
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          <StatusBadge tone="gray">{semester.name}</StatusBadge>
+          <StatusBadge tone="gray">평가표 {version}</StatusBadge>
+          {myInfo.cluster_id && <StatusBadge tone="teal">클러스터 {myInfo.cluster_id} · {myInfo.group_id}조</StatusBadge>}
+        </div>
+      </MemberHeader>
 
-      {/* 🌟 메인 컨테이너 폭 1600px 확장 */}
-      <div className="max-w-[1600px] mx-auto px-6 mt-12">
-        {/* 타이틀 구역 */}
-        <header className="w-full mb-16 flex flex-col items-center">
-          <div className="w-full flex justify-end items-center mb-6">
-            <div className="flex items-center gap-3">
-              {semester && <span className="text-[11px] font-black text-teal-800 uppercase">{semester}</span>}
-              <span className="w-px h-3 bg-slate-400"></span>
-              <span className="text-[11px] font-black text-slate-500 uppercase">{version} VER</span>
-              <span className="w-px h-3 bg-slate-400"></span>
-              <span className="text-[11px] font-black text-teal-600 uppercase tracking-widest">C#{myInfo.cluster_id} / G#{myInfo.group_id}</span>
-            </div>
-          </div>
-          <h1 className="text-4xl md:text-5xl font-extrabold uppercase text-teal-900 tracking-tight mb-12 text-center">Evaluation System</h1>
-          <div className="w-full border-y-2 border-teal-800 py-10 flex flex-col items-center">
-            <span className="text-xs font-extrabold text-teal-700 uppercase tracking-widest mb-6">Select Active Week</span>
-            <div className="flex flex-wrap justify-center gap-4 md:gap-6 mb-10 w-full max-w-4xl">
-              {weeks.map((w) => (
-                <button key={w} onClick={() => setWeek(w)} className={`pb-1 text-base md:text-lg font-black transition-all ${week === w ? 'text-teal-800 border-b-[3px] border-teal-800 scale-110' : 'text-slate-400 border-b-[3px] border-transparent hover:text-slate-700 hover:scale-105'}`}>W{w}</button>
-              ))}
-            </div>
-            <span className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Target Topic</span>
-            <p className="text-2xl font-extrabold text-slate-900">{evalTargets[0]?.topic || "등록된 주제 없음"}</p>
-          </div>
-        </header>
+      <div className="rounded-lg border border-slate-200 bg-white p-3">
+        <div className="flex gap-2 overflow-x-auto pb-1" role="group" aria-label="주차 선택">
+          {weeks.map((value) => (
+            <button key={value} type="button" aria-pressed={value === week} onClick={() => changeWeek(value)} className={`min-h-9 shrink-0 rounded-md border px-3 text-sm font-bold ${value === week ? 'border-teal-700 bg-teal-700 text-white' : 'border-slate-200 text-slate-600 hover:border-teal-400'}`}>W{value}</button>
+          ))}
+        </div>
+        <p className="mt-2 px-1 text-sm text-slate-600">W{week} 주제 <span className="font-bold text-slate-900">{topic}</span></p>
+      </div>
 
-        {/* 🌟 레이아웃 배치 */}
-        <div className="grid grid-cols-1 lg:grid-cols-[200px_1fr_300px] xl:grid-cols-[240px_1fr_380px] gap-10 xl:gap-16 items-start">
-          
-          {/* [좌] 클러스터 순서 사이드바 */}
-          <aside className="w-full lg:justify-self-end">
-            <div className="sticky top-24 pt-2">
-              <h3 className="text-[10px] font-black text-slate-400 uppercase mb-6 border-b border-slate-300 pb-3 tracking-widest">Cluster Flow</h3>
-              <div className="space-y-1">
-                {evalTargets.map((t, idx) => {
-                  const isVoted = t.pids.some(pid => votedPids.includes(pid));
-                  const isMe = t.members.includes(user?.user_metadata?.name);
-                  return (
-                    <div key={t.id} className="flex items-center gap-4 py-3 border-b border-slate-200 last:border-0">
-                      <span className={`text-xs font-black w-4 ${t.id === selectedTargetId ? 'text-teal-700' : isVoted ? 'text-slate-300' : 'text-slate-400'}`}>{String(idx + 1).padStart(2, '0')}</span>
-                      <p className={`text-sm font-extrabold truncate ${t.id === selectedTargetId ? 'text-teal-800' : isVoted ? 'text-slate-400 line-through' : 'text-slate-800'}`}>
-                        {getSidebarName(t)} 
-                        {t.group_id === myInfo.group_id && !isMe && <span className="text-[10px] text-teal-500 ml-1">★</span>}
-                        {isMe && <span className="text-[10px] text-blue-500 ml-1">(ME)</span>}
-                      </p>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
+      {weekState.status === 'loading' && <LoadingState className="mt-6" />}
+      {weekState.status === 'error' && <div className="mt-6"><ErrorState title="이 주차 발표를 불러오지 못했습니다." description={weekState.error} onRetry={() => setReloadKey((value) => value + 1)} /></div>}
+      {weekState.status === 'ready' && evalTargets.length === 0 && (
+        <div className="mt-6"><EmptyState title="이 주차에 등록된 발표가 없습니다." description="운영진이 발표 순서를 등록하면 채점할 수 있습니다." /></div>
+      )}
+
+      {weekState.status === 'ready' && evalTargets.length > 0 && (
+        <div className="mt-6 grid items-start gap-6 lg:grid-cols-[220px_minmax(0,1fr)] xl:grid-cols-[220px_minmax(0,1fr)_340px]">
+          <aside className="rounded-lg border border-slate-200 bg-white p-3 lg:sticky lg:top-24">
+            <h2 className="px-1 text-sm font-bold text-slate-900">발표 순서</h2>
+            <ol className="mt-2 space-y-1">
+              {evalTargets.map((target, index) => {
+                const voted = target.pids.some((pid) => votedPids.includes(pid))
+                const isMe = target.members.includes(myName)
+                const selectable = !isMe && !voted
+                return (
+                  <li key={target.id}>
+                    <button
+                      type="button"
+                      disabled={!selectable}
+                      aria-current={target.id === selectedTargetId ? 'true' : undefined}
+                      onClick={() => {
+                        if (target.id === selectedTargetId) return
+                        if (scoredCount > 0 && !confirm('입력하던 점수와 피드백이 지워집니다. 다른 발표로 바꿀까요?')) return
+                        setSelectedTargetId(target.id)
+                        setFeedback({ ...EMPTY_FEEDBACK, ...drafts[target.pids[0]]?.details?.qualitative })
+                        setScores((prev) => Object.fromEntries(Object.keys(prev).map((key) => [key, null])))
+                      }}
+                      className={`flex w-full items-start gap-2 rounded-md px-2 py-2 text-left text-sm ${target.id === selectedTargetId ? 'bg-teal-50 font-bold text-teal-800' : selectable ? 'text-slate-700 hover:bg-slate-50' : 'text-slate-400'}`}
+                    >
+                      <span className="w-5 shrink-0 text-xs font-bold">{String(index + 1).padStart(2, '0')}</span>
+                      <span className="min-w-0 flex-1 break-keep">
+                        <span className={voted ? 'line-through' : ''}>{shortName(target)}</span>
+                        <span className="mt-0.5 flex flex-wrap gap-1">
+                          {isMe && <StatusBadge tone="blue">나</StatusBadge>}
+                          {!isMe && target.group_id === myInfo.group_id && <StatusBadge tone="teal">같은 조</StatusBadge>}
+                          {voted && <StatusBadge tone="green">채점 완료</StatusBadge>}
+                        </span>
+                      </span>
+                    </button>
+                  </li>
+                )
+              })}
+            </ol>
           </aside>
 
-          {/* [중] 동적 정량 평가창 */}
-          <div className="w-full space-y-16">
-            <div className="text-center pb-8 border-b-[3px] border-slate-900">
-              <label className="text-xs font-black text-slate-500 uppercase tracking-widest block mb-4">Active Target</label>
-              <div className="font-black text-teal-800 text-4xl tracking-tight">
-                {allEvaluated ? "평가 완료" : currentTarget ? getActiveTargetName(currentTarget) : "대상 없음"}
+          <div className="min-w-0 space-y-6">
+            {allEvaluated ? (
+              <div className="rounded-lg border border-slate-200 bg-white px-6 py-14 text-center">
+                <Trophy className="mx-auto h-10 w-10 text-teal-700" aria-hidden="true" />
+                <h2 className="mt-4 text-xl font-bold text-slate-900">이 주차 평가를 모두 마쳤습니다</h2>
+                <p className="mt-1 text-sm text-slate-500">결과는 운영진이 공개하면 내 결과에서 확인할 수 있습니다.</p>
+                <Button href="/vote/results/my" variant="primary" className="mt-5">내 결과 보기</Button>
               </div>
-            </div>
-
-            {!allEvaluated ? (
+            ) : !currentTarget ? (
+              <EmptyState title="채점할 대상을 왼쪽에서 고르세요." description="내 발표와 이미 채점한 발표는 고를 수 없습니다." />
+            ) : rubric.length === 0 ? (
+              <EmptyState title={`평가표 ${version}을 찾지 못했습니다.`} description="운영진에게 평가표 설정을 확인해 달라고 알려 주세요." />
+            ) : (
               <>
-                {dynamicRubric.map((cat, idx) => {
-                  const theme = getColorTheme(cat.color);
-                  return (
-                    <CategoryCard key={cat.id || idx} title={cat.title} icon={cat.icon} total={calculateCategoryTotal(cat)} max={cat.items.reduce((sum, item) => sum + Math.max(...item.criteria.map(c=>c.s), 0), 0)} theme={theme}>
-                      {cat.items.map(item => (
-                        <EvaluationItem key={item.id} itemData={item} val={scores[item.id]} onChange={(v)=>handleScoreChange(item.id, v)} theme={theme} />
-                      ))}
-                    </CategoryCard>
-                  )
-                })}
-                <div className="py-16 border-t-[3px] border-b-[3px] border-slate-900 text-center space-y-10">
-                  <span className="text-xs font-black text-slate-400 uppercase tracking-widest block mb-4">Total Score</span>
-                  <h2 className="text-7xl font-black text-teal-800">{grandTotal}<span className="text-3xl text-slate-400 ml-3">/ {maxPossibleScore}</span></h2>
-                  <button onClick={handleSubmit} disabled={submitting} className="w-full max-w-sm mx-auto block py-5 border-[3px] border-teal-800 text-teal-900 font-black text-xl uppercase tracking-widest hover:bg-teal-800 hover:text-white transition-all active:scale-95">제출하기</button>
+                <div className="rounded-lg border border-teal-200 bg-teal-50/50 px-4 py-3">
+                  <p className="text-xs font-bold text-teal-700">지금 채점하는 발표</p>
+                  <p className="text-xl font-extrabold text-teal-900">{isTeamTarget(currentTarget) ? `${currentTarget.team_id}팀 (${currentTarget.members.join(', ')})` : `${currentTarget.members[0]} 님`}</p>
+                </div>
+                {rubric.map((category, index) => (
+                  <CategoryCard key={category.id || index} category={category} total={categoryTotal(category)} theme={themeOf(category.color)}>
+                    {category.items.map((item) => (
+                      <EvaluationItem key={item.id} item={item} value={scores[item.id]} onChange={(value) => setScores((prev) => ({ ...prev, [item.id]: Number(value) }))} theme={themeOf(category.color)} />
+                    ))}
+                  </CategoryCard>
+                ))}
+                <div className="rounded-lg border border-slate-200 bg-white p-5 text-center">
+                  <p className="text-sm font-semibold text-slate-500">총점 · {scoredCount}/{itemCount}개 항목 평가</p>
+                  <p className="mt-1 text-4xl font-extrabold text-teal-800">{grandTotal}<span className="ml-2 text-xl text-slate-400">/ {maxPossible}</span></p>
+                  <Button variant="primary" size="lg" className="mt-4 w-full max-w-sm" loading={submitting} onClick={submit}>채점 제출</Button>
                 </div>
               </>
-            ) : (
-              <div className="py-24 text-center border-y border-slate-300">
-                <span className="text-6xl mb-8 block grayscale opacity-50">🏆</span>
-                <h3 className="text-3xl font-black text-slate-800 mb-12 uppercase">모든 평가가 완료되었습니다</h3>
-                <div className="flex flex-col sm:flex-row gap-6 justify-center">
-                  <Link href="/vote/results/my" className="border-b-[3px] border-slate-900 text-slate-900 px-6 py-3 font-black text-sm uppercase transition-colors hover:text-teal-700 hover:border-teal-700">결과 확인하기 ↗</Link>
-                </div>
-              </div>
             )}
           </div>
 
-          {/* [우] 정성 피드백 영역 */}
-          {!allEvaluated && (
-            <aside className="w-full lg:justify-self-start h-fit sticky top-24 pt-2">
-              <div className="flex justify-between items-end border-b-2 border-slate-300 pb-3 mb-8">
-                <h3 className="text-lg font-extrabold text-slate-900">
-                  {currentTarget ? getSidebarName(currentTarget) : ''} {isSameGroup ? '피드백' : '메모장'}
-                </h3>
-                <p className={`text-[10px] font-black uppercase ${isSameGroup ? 'text-teal-700' : 'text-slate-400'}`}>{isSameGroup ? 'Detail' : 'Simple'}</p>
+          {!allEvaluated && currentTarget && (
+            <aside className="rounded-lg border border-slate-200 bg-white p-4 lg:col-span-2 xl:sticky xl:top-24 xl:col-span-1">
+              <div className="flex items-end justify-between gap-2 border-b border-slate-200 pb-2">
+                <h2 className="text-base font-bold text-slate-900">{isSameGroup ? '정성 피드백' : '메모'}</h2>
+                <span className="text-xs text-slate-500">{isSameGroup ? '같은 조 발표' : '다른 조 발표'}</span>
               </div>
               {isSameGroup ? (
-                <div className="space-y-10">
-                  <div>
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-3">Original Message</label>
-                    <input type="text" value={feedback.originalMessage} onChange={(e)=>handleFeedbackChange('originalMessage', e.target.value)} className="w-full border-b-[3px] border-slate-300 py-2.5 text-base font-bold outline-none focus:border-teal-700 bg-transparent placeholder:text-slate-300" placeholder="메시지 기록" />
-                  </div>
-                  <FeedbackSection title="1. Insight" subtitle="독창성" plusVal={feedback.insightPlus} minusVal={feedback.insightMinus} onPlusChange={(v)=>handleFeedbackChange('insightPlus', v)} onMinusChange={(v)=>handleFeedbackChange('insightMinus', v)} />
-                  <FeedbackSection title="2. Graphic" subtitle="가독성" plusVal={feedback.graphicPlus} minusVal={feedback.graphicMinus} onPlusChange={(v)=>handleFeedbackChange('graphicPlus', v)} onMinusChange={(v)=>handleFeedbackChange('graphicMinus', v)} />
-                  <FeedbackSection title="3. Delivery" subtitle="전달력" plusVal={feedback.deliveryPlus} minusVal={feedback.deliveryMinus} onPlusChange={(v)=>handleFeedbackChange('deliveryPlus', v)} onMinusChange={(v)=>handleFeedbackChange('deliveryMinus', v)} />
+                <div className="mt-4 space-y-5">
+                  <label className="block">
+                    <span className="mb-1 block text-xs font-bold text-slate-600">핵심 메시지</span>
+                    <input value={feedback.originalMessage} onChange={(event) => setFeedback((prev) => ({ ...prev, originalMessage: event.target.value }))} className="w-full border-b-2 border-slate-300 bg-transparent py-2 text-sm font-semibold outline-none focus:border-teal-700" placeholder="발표의 핵심 메시지" />
+                  </label>
+                  <FeedbackSection title="Insight" subtitle="독창성" plus={feedback.insightPlus} minus={feedback.insightMinus} onPlus={(value) => setFeedback((prev) => ({ ...prev, insightPlus: value }))} onMinus={(value) => setFeedback((prev) => ({ ...prev, insightMinus: value }))} />
+                  <FeedbackSection title="Graphic" subtitle="가독성" plus={feedback.graphicPlus} minus={feedback.graphicMinus} onPlus={(value) => setFeedback((prev) => ({ ...prev, graphicPlus: value }))} onMinus={(value) => setFeedback((prev) => ({ ...prev, graphicMinus: value }))} />
+                  <FeedbackSection title="Delivery" subtitle="전달력" plus={feedback.deliveryPlus} minus={feedback.deliveryMinus} onPlus={(value) => setFeedback((prev) => ({ ...prev, deliveryPlus: value }))} onMinus={(value) => setFeedback((prev) => ({ ...prev, deliveryMinus: value }))} />
                 </div>
               ) : (
-                <textarea value={feedback.memo} onChange={(e)=>handleFeedbackChange('memo', e.target.value)} className="w-full border-y-[3px] border-slate-200 py-6 text-base font-medium min-h-[500px] outline-none focus:border-slate-400 bg-transparent resize-none leading-relaxed" placeholder="자유로운 메모..." />
+                <textarea aria-label="메모" value={feedback.memo} onChange={(event) => setFeedback((prev) => ({ ...prev, memo: event.target.value }))} className="mt-4 min-h-72 w-full resize-y rounded-md border border-slate-200 p-3 text-sm leading-6 outline-none focus:border-teal-600" placeholder="자유롭게 메모하세요." />
               )}
             </aside>
           )}
         </div>
-      </div>
-    </div>
+      )}
+    </MemberPage>
   )
 }
 
-function CategoryCard({ title, icon, total, max, theme, children }) {
+function CategoryCard({ category, total, theme, children }) {
   return (
-    <div className="pb-16 border-b-2 border-slate-300 last:border-0">
-      <div className={`flex justify-between items-end mb-10 pb-4 border-b ${theme.border}`}>
-        <h3 className={`text-3xl font-black ${theme.text} flex items-center gap-3 tracking-tight`}>
-          <span className="grayscale-0">{icon}</span> {title}
-        </h3>
-        <p className="font-black text-slate-400 text-xs tracking-widest uppercase">
-          Score <span className={`text-2xl ${theme.text} ml-2`}>{total}</span><span className="text-sm">/{max}</span>
-        </p>
+    <section className="rounded-lg border border-slate-200 bg-white p-4 sm:p-5">
+      <div className={`flex items-end justify-between gap-3 border-b pb-3 ${theme.border}`}>
+        <h2 className={`flex items-center gap-2 text-xl font-extrabold ${theme.text}`}>{category.icon && <span aria-hidden="true">{category.icon}</span>}{category.title}</h2>
+        <p className="text-sm font-semibold text-slate-500"><span className={`text-xl font-extrabold ${theme.text}`}>{total}</span> / {categoryMax(category)}</p>
       </div>
-      <div className="space-y-16">{children}</div>
-    </div>
+      <div className="mt-5 space-y-8">{children}</div>
+    </section>
   )
 }
 
-function EvaluationItem({ itemData, val, onChange, theme }) {
-  const points = [];
-  const maxScore = Math.max(...itemData.criteria.map(c => c.s), 0);
-  const minScore = Math.min(...itemData.criteria.map(c => c.s), 0);
-  for (let i = maxScore; i >= minScore; i--) points.push(i);
-  
+function EvaluationItem({ item, value, onChange, theme }) {
+  const max = itemMax(item)
+  const min = Math.min(...item.criteria.map((criterion) => criterion.s), 0)
+  const points = []
+  for (let point = max; point >= min; point--) points.push(point)
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex justify-between items-end">
-        <span className="text-lg font-extrabold text-slate-900 tracking-tight">{itemData.label}</span>
-        <span className={`text-sm font-black ${theme.text} ${theme.lightBg} px-3 py-1 rounded-none border-b-2 ${theme.lightBorder}`}>{val === null ? '?' : val} pt</span>
+    <div>
+      <div className="flex items-end justify-between gap-3">
+        <h3 className="text-base font-bold text-slate-900">{item.label}</h3>
+        <span className={`rounded px-2 py-0.5 text-sm font-bold ${theme.text} ${theme.lightBg}`}>{value === null || value === undefined ? '미평가' : `${value}점`}</span>
       </div>
-      
-      <div className="border-y-2 border-slate-300 py-3">
-        <table className="w-full text-left">
-          <tbody>
-            {[...itemData.criteria].sort((a,b) => b.s - a.s).map((item, idx) => (
-              <tr key={idx} className="border-b border-slate-100 last:border-0">
-                <td className={`py-3 text-[13px] font-medium leading-relaxed break-keep transition-colors pr-4 ${val === item.s ? `${theme.text} font-extrabold` : 'text-slate-600'}`}>{item.t}</td>
-                <td className={`w-12 py-3 text-right text-xs font-black transition-colors ${val === item.s ? theme.text : 'text-slate-400'}`}>{item.s}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <div className="flex flex-wrap gap-2 pt-2">
-        {points.map((p) => (
-          <button key={p} onClick={() => onChange(p)} className={`flex-1 pb-3 text-lg transition-all border-b-[3px] ${val === p ? `${theme.border} ${theme.text} font-black` : 'border-transparent text-slate-400 font-bold hover:border-slate-300'}`}>{p}</button>
+      <table className="mt-2 w-full text-left">
+        <tbody>
+          {[...item.criteria].sort((a, b) => b.s - a.s).map((criterion, index) => (
+            <tr key={index} className="border-b border-slate-100 last:border-0">
+              <td className={`break-keep py-2 pr-4 text-sm leading-6 ${value === criterion.s ? `${theme.text} font-bold` : 'text-slate-600'}`}>{criterion.t}</td>
+              <td className={`w-10 py-2 text-right text-sm font-bold ${value === criterion.s ? theme.text : 'text-slate-400'}`}>{criterion.s}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div className="mt-2 flex flex-wrap gap-1.5" role="group" aria-label={`${item.label} 점수`}>
+        {points.map((point) => (
+          <button key={point} type="button" aria-pressed={value === point} onClick={() => onChange(point)} className={`min-h-10 min-w-10 flex-1 rounded-md border text-base font-bold ${value === point ? `${theme.border} ${theme.lightBg} ${theme.text}` : 'border-slate-200 text-slate-500 hover:border-slate-400'}`}>{point}</button>
         ))}
       </div>
     </div>
   )
 }
 
-function FeedbackSection({ title, subtitle, plusVal, minusVal, onPlusChange, onMinusChange }) {
+function FeedbackSection({ title, subtitle, plus, minus, onPlus, onMinus }) {
   return (
-    <div className="space-y-4">
-      <div className="flex items-end gap-3"><p className="text-sm font-black text-slate-800 uppercase">{title}</p><p className="text-[10px] font-bold text-slate-400 mb-0.5">{subtitle}</p></div>
-      <div className="flex flex-col gap-4">
-        <textarea value={plusVal} onChange={(e)=>onPlusChange(e.target.value)} className="w-full border-b-[3px] border-emerald-400 py-2 px-1 text-sm font-bold min-h-[50px] outline-none focus:border-emerald-700 bg-transparent resize-none placeholder:text-slate-300" placeholder="(+) 장점" />
-        <textarea value={minusVal} onChange={(e)=>onMinusChange(e.target.value)} className="w-full border-b-[3px] border-red-400 py-2 px-1 text-sm font-bold min-h-[50px] outline-none focus:border-red-700 bg-transparent resize-none placeholder:text-slate-300" placeholder="(-) 개선" />
-      </div>
-    </div>
+    <fieldset className="space-y-2">
+      <legend className="text-sm font-bold text-slate-800">{title} <span className="text-xs font-semibold text-slate-500">{subtitle}</span></legend>
+      <textarea aria-label={`${title} 장점`} value={plus} onChange={(event) => onPlus(event.target.value)} className="min-h-14 w-full resize-y rounded-md border border-emerald-200 p-2 text-sm outline-none focus:border-emerald-600" placeholder="(+) 장점" />
+      <textarea aria-label={`${title} 개선점`} value={minus} onChange={(event) => onMinus(event.target.value)} className="min-h-14 w-full resize-y rounded-md border border-red-200 p-2 text-sm outline-none focus:border-red-600" placeholder="(-) 개선점" />
+    </fieldset>
   )
 }

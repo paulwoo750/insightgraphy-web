@@ -1,10 +1,47 @@
 'use client'
 import { useEffect, useState } from 'react'
-import Link from 'next/link'
+import { ExternalLink } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { useSiteUrls } from '@/lib/siteUrls'
+import { useAdminRole } from '@/app/admin/_components/AdminShell'
+import { AdminPage, Button, LoadingState, PageHeader, ReadOnlyBanner, Tabs, useToast } from '@/app/admin/_components/AdminUI'
+
+// 표의 행을 화면 목록과 맞춘다: 기존 행은 id로 고치고, 새 행은 추가하고, 빠진 행은 마지막에 지운다.
+// 중간에 실패하면 삭제 단계까지 가지 않으므로 기존 행이 사라지지 않는다. 실패 문장을 돌려준다.
+async function syncTable(table, rows) {
+  const { data: existing, error: readError } = await supabase.from(table).select('id')
+  if (readError) return readError.message
+  const keep = rows.filter((row) => row.id != null)
+  const add = rows.filter((row) => row.id == null).map((row) => Object.fromEntries(Object.entries(row).filter(([key]) => key !== 'id')))
+  if (keep.length) {
+    const { error } = await supabase.from(table).upsert(keep)
+    if (error) return error.message
+  }
+  if (add.length) {
+    const { error } = await supabase.from(table).insert(add)
+    if (error) return error.message
+  }
+  const keepIds = new Set(keep.map((row) => row.id))
+  const remove = (existing || []).map((row) => row.id).filter((id) => !keepIds.has(id))
+  if (remove.length) {
+    const { error } = await supabase.from(table).delete().in('id', remove)
+    if (error) return error.message
+  }
+  return null
+}
+
+// Storage에 올리고 공개 주소를 돌려준다. 실패하면 예외를 던진다.
+async function uploadPublic(path, file) {
+  const { error } = await supabase.storage.from('showcase').upload(path, file)
+  if (error) throw new Error(`${file.name} 업로드 실패: ${error.message}`)
+  return supabase.storage.from('showcase').getPublicUrl(path).data.publicUrl
+}
 
 export default function IntegratedActivitiesManager() {
   const [activeTab, setActiveTab] = useState('regular')
+  const { role } = useAdminRole()
+  const site = useSiteUrls()
+  const publicPaths = { regular: '/activities/regular', education: '/activities/education', union: '/activities/special', corporate: '/activities/corporate' }
 
   const tabs = [
     { id: 'regular', name: '정규 세션', icon: '🗣️' },
@@ -14,40 +51,24 @@ export default function IntegratedActivitiesManager() {
   ]
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans p-6 md:p-12 pb-32">
-      <div className="max-w-6xl mx-auto">
-        <header className="flex justify-between items-end mb-12 border-b border-slate-200 pb-6">
-          <div>
-            <Link href="/admin/hub" className="text-xs font-black text-slate-400 hover:text-[#32a4a1] uppercase tracking-widest mb-2 block transition-colors">← Back to Hub</Link>
-            <h1 className="text-4xl font-black uppercase tracking-tighter text-slate-800 flex items-center gap-3">
-              <span className="text-4xl">🎯</span> Activities Control Tower
-            </h1>
-          </div>
-        </header>
-
-        <div className="flex flex-col lg:flex-row gap-8">
-          <aside className="w-full lg:w-64 shrink-0">
-            <div className="bg-white p-4 rounded-none shadow-sm border border-slate-100 flex flex-col gap-2 sticky top-24">
-              {tabs.map((tab) => (
-                <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-                  className={`flex items-center gap-3 w-full px-5 py-4 rounded-none font-black text-sm transition-all ${
-                    activeTab === tab.id ? 'bg-slate-900 text-white shadow-sm' : 'bg-transparent text-slate-400 hover:bg-slate-50'
-                  }`}>
-                  <span className="text-xl">{tab.icon}</span> {tab.name}
-                </button>
-              ))}
-            </div>
-          </aside>
-
-          <main className="flex-1 space-y-8">
-            {activeTab === 'regular' && <RegularManager />}
-            {activeTab === 'education' && <EducationManager />}
-            {activeTab === 'union' && <UnionManager />}
-            {activeTab === 'corporate' && <CorporateManager />}
-          </main>
-        </div>
+    <AdminPage>
+      <PageHeader
+        eyebrow="외부 사이트"
+        title="활동 소개"
+        description="공개 사이트 Activities의 정규·교육·연합·기업 세션 소개를 편집합니다. 각 탭의 저장 버튼으로 그 탭 내용만 저장합니다."
+        actions={<Button icon={ExternalLink} href={site.publicUrl(publicPaths[activeTab])} target="_blank">공개 화면 열기</Button>}
+      />
+      <ReadOnlyBanner role={role} />
+      <div className="mb-5 rounded-md border border-slate-200 bg-white px-2">
+        <Tabs tabs={tabs.map((tab) => ({ key: tab.id, label: tab.name }))} value={activeTab} onChange={setActiveTab} label="활동 종류" />
       </div>
-    </div>
+      <div className="space-y-8">
+        {activeTab === 'regular' && <RegularManager />}
+        {activeTab === 'education' && <EducationManager />}
+        {activeTab === 'union' && <UnionManager />}
+        {activeTab === 'corporate' && <CorporateManager />}
+      </div>
+    </AdminPage>
   )
 }
 
@@ -57,9 +78,11 @@ export default function IntegratedActivitiesManager() {
 function RegularManager() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  
+  const toast = useToast()
+  const { canWrite } = useAdminRole()
+
   const [headerData, setHeaderData] = useState({ title: '', desc: '' })
-  
+
   const defaultRoutines = Array.from({length: 7}, (_, i) => ({ order_num: i+1, day: ['월','화','수','목','금','토','일'][i]+'요일', action: '', detail: '', icon: '📌' }))
   const [routines, setRoutines] = useState(defaultRoutines)
 
@@ -98,7 +121,7 @@ function RegularManager() {
 
     const { data: routineData } = await supabase.from('pr_activities_regular_routine').select('*').order('order_num', { ascending: true })
     if (routineData && routineData.length > 0) setRoutines(routineData)
-    
+
     setLoading(false)
   }
 
@@ -114,17 +137,16 @@ function RegularManager() {
 
   const handleSaveContent = async (sectionName) => {
     setSaving(true)
-    
+
     let finalFeedbackData = { ...feedbackData }
     if (sectionName === 'feedback' && quantImageFile) {
       try {
         const ext = quantImageFile.name.split('.').pop()
-        const path = `activities/quant_${Date.now()}.${ext}`
-        await supabase.storage.from('showcase').upload(path, quantImageFile)
-        finalFeedbackData.quantImgUrl = supabase.storage.from('showcase').getPublicUrl(path).data.publicUrl
+        finalFeedbackData.quantImgUrl = await uploadPublic(`activities/quant_${Date.now()}.${ext}`, quantImageFile)
         setFeedbackData(finalFeedbackData)
+        setQuantImageFile(null)
       } catch (imgError) {
-        alert('이미지 업로드 실패: ' + imgError.message)
+        toast.error(`${imgError.message}. 저장하지 않았습니다.`)
         setSaving(false)
         return
       }
@@ -140,34 +162,37 @@ function RegularManager() {
     }
 
     const { error } = await supabase.from('pr_activities_content').upsert(payload)
-    if (!error) alert(`${sectionName} 파트가 성공적으로 저장되었습니다! 💾`)
-    else alert('저장 실패: ' + error.message)
-    
+    if (!error) toast.success('정규 세션 내용을 저장했습니다.')
+    else toast.error(`저장하지 못했습니다: ${error.message}`)
+
     setSaving(false)
   }
 
   const handleSaveRoutines = async () => {
     setSaving(true)
-    await supabase.from('pr_activities_regular_routine').delete().neq('id', 0) 
-    const insertData = routines.map(r => ({ order_num: r.order_num, day: r.day, action: r.action, detail: r.detail, icon: r.icon }))
-    const { error } = await supabase.from('pr_activities_regular_routine').insert(insertData)
-    if (!error) alert('일주일 루틴이 저장되었습니다! 📅')
+    const failure = await syncTable('pr_activities_regular_routine', routines.map((r) => ({ id: r.id, order_num: r.order_num, day: r.day, action: r.action, detail: r.detail, icon: r.icon })))
+    if (failure) toast.error(`일주일 루틴을 저장하지 못했습니다: ${failure}`)
+    else {
+      toast.success('일주일 루틴을 저장했습니다.')
+      const { data } = await supabase.from('pr_activities_regular_routine').select('*').order('order_num', { ascending: true })
+      if (data?.length) setRoutines(data)
+    }
     setSaving(false)
   }
 
-  if (loading) return <div className="p-10 text-center font-bold text-slate-400">데이터 불러오는 중... 🔄</div>
+  if (loading) return <LoadingState />
 
   return (
     <div className="space-y-8">
-      
+
       {/* 파트 1. 헤더 수정 (실제 UI 톤 반영) */}
       <div className="bg-white p-8 rounded-none shadow-sm border border-slate-100">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-xl font-black text-slate-800">1. 세션 소개 (Header)</h2>
-          <button onClick={() => handleSaveContent('header')} disabled={saving} className="bg-[#1a1a1a] text-white px-5 py-2 rounded-none text-xs font-black disabled:opacity-50">{saving ? 'Saving...' : 'Save'}</button>
+          <button onClick={() => handleSaveContent('header')} disabled={saving || !canWrite} className="bg-[#1a1a1a] text-white px-5 py-2 rounded-none text-xs font-black disabled:opacity-50">{saving ? '저장 중' : '저장'}</button>
         </div>
         <div className="space-y-4 text-center p-8 bg-slate-50 rounded-none">
-          <div className="inline-block bg-[#32a4a1]/10 text-[#32a4a1] px-4 py-1 rounded-none text-[10px] font-black uppercase tracking-widest mb-2">Activity 01</div>
+          <div className="inline-block bg-[#32a4a1]/10 text-[#32a4a1] px-4 py-1 rounded-none text-xs font-black uppercase tracking-widest mb-2">Activity 01</div>
           <input type="text" value={headerData.title} onChange={e => setHeaderData({...headerData, title: e.target.value})} className="w-full bg-transparent text-center text-3xl font-black outline-none border-b border-slate-200 focus:border-[#32a4a1] pb-2 mb-4" placeholder="메인 제목 (Regular Session)" />
           <textarea rows="3" value={headerData.desc} onChange={e => setHeaderData({...headerData, desc: e.target.value})} className="w-full bg-white p-4 rounded-none font-medium text-slate-600 outline-none shadow-sm resize-none" placeholder="세션 상세 설명"></textarea>
         </div>
@@ -177,7 +202,7 @@ function RegularManager() {
       <div className="bg-white p-8 rounded-none shadow-sm border border-slate-100">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-xl font-black text-slate-800">2. IGer의 일주일 (Routine)</h2>
-          <button onClick={handleSaveRoutines} disabled={saving} className="bg-teal-600 text-white px-5 py-2 rounded-none text-xs font-black disabled:opacity-50">{saving ? 'Saving...' : 'Save'}</button>
+          <button onClick={handleSaveRoutines} disabled={saving || !canWrite} className="bg-teal-600 text-white px-5 py-2 rounded-none text-xs font-black disabled:opacity-50">{saving ? '저장 중' : '저장'}</button>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 bg-slate-50 p-6 rounded-none">
           {routines.map((routine, idx) => (
@@ -187,7 +212,7 @@ function RegularManager() {
                 <span className={`text-xs font-black ${routine.day.includes("토") ? "text-[#32a4a1]" : "text-slate-400"}`}>{routine.day}</span>
               </div>
               <input type="text" value={routine.action} onChange={e => {let newR = [...routines]; newR[idx].action = e.target.value; setRoutines(newR)}} className="w-full mb-1 text-sm font-black outline-none border-b border-transparent focus:border-slate-300" placeholder="활동명" />
-              <input type="text" value={routine.detail} onChange={e => {let newR = [...routines]; newR[idx].detail = e.target.value; setRoutines(newR)}} className="w-full text-[10px] text-slate-500 font-medium outline-none" placeholder="상세 설명" />
+              <input type="text" value={routine.detail} onChange={e => {let newR = [...routines]; newR[idx].detail = e.target.value; setRoutines(newR)}} className="w-full text-xs text-slate-500 font-medium outline-none" placeholder="상세 설명" />
             </div>
           ))}
         </div>
@@ -197,7 +222,7 @@ function RegularManager() {
       <div className="bg-white p-8 rounded-none shadow-sm border border-slate-100 border-l-4 border-l-[#32a4a1]">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-xl font-black text-slate-800">3. 기획서 & 피드백 규정 (Rules)</h2>
-          <button onClick={() => handleSaveContent('rules')} disabled={saving} className="bg-[#32a4a1] text-white px-5 py-2 rounded-none text-xs font-black disabled:opacity-50">{saving ? 'Saving...' : 'Save'}</button>
+          <button onClick={() => handleSaveContent('rules')} disabled={saving || !canWrite} className="bg-[#32a4a1] text-white px-5 py-2 rounded-none text-xs font-black disabled:opacity-50">{saving ? '저장 중' : '저장'}</button>
         </div>
         {/* 기존 입력칸 유지 */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -222,9 +247,9 @@ function RegularManager() {
       <div className="bg-[#1a1a1a] text-white p-8 rounded-none shadow-sm">
         <div className="flex justify-between items-center mb-8 border-b border-white/10 pb-6">
           <h2 className="text-xl font-black text-[#a8d0cd]">4. 3-Way Feedback System</h2>
-          <button onClick={() => handleSaveContent('feedback')} disabled={saving} className="bg-white text-black px-5 py-2 rounded-none text-xs font-black hover:bg-[#a8d0cd] disabled:opacity-50">{saving ? 'Saving...' : 'Save'}</button>
+          <button onClick={() => handleSaveContent('feedback')} disabled={saving || !canWrite} className="bg-white text-black px-5 py-2 rounded-none text-xs font-black hover:bg-[#a8d0cd] disabled:opacity-50">{saving ? '저장 중' : '저장'}</button>
         </div>
-        
+
         <div className="space-y-12">
           {/* 정량 */}
           <div>
@@ -262,15 +287,15 @@ function RegularManager() {
             <p className="text-xs font-black text-slate-400 mb-3">화면 예시 코멘트 수정 (미리보기형)</p>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-[#f8f9fa] p-6 rounded-none">
               <div className="bg-white p-4 rounded-none shadow-sm border-l-4 border-[#32a4a1]">
-                <p className="text-[10px] font-black text-slate-400 uppercase mb-1">Insight</p>
+                <p className="text-xs font-black text-slate-400 uppercase mb-1">Insight</p>
                 <textarea value={feedbackData.qualInsight} onChange={e => setFeedbackData({...feedbackData, qualInsight: e.target.value})} className="w-full bg-transparent text-sm font-bold text-black outline-none resize-none" rows="3" placeholder="Insight 예시문"></textarea>
               </div>
               <div className="bg-white p-4 rounded-none shadow-sm border-l-4 border-[#1a1a1a]">
-                <p className="text-[10px] font-black text-slate-400 uppercase mb-1">Graphic</p>
+                <p className="text-xs font-black text-slate-400 uppercase mb-1">Graphic</p>
                 <textarea value={feedbackData.qualGraphic} onChange={e => setFeedbackData({...feedbackData, qualGraphic: e.target.value})} className="w-full bg-transparent text-sm font-bold text-black outline-none resize-none" rows="3" placeholder="Graphic 예시문"></textarea>
               </div>
               <div className="bg-white p-4 rounded-none shadow-sm border-l-4 border-[#a8d0cd]">
-                <p className="text-[10px] font-black text-slate-400 uppercase mb-1">Delivery</p>
+                <p className="text-xs font-black text-slate-400 uppercase mb-1">Delivery</p>
                 <textarea value={feedbackData.qualDelivery} onChange={e => setFeedbackData({...feedbackData, qualDelivery: e.target.value})} className="w-full bg-transparent text-sm font-bold text-black outline-none resize-none" rows="3" placeholder="Delivery 예시문"></textarea>
               </div>
             </div>
@@ -312,15 +337,15 @@ function RegularManager() {
       <div className="bg-white p-8 rounded-none shadow-sm border border-slate-100">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-xl font-black text-slate-800">5. 하단 안내 & 링크 (Footer)</h2>
-          <button onClick={() => handleSaveContent('footer')} disabled={saving} className="bg-[#1a1a1a] text-white px-5 py-2 rounded-none text-xs font-black disabled:opacity-50">{saving ? 'Saving...' : 'Save'}</button>
+          <button onClick={() => handleSaveContent('footer')} disabled={saving || !canWrite} className="bg-[#1a1a1a] text-white px-5 py-2 rounded-none text-xs font-black disabled:opacity-50">{saving ? '저장 중' : '저장'}</button>
         </div>
         <div className="space-y-4 bg-slate-50 p-6 rounded-none">
           <div>
-            <label className="text-[10px] font-black text-slate-400 uppercase mb-2 block">안내 문구</label>
+            <label className="text-xs font-black text-slate-400 uppercase mb-2 block">안내 문구</label>
             <input type="text" value={footerData.text} onChange={e => setFooterData({...footerData, text: e.target.value})} className="w-full p-3 rounded-none text-sm font-bold outline-none" placeholder="예: 발표 주제 예시는 인스타그램에서 확인하세요." />
           </div>
           <div>
-            <label className="text-[10px] font-black text-slate-400 uppercase mb-2 block">버튼 이동 링크 (URL)</label>
+            <label className="text-xs font-black text-slate-400 uppercase mb-2 block">버튼 이동 링크 (URL)</label>
             <input type="text" value={footerData.link} onChange={e => setFooterData({...footerData, link: e.target.value})} className="w-full p-3 rounded-none text-sm text-teal-500 outline-none" placeholder="https://instagram.com/..." />
           </div>
         </div>
@@ -342,10 +367,12 @@ const DEFAULT_EDUCATION_CURRICULUM = {
 function EducationManager() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const toast = useToast()
+  const { canWrite } = useAdminRole()
 
   // 1. 헤더 데이터
   const [headerData, setHeaderData] = useState({ title: '', desc: '' })
-  
+
   // 2. 커리큘럼 데이터 (Basic / Advanced)
   const [curriculum, setCurriculum] = useState(DEFAULT_EDUCATION_CURRICULUM)
 
@@ -356,7 +383,7 @@ function EducationManager() {
   const [systemData, setSystemData] = useState({ mentoring_desc: '', alumni_desc: '' })
 
   async function fetchEducationData() {
-    
+
     // 1) 헤더 및 시스템 안내 (pr_activities_content)
     const { data: content } = await supabase.from('pr_activities_content').select('*').eq('id', 'education').single()
     if (content) {
@@ -370,7 +397,7 @@ function EducationManager() {
       const curObj = { ...DEFAULT_EDUCATION_CURRICULUM }
       curData.forEach(item => {
         const key = `${item.category}_${item.course_type}`
-        curObj[key] = { title: item.title, items: item.items }
+        curObj[key] = { id: item.id, title: item.title, items: item.items }
       })
       setCurriculum(curObj)
     }
@@ -435,41 +462,41 @@ function EducationManager() {
     }
     const { error: err1 } = await supabase.from('pr_activities_content').upsert(contentPayload)
 
-    // 2) 커리큘럼 데이터 정리 및 저장 (기존 데이터 삭제 후 새로 삽입)
-    await supabase.from('pr_activities_edu_curriculum').delete().neq('id', 0)
+    // 2) 커리큘럼: 기존 행은 고치고, 제목을 비운 과정만 마지막에 지운다
     let curInsertData = []
     const categories = ['insight', 'graphic', 'delivery']
     const types = ['basic', 'advanced']
-    
+
     categories.forEach(cat => {
       types.forEach(typ => {
         const key = `${cat}_${typ}`
         if (curriculum[key].title) {
-          curInsertData.push({ category: cat, course_type: typ, title: curriculum[key].title, items: curriculum[key].items.filter(i => i.trim() !== '') })
+          curInsertData.push({ id: curriculum[key].id, category: cat, course_type: typ, title: curriculum[key].title, items: curriculum[key].items.filter(i => i.trim() !== '') })
         }
       })
     })
-    
-    if (curInsertData.length > 0) {
-      await supabase.from('pr_activities_edu_curriculum').insert(curInsertData)
-    }
 
-    if (!err1) alert('교육 세션의 모든 정보가 저장되었습니다! 💾')
+    const curFailure = await syncTable('pr_activities_edu_curriculum', curInsertData)
+    if (err1 || curFailure) toast.error([err1 && `소개·강사: ${err1.message}`, curFailure && `커리큘럼: ${curFailure}`].filter(Boolean).join(' / '), { title: '일부만 저장되었을 수 있습니다', duration: 0 })
+    else {
+      toast.success('교육 세션 정보를 저장했습니다.')
+      await fetchEducationData()
+    }
     setSaving(false)
   }
 
-  if (loading) return <div className="p-10 text-center font-bold text-slate-400">데이터 불러오는 중... 🔄</div>
+  if (loading) return <LoadingState />
 
   return (
     <div className="space-y-8">
       {/* 1. 상단 컨트롤 바 */}
-      <div className="bg-white p-6 rounded-none shadow-sm border border-slate-100 flex justify-between items-center sticky top-40 z-10">
+      <div className="bg-white p-6 rounded-none shadow-sm border border-slate-100 flex justify-between items-center sticky top-20 z-10">
         <div>
           <h2 className="text-xl font-black text-slate-800">📚 교육 세션 전체 관리</h2>
           <p className="text-xs font-bold text-slate-400 mt-1">수정 후 반드시 우측의 Save All 버튼을 눌러주세요.</p>
         </div>
-        <button onClick={handleSaveAll} disabled={saving} className="bg-[#32a4a1] text-white px-8 py-3 rounded-none font-black uppercase hover:bg-[#238986] transition-all shadow-sm hover:scale-105">
-          {saving ? 'Saving...' : 'Save All 💾'}
+        <button onClick={handleSaveAll} disabled={saving || !canWrite} className="bg-[#32a4a1] text-white px-8 py-3 rounded-none font-black uppercase hover:bg-[#238986] transition-all shadow-sm hover:scale-105">
+          {saving ? '저장 중' : '전체 저장'}
         </button>
       </div>
 
@@ -485,20 +512,20 @@ function EducationManager() {
       {/* 3. 3대 커리큘럼 에디터 */}
       <div className="bg-white p-8 rounded-none shadow-sm border border-slate-100">
         <h3 className="font-black text-[#32a4a1] mb-6 uppercase text-sm tracking-widest">02. IGD Curriculum</h3>
-        
+
         {['insight', 'graphic', 'delivery'].map(category => (
           <div key={category} className="mb-8 pb-8 border-b border-slate-100 last:border-0 last:mb-0 last:pb-0">
             <h4 className="text-xl font-black uppercase mb-4 flex items-center gap-2">
               {category === 'insight' ? '💡' : category === 'graphic' ? '🎨' : '🎤'} {category}
             </h4>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              
+
               {/* Basic / Advanced 렌더링 */}
               {['basic', 'advanced'].map(type => (
                 <div key={type} className={`p-6 rounded-none ${type === 'basic' ? 'bg-slate-50' : 'bg-slate-50 border-t-4 border-[#32a4a1]'}`}>
-                  <p className="text-[#32a4a1] font-black text-[10px] uppercase tracking-widest mb-2">{type} Course</p>
+                  <p className="text-[#32a4a1] font-black text-xs uppercase tracking-widest mb-2">{type} Course</p>
                   <input type="text" value={curriculum[`${category}_${type}`].title} onChange={e => handleCurriculumChange(category, type, 'title', e.target.value)} className="w-full bg-transparent text-lg font-black outline-none border-b border-slate-200 focus:border-[#32a4a1] pb-1 mb-4" placeholder="과정 제목 (예: 기획의 원칙)" />
-                  
+
                   {/* 동적 리스트 렌더링 */}
                   <div className="space-y-2">
                     {curriculum[`${category}_${type}`].items.map((item, idx) => (
@@ -512,7 +539,7 @@ function EducationManager() {
                   </div>
                 </div>
               ))}
-              
+
             </div>
           </div>
         ))}
@@ -520,7 +547,7 @@ function EducationManager() {
 
       {/* 4. 전문가 특강 & 시스템 안내 */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        
+
         {/* 특강 관리 */}
         <div className="bg-[#1a1a1a] text-white p-8 rounded-none shadow-sm">
           <div className="flex justify-between items-center mb-6">
@@ -531,7 +558,7 @@ function EducationManager() {
             {speakers.map((speaker, idx) => (
               <div key={idx} className="bg-white/5 p-4 rounded-none border border-white/10 relative">
                 <button onClick={() => removeSpeaker(idx)} className="absolute top-4 right-4 text-red-400 hover:text-red-600 text-xs font-black">X</button>
-                <p className="text-[#32a4a1] font-black text-[10px] mb-2">Speaker {String(idx + 1).padStart(2, '0')}</p>
+                <p className="text-[#32a4a1] font-black text-xs mb-2">Speaker {String(idx + 1).padStart(2, '0')}</p>
                 <input type="text" value={speaker.name} onChange={e => handleSpeakerChange(idx, 'name', e.target.value)} className="w-full bg-transparent text-lg font-black outline-none border-b border-white/20 focus:border-[#32a4a1] pb-1 mb-2" placeholder="이름 및 소속" />
                 <input type="text" value={speaker.desc} onChange={e => handleSpeakerChange(idx, 'desc', e.target.value)} className="w-full bg-transparent text-xs font-medium opacity-70 outline-none" placeholder="특강 주제" />
               </div>
@@ -567,18 +594,20 @@ function EducationManager() {
 function UnionManager() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const toast = useToast()
+  const { canWrite } = useAdminRole()
 
   // 1. 헤더 데이터
   const [headerData, setHeaderData] = useState({ title: '', desc: '' })
-  
+
   // 2. 프로젝트 리스트 데이터
   const [projects, setProjects] = useState([])
-  
+
   // 3. 갤러리 데이터 (Activity Sketch)
   const [galleryUrls, setGalleryUrls] = useState([])
 
   async function fetchUnionData() {
-    
+
     // 헤더 & 갤러리 불러오기
     const { data: content } = await supabase.from('pr_activities_content').select('*').eq('id', 'union').single()
     if (content) {
@@ -595,7 +624,7 @@ function UnionManager() {
     } else {
       setProjects([{ semester: '2025 Autumn Semester', title: '', description: '', sub_items: [], image_url: '', theme: 'light', order_num: 1 }])
     }
-    
+
     setLoading(false)
   }
 
@@ -626,11 +655,14 @@ function UnionManager() {
   const handleProjectImageUpload = async (projIndex, file) => {
     if (!file) return
     setSaving(true)
-    const ext = file.name.split('.').pop()
-    const path = `activities/union_${Date.now()}.${ext}`
-    await supabase.storage.from('showcase').upload(path, file)
-    const publicUrl = supabase.storage.from('showcase').getPublicUrl(path).data.publicUrl
-    const newProjects = [...projects]; newProjects[projIndex].image_url = publicUrl; setProjects(newProjects);
+    try {
+      const ext = file.name.split('.').pop()
+      const publicUrl = await uploadPublic(`activities/union_${Date.now()}.${ext}`, file)
+      const newProjects = [...projects]; newProjects[projIndex].image_url = publicUrl; setProjects(newProjects);
+      toast.info('이미지를 올렸습니다. 전체 저장을 눌러야 반영됩니다.')
+    } catch (error) {
+      toast.error(error.message)
+    }
     setSaving(false)
   }
 
@@ -639,18 +671,21 @@ function UnionManager() {
     const files = Array.from(e.target.files)
     if (files.length === 0) return
     setSaving(true)
-    
+
     let newUrls = [...galleryUrls]
-    // 여러 장을 순서대로 업로드
+    const failed = []
+    // 여러 장을 순서대로 올리고, 실패한 파일만 알려 준다 (성공한 파일은 목록에 남는다)
     for (const file of files) {
-      const ext = file.name.split('.').pop()
-      const path = `activities/gallery_${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`
-      await supabase.storage.from('showcase').upload(path, file)
-      const publicUrl = supabase.storage.from('showcase').getPublicUrl(path).data.publicUrl
-      newUrls.push(publicUrl)
+      try {
+        const ext = file.name.split('.').pop()
+        newUrls.push(await uploadPublic(`activities/gallery_${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`, file))
+      } catch {
+        failed.push(file.name)
+      }
     }
-    
     setGalleryUrls(newUrls)
+    if (failed.length) toast.error(`${failed.length}장을 올리지 못했습니다: ${failed.join(', ')}. 다시 골라 올리세요.`, { duration: 0 })
+    else toast.info(`${files.length}장을 올렸습니다. 전체 저장을 눌러야 반영됩니다.`)
     setSaving(false)
   }
 
@@ -661,34 +696,33 @@ function UnionManager() {
   // --- 전체 저장 ---
   const handleSaveAll = async () => {
     setSaving(true)
-    await supabase.from('pr_activities_content').upsert({
+    const { error: contentError } = await supabase.from('pr_activities_content').upsert({
       id: 'union',
       header_title: headerData.title || 'Union Session',
       header_desc: headerData.desc,
       rules_json: { gallery: galleryUrls } // 갤러리 배열 저장
     })
-
-    await supabase.from('pr_activities_union_projects').delete().neq('id', 0)
-    if (projects.length > 0) {
-      const insertData = projects.map((p, i) => ({ semester: p.semester, title: p.title, description: p.description, sub_items: p.sub_items, image_url: p.image_url, theme: p.theme, order_num: i + 1 }))
-      await supabase.from('pr_activities_union_projects').insert(insertData)
+    const projectFailure = await syncTable('pr_activities_union_projects', projects.map((p, i) => ({ id: p.id, semester: p.semester, title: p.title, description: p.description, sub_items: p.sub_items, image_url: p.image_url, theme: p.theme, order_num: i + 1 })))
+    if (contentError || projectFailure) toast.error([contentError && `소개·갤러리: ${contentError.message}`, projectFailure && `프로젝트: ${projectFailure}`].filter(Boolean).join(' / '), { title: '일부만 저장되었을 수 있습니다', duration: 0 })
+    else {
+      toast.success('연합 세션 정보를 저장했습니다.')
+      await fetchUnionData()
     }
-    alert('연합 세션 정보가 모두 저장되었습니다! ✨')
     setSaving(false)
   }
 
-  if (loading) return <div className="p-10 text-center font-bold text-slate-400">데이터 불러오는 중... 🔄</div>
+  if (loading) return <LoadingState />
 
   return (
     <div className="space-y-8">
       {/* 1. 상단 컨트롤 바 */}
-      <div className="bg-white p-6 rounded-none shadow-sm border border-slate-100 flex justify-between items-center sticky top-40 z-10">
+      <div className="bg-white p-6 rounded-none shadow-sm border border-slate-100 flex justify-between items-center sticky top-20 z-10">
         <div>
           <h2 className="text-xl font-black text-slate-800">✨ 연합 세션 전체 관리</h2>
           <p className="text-xs font-bold text-slate-400 mt-1">학기별 프로젝트와 활동 사진을 관리하세요.</p>
         </div>
-        <button onClick={handleSaveAll} disabled={saving} className="bg-[#32a4a1] text-white px-8 py-3 rounded-none font-black uppercase hover:bg-[#238986] transition-all shadow-sm hover:scale-105">
-          {saving ? 'Saving...' : 'Save All 💾'}
+        <button onClick={handleSaveAll} disabled={saving || !canWrite} className="bg-[#32a4a1] text-white px-8 py-3 rounded-none font-black uppercase hover:bg-[#238986] transition-all shadow-sm hover:scale-105">
+          {saving ? '저장 중' : '전체 저장'}
         </button>
       </div>
 
@@ -763,29 +797,29 @@ function UnionManager() {
       <div className="bg-white p-8 rounded-none shadow-sm border border-slate-100">
         <div className="flex justify-between items-center mb-6">
           <h3 className="font-black text-[#32a4a1] uppercase text-sm tracking-widest">03. Activity Sketch (Gallery)</h3>
-          
+
           {/* 다중 업로드 지원 버튼 */}
           <label className="bg-slate-900 text-white px-4 py-2 rounded-none text-xs font-black cursor-pointer hover:bg-[#32a4a1] transition-colors shadow-sm">
             + 사진 추가 (여러 장 가능)
-            <input type="file" multiple accept="image/*" className="hidden" onChange={handleGalleryUpload} disabled={saving} />
+            <input type="file" multiple accept="image/*" className="hidden" onChange={handleGalleryUpload} disabled={saving || !canWrite} />
           </label>
         </div>
-        
+
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 bg-slate-50 p-6 rounded-none">
           {galleryUrls.map((url, idx) => (
             <div key={idx} className="relative aspect-video rounded-none overflow-hidden shadow-sm group">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={url} alt={`gallery-${idx}`} className="w-full h-full object-cover" />
               {/* 호버 시 나타나는 X 삭제 버튼 */}
-              <button 
-                onClick={() => removeGalleryImage(idx)} 
-                className="absolute top-2 right-2 bg-red-500/80 hover:bg-red-600 text-white w-8 h-8 rounded-none flex items-center justify-center font-black text-sm opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-sm"
+              <button
+                onClick={() => removeGalleryImage(idx)}
+                className="absolute top-2 right-2 bg-red-500/80 hover:bg-red-600 text-white w-8 h-8 rounded-none flex items-center justify-center font-black text-sm opacity-100 transition-opacity backdrop-blur-sm"
               >
                 X
               </button>
             </div>
           ))}
-          
+
           {galleryUrls.length === 0 && (
             <div className="col-span-full py-12 text-center flex flex-col items-center">
               <span className="text-4xl mb-2">📸</span>
@@ -805,10 +839,12 @@ function UnionManager() {
 function CorporateManager() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const toast = useToast()
+  const { canWrite } = useAdminRole()
 
   // 1. 헤더 데이터
   const [headerData, setHeaderData] = useState({ title: '', desc: '' })
-  
+
   // 2. 파트너 로고 (pr_activities_corp_partners)
   const [partners, setPartners] = useState([])
 
@@ -825,7 +861,7 @@ function CorporateManager() {
   const [postActivities, setPostActivities] = useState([])
 
   async function fetchCorporateData() {
-    
+
     // 1) 헤더 및 연계 활동 불러오기 (pr_activities_content 재활용)
     const { data: content } = await supabase.from('pr_activities_content').select('*').eq('id', 'corporate').single()
     if (content) {
@@ -851,7 +887,7 @@ function CorporateManager() {
         gallery_urls: caseData.gallery_urls || []
       })
     }
-    
+
     setLoading(false)
   }
 
@@ -864,16 +900,21 @@ function CorporateManager() {
     const files = Array.from(e.target.files)
     if (files.length === 0) return
     setSaving(true)
-    
+
     let newPartners = [...partners]
+    const failed = []
     for (const file of files) {
-      const ext = file.name.split('.').pop()
-      const path = `activities/partner_${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`
-      await supabase.storage.from('showcase').upload(path, file)
-      const publicUrl = supabase.storage.from('showcase').getPublicUrl(path).data.publicUrl
-      newPartners.push({ name: file.name.split('.')[0], image_url: publicUrl, order_num: newPartners.length + 1 })
+      try {
+        const ext = file.name.split('.').pop()
+        const publicUrl = await uploadPublic(`activities/partner_${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`, file)
+        newPartners.push({ name: file.name.split('.')[0], image_url: publicUrl, order_num: newPartners.length + 1 })
+      } catch {
+        failed.push(file.name)
+      }
     }
     setPartners(newPartners)
+    if (failed.length) toast.error(`로고 ${failed.length}개를 올리지 못했습니다: ${failed.join(', ')}`, { duration: 0 })
+    else toast.info('로고를 올렸습니다. 전체 저장을 눌러야 반영됩니다.')
     setSaving(false)
   }
   const removePartner = (index) => setPartners(partners.filter((_, i) => i !== index))
@@ -900,13 +941,17 @@ function CorporateManager() {
     if (files.length === 0) return
     setSaving(true)
     let newUrls = [...postActivities[index].image_urls || []]
+    const failed = []
     for (const file of files) {
-      const ext = file.name.split('.').pop()
-      const path = `activities/post_${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`
-      await supabase.storage.from('showcase').upload(path, file)
-      newUrls.push(supabase.storage.from('showcase').getPublicUrl(path).data.publicUrl)
+      try {
+        const ext = file.name.split('.').pop()
+        newUrls.push(await uploadPublic(`activities/post_${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`, file))
+      } catch {
+        failed.push(file.name)
+      }
     }
     handlePostChange(index, 'image_urls', newUrls)
+    if (failed.length) toast.error(`사진 ${failed.length}장을 올리지 못했습니다: ${failed.join(', ')}`, { duration: 0 })
     setSaving(false)
   }
 
@@ -914,55 +959,61 @@ function CorporateManager() {
   const handleSaveAll = async () => {
     setSaving(true)
 
+    const failures = []
     // 1. 헤더 및 포스트 액티비티 저장
-    await supabase.from('pr_activities_content').upsert({
+    const { error: contentError } = await supabase.from('pr_activities_content').upsert({
       id: 'corporate',
       header_title: headerData.title || 'Corporate Session',
       header_desc: headerData.desc,
       rules_json: { postActivities }
     })
+    if (contentError) failures.push(`소개·연계 활동: ${contentError.message}`)
 
-    // 2. 파트너 로고 저장
-    await supabase.from('pr_activities_corp_partners').delete().neq('id', 0)
-    if (partners.length > 0) {
-      const insertPartners = partners.map((p, i) => ({ name: p.name, image_url: p.image_url, order_num: i + 1 }))
-      await supabase.from('pr_activities_corp_partners').insert(insertPartners)
-    }
+    // 2. 파트너 로고 (기존 행은 고치고, 빠진 로고만 마지막에 지운다)
+    const partnerFailure = await syncTable('pr_activities_corp_partners', partners.map((p, i) => ({ id: p.id, name: p.name, image_url: p.image_url, order_num: i + 1 })))
+    if (partnerFailure) failures.push(`파트너 로고: ${partnerFailure}`)
 
-    // 3. 케이스 스터디 저장
+    // 3. 케이스 스터디 (같은 행을 고친다)
     let finalLogoUrl = caseStudy.corp_logo_url
-    if (logoFile) {
-      const ext = logoFile.name.split('.').pop()
-      const path = `activities/corp_logo_${Date.now()}.${ext}`
-      await supabase.storage.from('showcase').upload(path, logoFile)
-      finalLogoUrl = supabase.storage.from('showcase').getPublicUrl(path).data.publicUrl
+    try {
+      if (logoFile) {
+        const ext = logoFile.name.split('.').pop()
+        finalLogoUrl = await uploadPublic(`activities/corp_logo_${Date.now()}.${ext}`, logoFile)
+        setLogoFile(null)
+      }
+      const caseFailure = await syncTable('pr_activities_corp_projects', [{
+        id: caseStudy.id,
+        title: caseStudy.title,
+        corp_name: caseStudy.corp_name,
+        corp_logo_url: finalLogoUrl,
+        content_json: caseStudy.sections,
+        gallery_urls: caseStudy.gallery_urls
+      }])
+      if (caseFailure) failures.push(`케이스 스터디: ${caseFailure}`)
+    } catch (error) {
+      failures.push(error.message)
     }
 
-    await supabase.from('pr_activities_corp_projects').delete().neq('id', 0)
-    await supabase.from('pr_activities_corp_projects').insert([{
-      title: caseStudy.title,
-      corp_name: caseStudy.corp_name,
-      corp_logo_url: finalLogoUrl,
-      content_json: caseStudy.sections,
-      gallery_urls: caseStudy.gallery_urls // (추후 다중 이미지 업로더 추가 가능)
-    }])
-
-    alert('기업 세션 정보가 모두 저장되었습니다! 🤝')
+    if (failures.length) toast.error(failures.join(' / '), { title: '일부만 저장되었을 수 있습니다', duration: 0 })
+    else {
+      toast.success('기업 세션 정보를 저장했습니다.')
+      await fetchCorporateData()
+    }
     setSaving(false)
   }
 
-  if (loading) return <div className="p-10 text-center font-bold text-slate-400">데이터 불러오는 중... 🔄</div>
+  if (loading) return <LoadingState />
 
   return (
     <div className="space-y-8">
       {/* 1. 상단 컨트롤 바 */}
-      <div className="bg-white p-6 rounded-none shadow-sm border border-slate-100 flex justify-between items-center sticky top-40 z-10">
+      <div className="bg-white p-6 rounded-none shadow-sm border border-slate-100 flex justify-between items-center sticky top-20 z-10">
         <div>
           <h2 className="text-xl font-black text-slate-800">🤝 기업 세션 전체 관리</h2>
           <p className="text-xs font-bold text-slate-400 mt-1">파트너사와 케이스 스터디를 관리하세요.</p>
         </div>
-        <button onClick={handleSaveAll} disabled={saving} className="bg-[#32a4a1] text-white px-8 py-3 rounded-none font-black uppercase hover:bg-[#238986] transition-all shadow-sm hover:scale-105">
-          {saving ? 'Saving...' : 'Save All 💾'}
+        <button onClick={handleSaveAll} disabled={saving || !canWrite} className="bg-[#32a4a1] text-white px-8 py-3 rounded-none font-black uppercase hover:bg-[#238986] transition-all shadow-sm hover:scale-105">
+          {saving ? '저장 중' : '전체 저장'}
         </button>
       </div>
 
@@ -989,7 +1040,7 @@ function CorporateManager() {
             <div key={idx} className="relative h-20 bg-white rounded-none shadow-sm border border-slate-100 flex items-center justify-center p-2 group">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={partner.image_url} alt={partner.name} className="max-w-full max-h-full object-contain" />
-              <button onClick={() => removePartner(idx)} className="absolute -top-2 -right-2 bg-red-500 text-white w-6 h-6 rounded-none font-black text-xs opacity-0 group-hover:opacity-100 transition-opacity">X</button>
+              <button onClick={() => removePartner(idx)} className="absolute -top-2 -right-2 bg-red-500 text-white w-6 h-6 rounded-none font-black text-xs opacity-100 transition-opacity">X</button>
             </div>
           ))}
           {partners.length === 0 && <p className="col-span-full text-center text-xs text-slate-400 py-4">등록된 파트너 로고가 없습니다.</p>}
@@ -999,7 +1050,7 @@ function CorporateManager() {
       {/* 4. 메인 케이스 스터디 (트리플래닛) */}
       <div className="bg-[#1a1a1a] text-white p-8 rounded-none shadow-sm">
         <h3 className="font-black text-[#a8d0cd] mb-6 uppercase text-sm tracking-widest">03. Special Case Study</h3>
-        
+
         <div className="space-y-6">
           <div className="flex flex-col md:flex-row gap-6">
             <div className="flex-1 space-y-4">
@@ -1008,8 +1059,8 @@ function CorporateManager() {
             </div>
             <div className="w-48 bg-white/5 rounded-none border border-white/10 flex flex-col items-center justify-center p-4">
               <span className="text-xs font-bold text-slate-400 mb-2">기업 로고 업로드</span>
-              <input type="file" accept="image/*" onChange={e => setLogoFile(e.target.files[0])} className="text-[10px] w-full" />
-              {caseStudy.corp_logo_url && <span className="text-[10px] text-green-400 mt-2">✓ 기존 로고 있음</span>}
+              <input type="file" accept="image/*" onChange={e => setLogoFile(e.target.files[0])} className="text-xs w-full" />
+              {caseStudy.corp_logo_url && <span className="text-xs text-green-400 mt-2">✓ 기존 로고 있음</span>}
             </div>
           </div>
 
@@ -1028,7 +1079,7 @@ function CorporateManager() {
                   </div>
                   <textarea rows="3" value={sec.content} onChange={e => handleSectionChange(idx, 'content', e.target.value)} className="w-full bg-transparent text-sm font-medium opacity-80 outline-none resize-none" placeholder="내용 (줄바꿈 허용)"></textarea>
                   <div className="mt-2 flex items-center gap-2">
-                    <span className="text-[10px] text-slate-500">배경색 코드:</span>
+                    <span className="text-xs text-slate-500">배경색 코드:</span>
                     <input type="text" value={sec.color} onChange={e => handleSectionChange(idx, 'color', e.target.value)} className="w-20 bg-transparent text-xs outline-none border-b border-white/20" placeholder="#2d3d33" />
                   </div>
                 </div>
@@ -1044,12 +1095,12 @@ function CorporateManager() {
           <h3 className="font-black text-[#32a4a1] uppercase text-sm tracking-widest">04. Post-Session Activities</h3>
           <button onClick={addPostActivity} className="bg-slate-900 text-white px-3 py-1 rounded-none text-xs font-black hover:bg-[#32a4a1] transition-colors">+ 활동 추가</button>
         </div>
-        
+
         <div className="space-y-6">
           {postActivities.map((post, idx) => (
             <div key={idx} className="bg-slate-50 p-6 rounded-none border border-slate-200 relative">
               <button onClick={() => removePostActivity(idx)} className="absolute top-4 right-4 text-red-400 hover:text-red-600 font-black text-xs">X 삭제</button>
-              
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-3">
                   <div className="flex gap-2">
@@ -1058,7 +1109,7 @@ function CorporateManager() {
                   </div>
                   <textarea rows="4" value={post.desc} onChange={e => handlePostChange(idx, 'desc', e.target.value)} className="w-full bg-white p-3 rounded-none text-sm border border-slate-200 resize-none" placeholder="활동 상세 설명"></textarea>
                   <div className="flex items-center gap-2">
-                     <span className="text-[10px] font-black text-slate-400">포인트 컬러:</span>
+                     <span className="text-xs font-black text-slate-400">포인트 컬러:</span>
                      <input type="color" value={post.bg_color} onChange={e => handlePostChange(idx, 'bg_color', e.target.value)} className="w-8 h-8 rounded cursor-pointer" />
                   </div>
                 </div>
@@ -1074,7 +1125,7 @@ function CorporateManager() {
                         <button onClick={() => {
                           const newUrls = post.image_urls.filter((_, i) => i !== imgIdx);
                           handlePostChange(idx, 'image_urls', newUrls);
-                        }} className="absolute top-1 right-1 bg-red-500 text-white w-5 h-5 rounded-none text-[10px] font-black">X</button>
+                        }} className="absolute top-1 right-1 bg-red-500 text-white w-5 h-5 rounded-none text-xs font-black">X</button>
                       </div>
                     ))}
                   </div>

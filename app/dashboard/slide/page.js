@@ -1,386 +1,197 @@
 'use client'
-import { useState, useEffect, useCallback } from 'react'
+// 슬라이드 제출: 구글 드라이브(슬라이드) 공유 링크를 주차별로 제출하고 조별로 확인한다
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { ExternalLink, Link2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
-import InternalNav from '@/app/components/InternalNav'
-import { currentSemesterIdFilter, fetchCurrentSemester, formatDateTime, groupDeadlines, groupSubmissionsByTeam, memberGroup, nearestDeadlineWeek, submissionTopic } from '@/lib/semester'
+import { currentSemesterIdFilter, displayTopic, fetchCurrentSemester, formatKst, fromKstInput, groupDeadlines, memberGroup, nearestDeadlineWeek, submissionTopic } from '@/lib/semester'
+import { MemberHeader, MemberPage, useMember } from '@/app/components/MemberShell'
+import WeekOverviewCard from '@/app/components/WeekOverviewCard'
+import { Button, ErrorState, Field, inputClass, LoadingState, useAsyncAction, useToast } from '@/app/components/ui'
+import { RenameDialog, SubmissionList, useWeekSelection, WeekSelector } from '../_components/shared'
+
+const GOOGLE_DRIVE_FOLDER_URL = 'https://drive.google.com/drive/folders/1F-YFI422wyYQxd0lBeJ9boaNDlr0iwFJ'
 
 export default function SlideRoom() {
   const router = useRouter()
-  const [user, setUser] = useState(null)
+  const identity = useMember()
+  const toast = useToast()
+  const [run, submitting] = useAsyncAction()
+  const [state, setState] = useState({ status: 'loading', error: '' })
+  const [semester, setSemester] = useState(null)
+  const [deadlineRows, setDeadlineRows] = useState([])
   const [files, setFiles] = useState([])
-  
-  const [selectedWeek, setSelectedWeek] = useState(1) 
-  const [targetWeek, setTargetWeek] = useState(1) 
-  
   const [driveLink, setDriveLink] = useState('')
-  const [submitting, setSubmitting] = useState(false)
+  const [renaming, setRenaming] = useState(null)
 
-  const GOOGLE_DRIVE_FOLDER_URL = "https://drive.google.com/drive/folders/1F-YFI422wyYQxd0lBeJ9boaNDlr0iwFJ"
-  
-  const [currentSemester, setCurrentSemester] = useState('')
-  const [totalWeeks, setTotalWeeks] = useState(12) 
-  const [deadlines, setDeadlines] = useState({})
-  const [weekTopics, setWeekTopics] = useState({}) 
-  const [weeklySetup, setWeeklySetup] = useState({})
+  const name = identity.member?.name || identity.session?.user?.user_metadata?.name || ''
 
-  const [editItem, setEditItem] = useState(null)
-  const [newTitle, setNewTitle] = useState('')
-
-  const weeks = Array.from({ length: totalWeeks + 1 }, (_, i) => i)
-
-  // 🌟 방학학기: 정규세션/평일세션 모드
-  const [semesterType, setSemesterType] = useState('regular')
-  const [sessionMode, setSessionMode] = useState('regular') // 'regular' | 'weekday'
-  const fileCategory = sessionMode === 'weekday' ? 'weekday_slide' : 'slide'
-
-  // 🌟 마감: 평일세션은 내가 배정된 조의 진행 날짜 자정, 정규세션은 슬라이드 마감
-  const activeDeadline = (week) => {
-    if (sessionMode === 'weekday') {
-      const grp = memberGroup(weeklySetup, week, user?.user_metadata?.name, 'weekday')
-      const t = grp ? weeklySetup[week]?.weekday?.[grp] : null
-      if (!t) return null
-      if (t.slideDl) return t.slideDl
-      return t.date ? `${t.date}T23:59` : null
-    }
-    return deadlines[week]?.slide || null
-  }
-
-  // 이번 학기 제출물만 본다. 학기 전환은 is_archive를 바꾸지 않으므로 학기 코드로 거른다.
-  const fetchFiles = useCallback(async (semesterCode) => {
-    const { data } = await supabase
-      .from('files_metadata')
-      .select('*')
-      .in('file_category', ['slide', 'weekday_slide'])
-      .eq('semester', semesterCode)
-      .eq('is_archive', false)
-      .order('created_at', { ascending: false })
-    if (data) setFiles(data)
-  }, [])
-
-  const fetchSystemData = useCallback(async () => {
-    const semester = await fetchCurrentSemester()
-    setCurrentSemester(semester.code)
-    setSemesterType(semester.type)
-    setWeekTopics(semester.weekTopics)
-    setTotalWeeks(semester.totalWeeks)
-    setWeeklySetup(semester.weeklySetup)
-
-    const { data: dlData } = await supabase.from('pr_deadlines').select('*').or(currentSemesterIdFilter(semester)).in('category', ['slide', 'weekday_upload'])
-    const initialWeek = nearestDeadlineWeek(dlData, 'slide')
-    setDeadlines(groupDeadlines(dlData))
-    setSelectedWeek(initialWeek)
-    setTargetWeek(initialWeek)
-    return semester
+  const fetchFiles = useCallback(async (code) => {
+    const { data, error } = await supabase.from('files_metadata').select('*').in('file_category', ['slide', 'weekday_slide']).eq('semester', code).eq('is_archive', false).order('created_at', { ascending: false })
+    if (error) throw error
+    setFiles(data || [])
   }, [])
 
   useEffect(() => {
-    const checkUser = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) { router.push('/login'); return }
-      setUser(session.user)
-      const semester = await fetchSystemData()
-      fetchFiles(semester.code)
+    if (identity.status !== 'ready') return undefined
+    if (!identity.session) {
+      router.replace('/login?next=%2Fdashboard%2Fslide')
+      return undefined
     }
-    checkUser()
-  }, [router, fetchFiles, fetchSystemData])
-
-  const refreshFiles = () => fetchFiles(currentSemester)
-
-  const handleUpdateFile = async () => {
-    if (!newTitle) return
-    const { error } = await supabase.from('files_metadata').update({ file_name: newTitle }).eq('id', editItem.id)
-    if (!error) { 
-      alert("파일 이름 수정 완료!"); 
-      setEditItem(null);
-      refreshFiles();
+    let active = true
+    async function load() {
+      try {
+        const current = await fetchCurrentSemester()
+        const { data, error } = await supabase.from('pr_deadlines').select('*').or(currentSemesterIdFilter(current)).in('category', ['slide', 'weekday_upload'])
+        if (error) throw error
+        await fetchFiles(current.code)
+        if (!active) return
+        setSemester(current)
+        setDeadlineRows(data || [])
+        setState({ status: 'ready', error: '' })
+      } catch (error) {
+        if (active) setState({ status: 'error', error: error.message })
+      }
     }
+    load()
+    return () => {
+      active = false
+    }
+  }, [identity.status, identity.session, router, fetchFiles])
+
+  const deadlines = useMemo(() => groupDeadlines(deadlineRows), [deadlineRows])
+  const selection = useWeekSelection({
+    ready: state.status === 'ready',
+    totalWeeks: semester?.totalWeeks || 0,
+    defaultWeek: nearestDeadlineWeek(deadlineRows, 'slide'),
+    allowWeekday: semester?.type === 'vacation',
+  })
+  const week = selection.week ?? 0
+  const mode = selection.session
+
+  // 평일세션: 내가 배정된 조의 마감(없으면 진행일 자정), 정규: 슬라이드 마감
+  const myWeekdayTeam = semester ? (() => {
+    const group = memberGroup(semester.weeklySetup, week, name, 'weekday')
+    return group ? { group, ...(semester.weeklySetup[week]?.weekday?.[group] || {}) } : null
+  })() : null
+  const activeDeadline = mode === 'weekday'
+    ? (myWeekdayTeam?.slideDl ? fromKstInput(myWeekdayTeam.slideDl) : myWeekdayTeam?.date ? fromKstInput(`${myWeekdayTeam.date}T23:59`) : null)
+    : deadlines[week]?.slide || null
+  const setup = semester?.weeklySetup?.[week] || {}
+  const team = setup.evalMode === 'team' ? (setup.memberTeams || setup.members || {})[name] : null
+  const fileCategory = mode === 'weekday' ? 'weekday_slide' : 'slide'
+  const filesThisWeek = files.filter((file) => file.week === week && (file.file_category || 'slide') === fileCategory)
+
+  async function submit(event) {
+    event.preventDefault()
+    const link = driveLink.trim()
+    if (!link) {
+      toast.error('구글 드라이브·슬라이드 공유 링크를 입력하세요.')
+      return
+    }
+    if (!/^https:\/\/(drive|docs)\.google\.com\//.test(link)) {
+      toast.error('구글 드라이브 또는 구글 슬라이드 공유 링크만 제출할 수 있습니다.')
+      return
+    }
+    await run(async () => {
+      const topic = submissionTopic(semester.weekTopics, week, mode)
+      const isLate = activeDeadline ? Date.now() > new Date(activeDeadline).getTime() : false
+      const { error } = await supabase.from('files_metadata').insert([{
+        file_name: `${week}W${mode === 'weekday' ? ' [평일세션]' : ''} (${topic}) ${name} 발표자료`,
+        file_url: link,
+        week,
+        file_category: fileCategory,
+        is_archive: false,
+        uploader: name,
+        uploader_member_id: identity.member?.id || null,
+        storage_path: 'google_drive_link',
+        semester: semester.code,
+        semester_id: semester.id || null,
+        is_late: isLate,
+        group_id: memberGroup(semester.weeklySetup, week, name, mode),
+      }])
+      if (error) {
+        toast.error(`제출하지 못했습니다: ${error.message}`)
+        return
+      }
+      toast.success(isLate ? '제출했습니다. 마감 이후라 지각으로 기록됩니다.' : '슬라이드를 제출했습니다.')
+      setDriveLink('')
+      await fetchFiles(semester.code)
+    })
   }
 
-  const handleDeleteFile = async (e, id) => {
-    e.stopPropagation(); 
-    if (!confirm("해당 슬라이드 제출 기록을 삭제하시겠습니까?\n(원본 링크는 지워지지 않습니다.)")) return
-    const { error } = await supabase.from('files_metadata').delete().eq('id', id)
-    if (!error) refreshFiles()
+  async function rename(value) {
+    await run(async () => {
+      const { error } = await supabase.from('files_metadata').update({ file_name: value }).eq('id', renaming.id)
+      if (error) {
+        toast.error(`이름을 바꾸지 못했습니다: ${error.message}`)
+        return
+      }
+      toast.success('파일 이름을 바꿨습니다.')
+      setRenaming(null)
+      await fetchFiles(semester.code)
+    })
   }
 
-  const handleSubmitLink = async () => {
-    if (!driveLink.trim()) {
-      alert("구글 드라이브 공유 링크를 입력해 주세요!");
-      return;
-    }
-    if (!driveLink.includes("drive.google.com") && !driveLink.includes("docs.google.com")) {
-      alert("올바른 구글 드라이브 링크가 아닙니다.");
-      return;
-    }
-
-    setSubmitting(true)
-    
-    const currentTopic = submissionTopic(weekTopics, targetWeek, sessionMode)
-    const uploaderName = user.user_metadata.name || '익명'
-    const sessionTag = sessionMode === 'weekday' ? ' [평일세션]' : ''
-    const autoFileName = `${targetWeek}W${sessionTag} (${currentTopic}) ${uploaderName} 발표자료`
-    
-    // 평일세션은 평일 전용 조 편성을 기준으로 저장한다
-    const myGroup = memberGroup(weeklySetup, targetWeek, uploaderName, sessionMode)
-
-    const deadline = activeDeadline(targetWeek)
-    const isLate = deadline ? new Date() > new Date(deadline) : false
-
-    const { error } = await supabase.from('files_metadata').insert([{
-      file_name: autoFileName,
-      file_url: driveLink,
-      week: targetWeek,
-      file_category: fileCategory,
-      is_archive: false,
-      uploader: uploaderName, 
-      storage_path: 'google_drive_link', 
-      semester: currentSemester,
-      is_late: isLate,
-      group_id: myGroup 
-    }])
-    
-    if (error) {
-      alert('제출 실패: ' + error.message);
-    } else {
-      alert('슬라이드 링크 제출 완료!'); 
-      setDriveLink(''); 
-      setSelectedWeek(targetWeek);
-      refreshFiles();
-    }
-    setSubmitting(false); 
+  async function remove(file) {
+    if (!confirm(`'${file.file_name}' 제출 기록을 지울까요?\n드라이브의 원본 파일은 지워지지 않습니다.`)) return
+    await run(async () => {
+      const { data, error } = await supabase.from('files_metadata').delete().eq('id', file.id).select('id')
+      if (error || !data?.length) {
+        toast.error(`삭제하지 못했습니다${error ? `: ${error.message}` : ' (권한이 없거나 이미 삭제됨)'}`)
+        return
+      }
+      toast.success('제출 기록을 지웠습니다.')
+      await fetchFiles(semester.code)
+    })
   }
 
-  const handleWeekChange = (w) => {
-    setSelectedWeek(w);
-    setTargetWeek(w);
-  }
+  if (identity.status !== 'ready' || state.status === 'loading' || selection.week === null) return <MemberPage><LoadingState /></MemberPage>
+  if (state.status === 'error') return <MemberPage><ErrorState title="슬라이드 자료실을 불러오지 못했습니다." description={state.error} onRetry={() => window.location.reload()} /></MemberPage>
 
-  if (!user) return <div className="p-8 text-center font-bold text-slate-500">데이터 로딩 중...</div>
-
-  const filesThisWeek = files.filter(f => f.week === selectedWeek && (f.file_category || 'slide') === fileCategory)
-  const { groups: groupedFiles, maxGroup } = groupSubmissionsByTeam(filesThisWeek, weeklySetup, selectedWeek, sessionMode)
+  const weeks = Array.from({ length: semester.totalWeeks + 1 }, (_, index) => index)
+  const topic = displayTopic(semester.weekTopics, week, mode)
 
   return (
-    <div className="bg-white min-h-screen text-slate-900 font-sans pb-32">
-      <InternalNav />
+    <MemberPage>
+      <MemberHeader eyebrow="주차별 자료실" title="슬라이드 제출" description="주차별 발표 슬라이드 링크를 제출하고 조원들의 슬라이드를 미리 봅니다." actions={<Button href={GOOGLE_DRIVE_FOLDER_URL} target="_blank" icon={ExternalLink}>공유 드라이브 열기</Button>} />
+      <WeekSelector weeks={weeks} week={week} onChange={selection.setWeek} session={mode} onSession={selection.setSession} allowWeekday={semester.type === 'vacation'} weekTopics={semester.weekTopics} />
 
-      <header className="max-w-[1200px] mx-auto px-6 md:px-8 mt-12 mb-10">
-        <div className="mb-8 flex flex-col md:flex-row md:items-end md:justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-extrabold text-teal-800 tracking-tight">Slide Board</h1>
-            <p className="text-sm font-medium text-slate-500 mt-2">주차별 발표 슬라이드를 제출하고 확인합니다.</p>
-          </div>
-
-          {/* 🌟 방학학기: 정규/평일 세션 전환 */}
-          {semesterType === 'vacation' && (
-            <div className="flex border border-slate-300 w-fit">
-              <button onClick={() => setSessionMode('regular')} className={`px-5 py-2 text-xs font-bold transition-colors ${sessionMode === 'regular' ? 'bg-teal-800 text-white' : 'bg-white text-slate-500 hover:text-teal-800'}`}>
-                📚 정규세션
-              </button>
-              <button onClick={() => setSessionMode('weekday')} className={`px-5 py-2 text-xs font-bold transition-colors border-l border-slate-300 ${sessionMode === 'weekday' ? 'bg-teal-800 text-white' : 'bg-white text-slate-500 hover:text-teal-800'}`}>
-                🏖️ 평일세션
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* 🌟 컨트롤 패널 (선과 면 분할로만 이루어진 미니멀 디자인 - 기획서 완벽 동기화) */}
-        <div className="border-y border-slate-200 py-6 flex flex-col md:flex-row justify-between items-center gap-6">
-          <div className="flex flex-col gap-2 w-full md:w-auto">
-            <div className="flex items-center gap-4">
-              <select 
-                value={targetWeek} 
-                onChange={(e) => handleWeekChange(Number(e.target.value))} 
-                className="py-1.5 pr-8 pl-2 bg-transparent text-slate-800 font-extrabold text-lg outline-none cursor-pointer border-b border-slate-300 hover:border-purple-600 transition-all appearance-none"
-              >
-                {weeks.map(w => <option key={w} value={w}>Week {w}</option>)}
-              </select>
-              <h2 className="text-lg font-bold text-slate-700 tracking-tight">
-                {sessionMode === 'weekday'
-                  ? (weekTopics[`weekday_${targetWeek}`] || '평일세션 주제 미설정')
-                  : submissionTopic(weekTopics, targetWeek)}
-              </h2>
-            </div>
-            
-            <div className="flex flex-wrap items-center gap-x-5 gap-y-1 mt-2">
-              <p className="text-xs font-medium text-slate-500 flex items-center gap-2 whitespace-nowrap">
-                <span className="text-slate-400 font-bold uppercase tracking-wider">{sessionMode === 'weekday' ? '평일세션 마감 |' : '제출 마감 |'}</span>
-                <span className="text-slate-800">{activeDeadline(targetWeek) ? formatDateTime(activeDeadline(targetWeek)) : '미설정'}</span>
-              </p>
-              {sessionMode === 'weekday' && (
-                <p className="text-xs font-bold text-teal-700 break-keep">기획서 없이 발표자료만 제출합니다.</p>
-              )}
-            </div>
-          </div>
-
-          {/* 슬라이드 전용: 링크 제출 폼 (상자 제거, 선 기반) */}
-          <div className="flex flex-col sm:flex-row gap-4 w-full md:w-auto shrink-0 items-center">
-            <a href={GOOGLE_DRIVE_FOLDER_URL} target="_blank" rel="noopener noreferrer" className="text-sm font-bold text-slate-600 hover:text-purple-600 transition-colors underline underline-offset-4">
-              드라이브 열기 ↗
-            </a>
-            <div className="flex w-full sm:w-auto items-center ml-0 sm:ml-4">
-              <input 
-                type="text" 
-                value={driveLink}
-                onChange={(e) => setDriveLink(e.target.value)}
-                placeholder="공유 링크 붙여넣기" 
-                className="border-b border-slate-300 px-2 py-2 text-sm font-medium outline-none focus:border-purple-800 w-full sm:w-[220px] bg-transparent transition-colors" 
-              />
-              <button 
-                onClick={handleSubmitLink} 
-                disabled={submitting} 
-                className="bg-slate-900 hover:bg-purple-600 text-white px-6 py-2.5 font-bold text-sm transition-colors whitespace-nowrap ml-4"
-              >
-                {submitting ? '제출 중...' : '+ 신규 등록'}
-              </button>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      {/* 🌟 메인 레이아웃: 사이드바 + 리스트 보드 */}
-      <div className="max-w-[1200px] mx-auto px-6 md:px-8 flex flex-col lg:flex-row gap-10 items-start">
-        
-        {/* 좌측: 텍스트 기반 사이드바 */}
-        <aside className="w-full lg:w-[200px] shrink-0 sticky top-24 hidden lg:flex flex-col">
-          <h3 className="text-xs font-extrabold text-slate-400 uppercase tracking-widest mb-4 border-b border-slate-200 pb-2">Select Week</h3>
-          <div className="flex flex-col gap-2 max-h-[60vh] overflow-y-auto no-scrollbar py-2">
-            {weeks.map(w => (
-              <button 
-                key={w} 
-                onClick={() => handleWeekChange(w)} 
-                className={`text-left text-sm font-semibold transition-colors py-1 ${selectedWeek === w ? 'text-purple-800 underline underline-offset-4 decoration-2' : 'text-slate-500 hover:text-slate-800'}`}
-              >
-                {w === 0 ? 'OT / 자유 주제' : `Week ${String(w).padStart(2, '0')}`}
-              </button>
-            ))}
-          </div>
-        </aside>
-
-        {/* 모바일용 주차 선택 */}
-        <div className="lg:hidden w-full flex gap-4 overflow-x-auto pb-2 mb-6 border-b border-slate-200 no-scrollbar">
-          {weeks.map(w => (
-            <button 
-              key={w} 
-              onClick={() => handleWeekChange(w)} 
-              className={`pb-3 text-sm font-semibold transition-colors shrink-0 ${selectedWeek === w ? 'text-purple-800 border-b-2 border-purple-800' : 'text-slate-500'}`}
-            >
-              W{w}
-            </button>
-          ))}
-        </div>
-
-        {/* 우측: 리스트형 메인 보드 */}
-        <main className="flex-1 w-full min-w-0 space-y-12">
-          {filesThisWeek.length === 0 ? (
-            <div className="text-center py-20 text-slate-400 font-medium">
-              해당 주차에 등록된 내역이 없습니다.
-            </div>
-          ) : (
-            <div className="space-y-10">
-              {Array.from({ length: maxGroup }, (_, i) => i + 1).map(gId => {
-                const groupList = groupedFiles[gId]
-                const isGroupSetup = weeklySetup[selectedWeek] && weeklySetup[selectedWeek].groupCount >= gId;
-                if (groupList.length === 0 && !isGroupSetup) return null 
-                
-                return (
-                  <div key={gId} className="border-t-2 border-purple-800 pt-4">
-                    <div className="flex justify-between items-end mb-4">
-                      <h3 className="text-lg font-extrabold text-purple-800">Group {String(gId).padStart(2, '0')}</h3>
-                      <span className="text-xs font-bold text-slate-400">Total {groupList.length}</span>
-                    </div>
-                    <div className="border-t border-slate-200">
-                      {groupList.length === 0 ? (
-                        <div className="py-6 text-center text-xs font-medium text-slate-400 border-b border-slate-200">
-                          제출 내역이 없습니다.
-                        </div>
-                      ) : groupList.map(file => (
-                        <SlideListItem 
-                          key={file.id} 
-                          file={file} 
-                          onEdit={(e) => { e.stopPropagation(); setEditItem(file); setNewTitle(file.file_name); }}
-                          onDelete={(e) => { e.stopPropagation(); handleDeleteFile(e, file.id); }}
-                          formatDateTime={formatDateTime}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                )
-              })}
-
-              {/* 미분류 리스트 */}
-              {groupedFiles['미분류'].length > 0 && (
-                <div className={`border-t-2 border-slate-300 pt-4 transition-opacity ${maxGroup === 0 ? '' : 'opacity-70 hover:opacity-100'}`}>
-                  <div className="flex justify-between items-end mb-4">
-                    <h3 className="text-lg font-extrabold text-slate-600">
-                      {maxGroup === 0 ? '제출 목록 (조 미편성)' : '개별 / 미분류 제출'}
-                    </h3>
-                    <span className="text-xs font-bold text-slate-400">Total {groupedFiles['미분류'].length}</span>
-                  </div>
-                  <div className="border-t border-slate-200">
-                    {groupedFiles['미분류'].map(file => (
-                      <SlideListItem 
-                        key={file.id} 
-                        file={file} 
-                        onEdit={(e) => { e.stopPropagation(); setEditItem(file); setNewTitle(file.file_name); }}
-                        onDelete={(e) => { e.stopPropagation(); handleDeleteFile(e, file.id); }}
-                        formatDateTime={formatDateTime}
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </main>
-
+      <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1fr)_380px]">
+        <WeekOverviewCard
+          semesterName={semester.name}
+          week={week}
+          sessionMode={mode}
+          topic={topic}
+          cancelled={semester.weeks?.[week]?.status === 'cancelled'}
+          scheduleDate={mode === 'weekday' ? myWeekdayTeam?.date : undefined}
+          attendance={mode === 'weekday' ? {} : { open: deadlines[week]?.attendance_start, late: deadlines[week]?.session_start, end: deadlines[week]?.attendance_end }}
+          groupLabel={mode === 'weekday' ? (myWeekdayTeam ? `평일 ${myWeekdayTeam.group}조` : '') : team ? `${team}팀` : memberGroup(semester.weeklySetup, week, name) ? `${memberGroup(semester.weeklySetup, week, name)}조` : ''}
+          deadlines={[{ key: 'slide', label: mode === 'weekday' ? '평일 발표자료 마감' : '슬라이드 제출', at: activeDeadline }]}
+        />
+        <form onSubmit={submit} className="space-y-3 rounded-lg border border-slate-200 p-4">
+          <h2 className="text-base font-bold text-slate-900">W{week} 슬라이드 제출</h2>
+          <Field label="공유 링크" htmlFor="slide-link" hint={`파일 이름은 자동으로 "${week}W (${submissionTopic(semester.weekTopics, week, mode)}) ${name} 발표자료"가 됩니다. 마감 ${activeDeadline ? formatKst(activeDeadline) : '미정'}`}>
+            <input id="slide-link" value={driveLink} onChange={(event) => setDriveLink(event.target.value)} placeholder="https://docs.google.com/presentation/…" className={inputClass} />
+          </Field>
+          <Button type="submit" variant="primary" icon={Link2} className="w-full" loading={submitting}>제출</Button>
+          <p className="text-xs leading-5 text-slate-500">미리보기는 링크 공유가 켜진 파일만 첫 장이 보입니다. 공유를 바꾸지 않아도 제출은 됩니다.</p>
+        </form>
       </div>
 
-      {/* 파일 이름 수정 모달 (기획서 100% 동일) */}
-      {editItem && (
-        <div className="fixed inset-0 bg-slate-900/60 flex items-center justify-center p-4 z-[110]">
-          <div className="bg-white p-8 w-full max-w-sm shadow-xl border border-slate-200">
-            <h2 className="font-extrabold mb-6 text-lg text-slate-900 border-l-4 border-purple-800 pl-2">파일명 수정</h2>
-            <input type="text" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} className="w-full border-b border-slate-300 py-2 mb-8 font-medium text-sm outline-none focus:border-purple-800 bg-transparent" />
-            <div className="flex gap-2">
-              <button onClick={handleUpdateFile} className="flex-1 py-2.5 bg-purple-800 text-white font-bold text-xs hover:bg-purple-900">저장</button>
-              <button onClick={() => setEditItem(null)} className="flex-1 py-2.5 bg-slate-100 text-slate-600 font-bold text-xs hover:bg-slate-200">취소</button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-// 🌟 가로형 슬라이드 리스트 아이템 (기획서 UI 100% 동기화)
-function SlideListItem({ file, onEdit, onDelete, formatDateTime }) {
-  return (
-    <div 
-      className="flex flex-col sm:flex-row sm:items-center justify-between py-4 border-b border-slate-200 hover:bg-slate-50/50 transition-colors cursor-pointer group gap-4 px-2" 
-      onClick={() => window.open(file.file_url, '_blank')}
-    >
-      <div className="flex items-center gap-4 flex-1 min-w-0">
-        <span className="shrink-0 font-black text-[10px] text-purple-600 uppercase w-8 text-center">
-          LINK
-        </span>
-        <div className="flex flex-col min-w-0 gap-0.5">
-          <div className="flex items-center gap-2">
-            <h4 className="text-sm font-semibold text-slate-800 truncate group-hover:text-purple-600 transition-colors">{file.file_name}</h4>
-            {file.is_late && <span className="border border-red-400 text-red-600 text-[9px] font-black px-1 py-0.5 rounded-sm shrink-0">LATE</span>}
-          </div>
-          <span className="text-xs font-medium text-slate-400">{file.uploader}</span>
-        </div>
-      </div>
-
-      <div className="flex items-center justify-between sm:justify-end gap-6 shrink-0 w-full sm:w-auto pl-12 sm:pl-0">
-        <span className="text-xs font-medium text-slate-400">{formatDateTime(file.created_at)}</span>
-        <div className="flex items-center gap-3 sm:opacity-0 group-hover:opacity-100 transition-opacity">
-          <button onClick={(e) => { e.stopPropagation(); onEdit(e); }} className="text-[11px] font-bold text-slate-400 hover:text-purple-600 transition-colors">수정</button>
-          <button onClick={(e) => { e.stopPropagation(); onDelete(e); }} className="text-[11px] font-bold text-slate-400 hover:text-red-600 transition-colors">삭제</button>
-        </div>
-      </div>
-    </div>
+      <section className="mt-8" aria-label={`W${week} 제출 목록`}>
+        <SubmissionList
+          files={filesThisWeek}
+          weeklySetup={semester.weeklySetup}
+          week={week}
+          session={mode}
+          owner={{ member: identity.member, name, team }}
+          admin={identity.admin}
+          onEdit={setRenaming}
+          onDelete={remove}
+        />
+      </section>
+      {renaming && <RenameDialog file={renaming} onClose={() => setRenaming(null)} onSave={rename} saving={submitting} />}
+    </MemberPage>
   )
 }

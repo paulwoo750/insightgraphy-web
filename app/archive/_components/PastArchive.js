@@ -1,7 +1,10 @@
 'use client'
 import { useMemo, useState } from 'react'
+import { ExternalLink, Trash2 } from 'lucide-react'
 import ArchiveModal from './ArchiveModal'
-import { sortSemestersDesc } from '@/lib/semester'
+import FileThumbnail from '@/app/components/FileThumbnail'
+import { Button } from '@/app/components/ui'
+import { formatKst, sortSemestersDesc } from '@/lib/semester'
 import {
   FILE_CATEGORIES,
   REGULAR_FILE_CATEGORIES,
@@ -17,7 +20,7 @@ const EMPTY_NAV = { semester: null, week: null, category: null }
 
 // 지난 학기 자료실. 주차 주제는 반드시 "그 학기"의 기록에서만 찾는다.
 // (현재 학기 week_topics로 대체하면 과거 주차에 이번 학기 주제가 붙는다)
-export default function PastArchive({ currentCode, files, semesters, weekRows, archiveRows, absenceRows, myName, onDeleteFile }) {
+export default function PastArchive({ currentCode, files, semesters, weekRows, archiveRows, absenceRows, canManage, onDeleteFile }) {
   const [nav, setNav] = useState(EMPTY_NAV)
   const [timelineView, setTimelineView] = useState(null)
   const [absenceView, setAbsenceView] = useState(null)
@@ -110,11 +113,11 @@ export default function PastArchive({ currentCode, files, semesters, weekRows, a
           {weeks.map((week) => (
             <button key={week} onClick={() => setNav({ ...nav, week })} className="border border-slate-200 hover:border-teal-700 hover:bg-teal-50 p-5 text-left transition-all group flex justify-between items-center">
               <div>
-                <span className="text-[10px] font-black bg-teal-800 text-white px-2 py-0.5 uppercase">Week {week}</span>
+                <span className="text-xs font-black bg-teal-800 text-white px-2 py-0.5 uppercase">Week {week}</span>
                 <p className="text-base font-extrabold text-slate-800 mt-2">📚 {topicFor(week)}</p>
                 {weekdayTopicFor(week) && <p className="text-sm font-bold text-teal-700 mt-1">🏖️ {weekdayTopicFor(week)}</p>}
               </div>
-              <span className="text-teal-500 opacity-0 group-hover:opacity-100 transition-opacity font-black text-sm">→</span>
+              <span className="text-teal-500 font-black text-sm">→</span>
             </button>
           ))}
         </div>
@@ -130,11 +133,13 @@ export default function PastArchive({ currentCode, files, semesters, weekRows, a
       )}
 
       {nav.category && (
-        <div className="border-t border-slate-200">
-          {categoryFiles.length === 0 ? <p className="text-slate-400 font-medium py-12 text-center">등록된 자료가 없습니다.</p> : categoryFiles.map((file) => (
-            <PastRow key={file.id} file={file} mine={file.uploader === myName} onDelete={() => onDeleteFile(file)} />
-          ))}
-        </div>
+        categoryFiles.length === 0 ? <p className="rounded-lg border border-dashed border-slate-300 px-4 py-12 text-center text-sm text-slate-500">등록된 자료가 없습니다.</p> : (
+          <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {categoryFiles.map((file) => (
+              <PastCard key={file.id} file={file} manage={canManage(file)} onDelete={() => onDeleteFile(file)} />
+            ))}
+          </ul>
+        )
       )}
 
       {timelineView && (
@@ -143,7 +148,7 @@ export default function PastArchive({ currentCode, files, semesters, weekRows, a
             <div className="border-t border-slate-200">
               {timelineView.map((event, index) => (
                 <div key={index} className="flex items-start gap-4 py-3 border-b border-slate-100">
-                  <span className="shrink-0 text-[10px] font-black bg-teal-800 text-white px-2 py-0.5 mt-0.5 w-14 text-center">{event.type === 'regular' ? `W${event.week || '?'}` : event.type === 'special' ? '특별' : '기타'}</span>
+                  <span className="shrink-0 text-xs font-black bg-teal-800 text-white px-2 py-0.5 mt-0.5 w-14 text-center">{event.type === 'regular' ? `W${event.week || '?'}` : event.type === 'special' ? '특별' : '기타'}</span>
                   <div className="min-w-0 flex-1">
                     <p className={`text-sm font-bold ${event.is_break ? 'text-slate-400 line-through' : 'text-slate-800'}`}>{event.title}</p>
                     {event.description && <p className="text-xs text-slate-400 font-medium mt-0.5">{event.description}</p>}
@@ -163,12 +168,12 @@ export default function PastArchive({ currentCode, files, semesters, weekRows, a
               {absenceView.map((absence, index) => (
                 <div key={absence.id || index} className="py-3 border-b border-slate-100">
                   <div className="flex items-center gap-2 mb-1 flex-wrap">
-                    <span className="shrink-0 text-[9px] font-black bg-teal-800 text-white px-2 py-0.5 uppercase">W{absence.week ?? '?'}</span>
-                    {absence.session_type === 'weekday' && <span className="shrink-0 text-[9px] font-black bg-teal-100 text-teal-800 px-2 py-0.5 uppercase">평일</span>}
-                    <span className="shrink-0 text-[9px] font-black bg-slate-800 text-white px-2 py-0.5 uppercase">{absence.type}</span>
+                    <span className="shrink-0 text-xs font-black bg-teal-800 text-white px-2 py-0.5 uppercase">W{absence.week ?? '?'}</span>
+                    {absence.session_type === 'weekday' && <span className="shrink-0 text-xs font-black bg-teal-100 text-teal-800 px-2 py-0.5 uppercase">평일</span>}
+                    <span className="shrink-0 text-xs font-black bg-slate-800 text-white px-2 py-0.5 uppercase">{absence.type}</span>
                     <span className="text-sm font-bold text-slate-800">{absence.user_name}</span>
                     <span className="text-xs font-medium text-slate-400">{absence.target_date}</span>
-                    {absence.status && absence.status !== '대기' && <span className="text-[10px] font-bold text-teal-700">· {absence.status}</span>}
+                    {absence.status && absence.status !== '대기' && <span className="text-xs font-bold text-teal-700">· {absence.status}</span>}
                   </div>
                   <p className="text-xs text-slate-500 font-medium whitespace-pre-wrap">{absence.reason}</p>
                 </div>
@@ -193,7 +198,7 @@ function SnapshotButton({ icon, label, onClick }) {
 function CategoryGroup({ label, categories, onSelect, weekday = false }) {
   return (
     <div>
-      <p className={`text-[10px] font-black uppercase tracking-widest mb-2 ${weekday ? 'text-teal-700' : 'text-slate-400'}`}>{label}</p>
+      <p className={`text-xs font-black uppercase tracking-widest mb-2 ${weekday ? 'text-teal-700' : 'text-slate-400'}`}>{label}</p>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         {categories.map((category) => (
           <button key={category} onClick={() => onSelect(category)} className={`p-8 font-extrabold text-lg transition-all flex flex-col items-center gap-3 border hover:border-teal-700 hover:bg-teal-50 ${weekday ? 'border-teal-200 bg-teal-50/40 text-teal-800' : 'border-slate-200 text-slate-700 hover:text-teal-800'}`}>
@@ -205,19 +210,18 @@ function CategoryGroup({ label, categories, onSelect, weekday = false }) {
   )
 }
 
-function PastRow({ file, mine, onDelete }) {
+function PastCard({ file, manage, onDelete }) {
   return (
-    <div className="flex items-center justify-between py-4 border-b border-slate-200 hover:bg-slate-50/60 transition-colors group gap-4 px-2">
-      <a href={file.file_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-4 flex-1 min-w-0">
-        <span className="shrink-0 text-[9px] font-black px-2 py-1 uppercase tracking-widest bg-teal-100 text-teal-800">{fileCategoryLabel(file.file_category, { short: true })}</span>
-        <h4 className="text-sm font-bold text-slate-800 truncate group-hover:text-teal-800 transition-colors">{file.file_name}</h4>
-      </a>
-      <div className="flex items-center gap-5 shrink-0">
-        <span className="text-xs font-medium text-slate-400 hidden sm:block">{file.uploader}</span>
-        {mine && (
-          <button onClick={onDelete} className="text-[11px] font-bold text-slate-400 hover:text-red-600 transition-colors sm:opacity-0 group-hover:opacity-100">삭제</button>
-        )}
+    <li className="min-w-0 rounded-lg border border-slate-200 bg-white p-3">
+      <FileThumbnail url={file.file_url} storagePath={file.storage_path} title={file.file_name} />
+      <div className="mt-2 min-w-0">
+        <p className="truncate text-sm font-bold text-slate-900" title={file.file_name}>{file.file_name}</p>
+        <p className="text-xs text-slate-500">{fileCategoryLabel(file.file_category, { short: true })} · {file.uploader || '제출자 미상'}{file.created_at ? ` · ${formatKst(file.created_at, { year: true })}` : ''}</p>
       </div>
-    </div>
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        <Button size="sm" href={file.file_url} target="_blank" icon={ExternalLink}>원본 열기</Button>
+        {manage && <Button size="sm" variant="danger" icon={Trash2} onClick={onDelete}>삭제</Button>}
+      </div>
+    </li>
   )
 }

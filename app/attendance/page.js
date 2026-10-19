@@ -2,14 +2,15 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
-import InternalNav from '@/app/components/InternalNav'
-import { currentSemesterIdFilter, fetchCurrentSemester } from '@/lib/semester'
+import { currentSemesterIdFilter, fetchCurrentSemester, fromKstInput } from '@/lib/semester'
+import { useToast } from '@/app/components/ui'
 
 export default function AttendancePage() {
   const router = useRouter()
+  const toast = useToast()
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
-  
+
   const [isLocating, setIsLocating] = useState(false)
   const [sessionLoc, setSessionLoc] = useState(null)
   const [currentWeek, setCurrentWeek] = useState(1)
@@ -36,7 +37,7 @@ export default function AttendancePage() {
       .select('*')
       .or(currentSemesterIdFilter(current))
       .in('category', ['attendance_start', 'session_start', 'attendance_end'])
-    
+
     let targetWeek = 1;
     let tConfig = { start: null, session: null, end: null };
     const weekMapRef = {}   // { [week]: { attendance_start, session_start, attendance_end } }
@@ -50,7 +51,7 @@ export default function AttendancePage() {
 
       const now = new Date().getTime()
       const availableWeeks = Object.keys(weekMap).map(Number).sort((a,b)=>a-b)
-      
+
       let found = false
       for(const w of availableWeeks) {
         const wData = weekMap[w]
@@ -116,7 +117,7 @@ export default function AttendancePage() {
           const g = grpOf(wk)
           if (!wk?.weekdaySession || !g || !wk.weekday?.[g]?.date) return null
           const t = wk.weekday[g]
-          const mk = (time) => time ? new Date(`${t.date}T${time}`).toISOString() : null
+          const mk = (time) => time ? fromKstInput(`${t.date}T${time}`) : null
           return {
             start: mk(t.attOpen), session: mk(t.sessionStart), end: mk(t.attEnd),
             location: (t.lat && t.lng) ? { lat: Number(t.lat), lng: Number(t.lng), radius: t.radius || 100 } : null,
@@ -225,9 +226,9 @@ export default function AttendancePage() {
       setTimeStatus('closed')
     } else {
       if (sessionT && now > sessionT) {
-        setTimeStatus('late') 
+        setTimeStatus('late')
       } else {
-        setTimeStatus('onTime') 
+        setTimeStatus('onTime')
       }
     }
   }
@@ -255,10 +256,10 @@ export default function AttendancePage() {
   }, [timeConfig, hasAttended])
 
   const getDistanceFromLatLonInM = (lat1, lon1, lat2, lon2) => {
-    const R = 6371e3 
+    const R = 6371e3
     const dLat = (lat2 - lat1) * (Math.PI / 180)
     const dLon = (lon2 - lon1) * (Math.PI / 180)
-    const a = 
+    const a =
       Math.sin(dLat/2) * Math.sin(dLat/2) +
       Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) * Math.sin(dLon/2) * Math.sin(dLon/2)
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))
@@ -267,14 +268,14 @@ export default function AttendancePage() {
 
   const handleCheckIn = () => {
     if (!sessionLoc || !sessionLoc.lat) {
-      return alert("관리자가 아직 이번 주 세션 장소를 설정하지 않았어! 😅")
+      return toast.error("관리자가 아직 이번 주 세션 장소를 설정하지 않았어! 😅")
     }
 
     setIsLocating(true)
 
     if (!navigator.geolocation) {
       setIsLocating(false)
-      return alert("현재 사용 중인 기기/브라우저에서는 위치 기반 서비스를 지원하지 않습니다. 😥")
+      return toast.error("현재 사용 중인 기기/브라우저에서는 위치 기반 서비스를 지원하지 않습니다. 😥")
     }
 
     navigator.geolocation.getCurrentPosition(
@@ -285,7 +286,7 @@ export default function AttendancePage() {
         const dist = getDistanceFromLatLonInM(sessionLoc.lat, sessionLoc.lng, myLat, myLng)
 
         if (dist <= (sessionLoc.radius || 100)) {
-          
+
           const finalStatus = timeStatus === 'late' ? '지각' : '출석완료'
 
           const { data, error } = await supabase.from('pr_attendance').insert([{
@@ -298,7 +299,7 @@ export default function AttendancePage() {
           }]).select()
 
           if (!error && data) {
-            alert(`${finalStatus === '지각' ? '지각 처리되었습니다. 🏃‍♂️💨' : '출석 확인 완료! 🎉'}\n(목적지와의 거리: ${dist}m)`)
+            (finalStatus === '지각' ? toast.warning : toast.success)(`${finalStatus === '지각' ? '지각으로 처리되었습니다.' : '출석이 확인되었습니다.'}\n(목적지와의 거리: ${dist}m)`)
             setHasAttended(true)
             setAttendanceRecord(data[0])
           } else if (error?.code === '23505') {
@@ -307,23 +308,23 @@ export default function AttendancePage() {
               .eq('user_name', user.user_metadata.name).eq('week', currentWeek)
               .eq('session_type', sessionMode).eq('semester', currentSemester).maybeSingle()
             if (exist) {
-              alert('이미 이번 세션 출석이 완료되어 있습니다. ✅')
+              toast.info('이미 이번 세션 출석이 완료되어 있습니다.')
               setHasAttended(true)
               setAttendanceRecord(exist)
             } else {
-              alert('이미 출석 기록이 있어 저장하지 못했습니다.\n운영진에게 문의해 주세요. (중복 기록 확인 필요)')
+              toast.error('이미 출석 기록이 있어 저장하지 못했습니다.\n운영진에게 문의해 주세요. (중복 기록 확인 필요)')
             }
           } else {
-            alert("서버 저장 중 오류가 발생했습니다: " + (error?.message || '알 수 없는 오류'))
+            toast.error("서버 저장 중 오류가 발생했습니다: " + (error?.message || '알 수 없는 오류'))
           }
         } else {
-          alert(`세션 장소에서 너무 멉니다! 🏃‍♂️\n\n(현재 위치: ${dist}m / 허용 반경: ${sessionLoc.radius || 100}m)\n\n강의실에 도착한 후 다시 시도해 주세요!`)
+          toast.error(`세션 장소에서 너무 멉니다! 🏃‍♂️\n\n(현재 위치: ${dist}m / 허용 반경: ${sessionLoc.radius || 100}m)\n\n강의실에 도착한 후 다시 시도해 주세요!`)
         }
         setIsLocating(false)
       },
       () => {
         setIsLocating(false)
-        alert("위치 정보를 가져오는 데 실패했습니다. 설정에서 '위치 정보(GPS) 접근 권한'을 허용해 주세요! 🙏")
+        toast.error("위치 정보를 가져오는 데 실패했습니다. 설정에서 '위치 정보(GPS) 접근 권한'을 허용해 주세요! 🙏")
       },
       { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
     )
@@ -339,8 +340,7 @@ export default function AttendancePage() {
 
   return (
     <>
-      <InternalNav />
-      <div className="min-h-[calc(100vh-72px)] bg-white text-slate-900 font-sans flex flex-col items-center justify-center relative overflow-hidden px-6">
+      <div className="min-h-[calc(100vh-64px)] bg-white text-slate-900 font-sans flex flex-col items-center justify-center relative overflow-hidden px-6">
 
       {/* 🌟 배경 꾸미기 (Deep Teal 테마, 직각 베이스) */}
       <div className="absolute top-0 left-0 w-full h-72 bg-teal-800 z-0"></div>
@@ -369,7 +369,7 @@ export default function AttendancePage() {
           <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-8">
             {sessionMode === 'weekday' && weekdayConfig?.date ? `${weekdayConfig.date} · Location Check-in` : 'Location Check-in'}
           </p>
-          
+
           {/* 🌟 시간 안내 보드 (박스 대신 선 기반 디자인) */}
           <div className="w-full border-y border-slate-200 py-6 mb-8 flex flex-col gap-4">
             <div className="flex justify-between items-center text-xs font-bold">
@@ -427,7 +427,7 @@ export default function AttendancePage() {
                 </button>
               )}
               {timeStatus === 'onTime' && (
-                <button 
+                <button
                   onClick={handleCheckIn} disabled={isLocating}
                   className="w-full py-5 bg-teal-800 hover:bg-teal-900 text-white font-extrabold text-base transition-colors active:bg-teal-950 flex items-center justify-center gap-3 disabled:opacity-50 rounded-sm"
                 >
@@ -435,7 +435,7 @@ export default function AttendancePage() {
                 </button>
               )}
               {timeStatus === 'late' && (
-                <button 
+                <button
                   onClick={handleCheckIn} disabled={isLocating}
                   className="w-full py-5 bg-orange-600 hover:bg-orange-700 text-white font-extrabold text-base transition-colors active:bg-orange-800 flex items-center justify-center gap-3 disabled:opacity-50 rounded-sm"
                 >
@@ -448,10 +448,10 @@ export default function AttendancePage() {
           {/* 안내 문구 (테두리 상자 제거, 텍스트 위주) */}
           {!hasAttended && timeStatus !== 'closed' && timeStatus !== 'before' && (
             <div className="w-full mt-8 text-left space-y-1.5 border-l-2 border-red-400 pl-3">
-              <p className="text-[10px] text-slate-500 font-bold leading-relaxed">
+              <p className="text-xs text-slate-500 font-bold leading-relaxed">
                 최초 1회, 브라우저의 <strong className="text-red-500">위치 정보 제공 동의</strong>가 필요합니다.
               </p>
-              <p className="text-[10px] text-slate-500 font-medium leading-relaxed">
+              <p className="text-xs text-slate-500 font-medium leading-relaxed">
                 실내에서는 GPS 오차가 발생할 수 있으니 가급적 창가 쪽에서 시도해 주세요.
               </p>
             </div>

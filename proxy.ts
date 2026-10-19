@@ -13,6 +13,7 @@ const adminShortRoutes = new Set([
   'join',
   'landing',
   'members',
+  'records',
   'reset',
   'rules',
   'rules-doc',

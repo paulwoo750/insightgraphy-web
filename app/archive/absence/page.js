@@ -1,326 +1,284 @@
 'use client'
-import { useState, useEffect } from 'react'
-import { supabase } from '@/lib/supabase'
+// 사유서 게시판: 이번 학기 사유서를 공개 제출하고 모두의 결재 내역을 확인한다
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import InternalNav from '@/app/components/InternalNav'
-import { currentSemesterIdFilter, fetchCurrentSemester } from '@/lib/semester'
+import { ArrowLeft, ExternalLink, Link2 } from 'lucide-react'
+import { supabase } from '@/lib/supabase'
+import { currentSemesterIdFilter, fetchCurrentSemester, formatKst } from '@/lib/semester'
+import { MemberHeader, MemberPage, useMember } from '@/app/components/MemberShell'
+import { Button, ErrorState, Field, inputClass, LoadingState, SegmentedControl, StatusBadge, textareaClass, useAsyncAction, useToast } from '@/app/components/ui'
+
+const GOOGLE_DRIVE_FOLDER_URL = 'https://drive.google.com/drive/folders/1kXKB1l3O9vIhCjdhINzRic_Gn6IKtZlw'
+const EMPTY_FORM = { week: 1, date: '', type: '결석', time: '', reason: '', proofUrl: '', sessionType: 'regular' }
+
+function statusTone(status) {
+  if (!status || status === '대기') return 'gray'
+  if (status.includes('완전인정')) return 'green'
+  if (status.includes('부분인정')) return 'teal'
+  return 'red'
+}
 
 export default function AbsencePage() {
   const router = useRouter()
-  const [user, setUser] = useState(null)
-  const [loading, setLoading] = useState(true)
-
-  // 시스템 설정 상태
-  const [currentSemester, setCurrentSemester] = useState('')
-  const [semesterType, setSemesterType] = useState('regular') // 'regular' | 'vacation'
-  const [totalWeeks, setTotalWeeks] = useState(12)
-  const [weekdayDlMap, setWeekdayDlMap] = useState({}) // { [week]: deadline_time } 평일세션 불참 사유서 마감
+  const identity = useMember()
+  const toast = useToast()
+  const [run, submitting] = useAsyncAction()
+  const [state, setState] = useState({ status: 'loading', error: '' })
+  const [semester, setSemester] = useState(null)
   const [regularDlMap, setRegularDlMap] = useState({}) // { [week]: deadline_time } 정규세션 사유서 마감
-
-  // 모든 사유서 데이터 및 필터 상태
+  const [weekdayDlMap, setWeekdayDlMap] = useState({}) // { [week]: deadline_time } 평일세션 불참 사유서 마감
   const [allAbsences, setAllAbsences] = useState([])
   const [selectedFolder, setSelectedFolder] = useState('all')
+  const [absenceForm, setAbsenceForm] = useState(EMPTY_FORM)
+  const [now, setNow] = useState(() => Date.now())
 
-  // 제출 폼 상태 (sessionType: 'regular' 정규세션 | 'weekday' 평일세션)
-  const [absenceForm, setAbsenceForm] = useState({ week: 1, date: '', type: '결석', time: '', reason: '', proofUrl: '', sessionType: 'regular' })
-  const [isSubmitting, setIsSubmitting] = useState(false)
-
-  const weeks = Array.from({ length: totalWeeks + 1 }, (_, i) => i)
-  const GOOGLE_DRIVE_FOLDER_URL = "https://drive.google.com/drive/folders/1kXKB1l3O9vIhCjdhINzRic_Gn6IKtZlw"
-
-  const fetchData = async () => {
-    setLoading(true)
-
-    // 1. 현재 학기 설정값 불러오기
-    const current = await fetchCurrentSemester()
-    setCurrentSemester(current.code)
-    setSemesterType(current.type)
-    setTotalWeeks(current.totalWeeks)
-
-    // 🌟 평일세션 불참 사유서 마감(weekday_absence)도 주차별로 로드
-    const { data: wdDl } = await supabase.from('pr_deadlines').select('*').or(currentSemesterIdFilter(current)).eq('category', 'weekday_absence')
-    const wdMap = {}
-    if (wdDl) wdDl.forEach(d => { if (d.deadline_time) wdMap[d.week] = d.deadline_time })
-    setWeekdayDlMap(wdMap)
-
-    // 🌟 2. 스마트 마감일 자동 탐색 (현재 시간과 가장 가까운 주차 찾기)
-    const { data: dlData } = await supabase.from('pr_deadlines')
-      .select('*')
-      .or(currentSemesterIdFilter(current))
-      .eq('category', 'absence')
-      .order('deadline_time', { ascending: true })
-
-    let targetW = 1
-    const now = new Date()
-
-    const rMap = {}
-    if (dlData) dlData.forEach(d => { if (d.deadline_time) rMap[d.week] = d.deadline_time })
-    setRegularDlMap(rMap)
-
-    if (dlData && dlData.length > 0) {
-      // 1순위: 아직 지나지 않은 마감일 중 가장 빠른 것
-      const upcoming = dlData.find(d => new Date(d.deadline_time) > now)
-      // 2순위: 모두 지났다면 가장 마지막 주차
-      targetW = upcoming ? upcoming.week : dlData[dlData.length - 1].week
-    }
-
-    // 기본 제출 주차도 탐색된 주차로 세팅
-    setAbsenceForm(prev => ({ ...prev, week: targetW }))
-
-    // 3. 이번 학기 사유서 제출 내역 (지난 학기 사유서는 아카이브 > 과거 자료실에서 열람)
-    const { data: absData } = await supabase.from('absence_forms').select('*').or(currentSemesterIdFilter(current)).order('created_at', { ascending: false })
-    if (absData) setAllAbsences(absData)
-
-    setLoading(false)
+  async function fetchAbsences(current) {
+    const { data, error } = await supabase.from('absence_forms').select('*').or(currentSemesterIdFilter(current)).order('created_at', { ascending: false })
+    if (error) throw error
+    setAllAbsences(data || [])
   }
 
   useEffect(() => {
-    const init = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) {
-        router.push('/login')
-        return
+    if (identity.status !== 'ready') return undefined
+    if (!identity.session) {
+      router.replace('/login?next=%2Farchive%2Fabsence')
+      return undefined
+    }
+    let active = true
+    async function load() {
+      try {
+        const current = await fetchCurrentSemester()
+        const { data: dlData, error } = await supabase.from('pr_deadlines')
+          .select('*')
+          .or(currentSemesterIdFilter(current))
+          .in('category', ['absence', 'weekday_absence'])
+          .order('deadline_time', { ascending: true })
+        if (error) throw error
+        const regular = {}
+        const weekday = {}
+        ;(dlData || []).forEach((row) => {
+          if (!row.deadline_time) return
+          if (row.category === 'absence') regular[row.week] = row.deadline_time
+          else weekday[row.week] = row.deadline_time
+        })
+        // 기본 주차: 아직 지나지 않은 정규 사유서 마감 중 가장 빠른 주차, 모두 지났으면 마지막 주차
+        const regularRows = (dlData || []).filter((row) => row.category === 'absence' && row.deadline_time)
+        const upcoming = regularRows.find((row) => new Date(row.deadline_time).getTime() > Date.now())
+        const targetWeek = upcoming ? upcoming.week : regularRows.length ? regularRows[regularRows.length - 1].week : 1
+        await fetchAbsences(current)
+        if (!active) return
+        setSemester(current)
+        setRegularDlMap(regular)
+        setWeekdayDlMap(weekday)
+        setAbsenceForm((prev) => ({ ...prev, week: Math.min(targetWeek, current.totalWeeks) }))
+        setState({ status: 'ready', error: '' })
+      } catch (error) {
+        if (active) setState({ status: 'error', error: error.message })
       }
-      setUser(session.user)
-      await fetchData()
     }
-    init()
-  }, [router])
+    load()
+    return () => { active = false }
+  }, [identity.status, identity.session, router])
 
-  const formatTime = (dateStr) => {
-    if(!dateStr) return ''
-    const d = new Date(dateStr)
-    return `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-  }
+  // 마감 지남 표시를 1분마다 갱신한다
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 60 * 1000)
+    return () => clearInterval(timer)
+  }, [])
 
-  const handleSubmitAbsence = async () => {
-    if (!absenceForm.date || !absenceForm.reason) return alert("날짜와 사유는 필수 입력이야! ✍️")
-    if (absenceForm.type !== '결석' && !absenceForm.time) return alert("조퇴나 지각은 시간을 꼭 적어 줘! ⏰")
-    if (absenceForm.proofUrl.trim() && !absenceForm.proofUrl.includes("drive.google.com") && !absenceForm.proofUrl.includes("docs.google.com")) {
-      return alert("증빙 자료는 구글 드라이브 링크로 제출해 줘! 🤔")
-    }
+  const myName = identity.member?.name || identity.session?.user?.user_metadata?.name || ''
+  const isMine = (row) => (identity.member && row.member_id ? row.member_id === identity.member.id : Boolean(myName) && row.user_name === myName)
 
-    setIsSubmitting(true)
-    const fullReason = absenceForm.type !== '결석' ? `[${absenceForm.time}] ${absenceForm.reason}` : absenceForm.reason
-
-    const { error } = await supabase.from('absence_forms').insert([{
-      user_name: user.user_metadata.name,
-      week: absenceForm.week,
-      target_date: absenceForm.date,
-      type: absenceForm.type,
-      reason: fullReason,
-      proof_url: absenceForm.proofUrl.trim(),
-      status: '대기',
-      session_type: absenceForm.sessionType || 'regular'
-    }])
-
-    if (!error) {
-      alert("사유서 제출 완료! 게시판에 등록되었습니다. 📝")
-      setAbsenceForm(prev => ({ ...prev, date: '', time: '', reason: '', proofUrl: '' }))
-      fetchData()
-    } else {
-      alert("제출 실패: " + error.message)
-    }
-    setIsSubmitting(false)
-  }
-
-  if (loading || !user) return <div className="min-h-screen flex items-center justify-center font-black text-slate-400 bg-slate-50">데이터 불러오는 중... 🔄</div>
-
-  const myAbsences = allAbsences.filter(abs => abs.user_name === user.user_metadata.name)
-  const myStats = {
-    total: myAbsences.length,
-    full: myAbsences.filter(a => a.status.includes('완전인정')).length,
-    partial: myAbsences.filter(a => a.status.includes('부분인정')).length,
-    reject: myAbsences.filter(a => a.status.includes('불허')).length,
-    pending: myAbsences.filter(a => a.status === '대기').length,
-  }
-
-  const filteredAbsences = allAbsences.filter(abs => {
-    if (selectedFolder === 'all') return true;
-    if (selectedFolder === 'null') return abs.week === null || abs.week === undefined;
-    return abs.week === selectedFolder;
-  });
-
-  // 🌟 선택된 세션 유형·주차 기준의 마감/지각 계산
   const isWeekday = absenceForm.sessionType === 'weekday'
   const activeDeadline = (isWeekday ? weekdayDlMap : regularDlMap)[absenceForm.week] || null
-  const activeIsLate = activeDeadline ? new Date() > new Date(activeDeadline) : false
+  const activeIsLate = activeDeadline ? now > new Date(activeDeadline).getTime() : false
+
+  function submit(event) {
+    event.preventDefault()
+    if (!absenceForm.date || !absenceForm.reason.trim()) {
+      toast.error('날짜와 사유를 입력하세요.')
+      return
+    }
+    if (absenceForm.type !== '결석' && !absenceForm.time) {
+      toast.error('지각·조퇴는 예상 시간을 입력하세요.')
+      return
+    }
+    const proof = absenceForm.proofUrl.trim()
+    if (proof && !proof.includes('drive.google.com') && !proof.includes('docs.google.com')) {
+      toast.error('증빙 자료는 구글 드라이브 링크로 제출하세요.')
+      return
+    }
+    if (activeIsLate && !confirm('사유서 마감이 지났습니다. 지각 제출로 기록됩니다. 계속할까요?')) return
+    run(async () => {
+      const fullReason = absenceForm.type !== '결석' ? `[${absenceForm.time}] ${absenceForm.reason.trim()}` : absenceForm.reason.trim()
+      const { error } = await supabase.from('absence_forms').insert([{
+        user_name: myName,
+        member_id: identity.member?.id || null,
+        semester_id: semester.id || null,
+        week: absenceForm.week,
+        target_date: absenceForm.date,
+        type: absenceForm.type,
+        reason: fullReason,
+        proof_url: proof,
+        status: '대기',
+        session_type: absenceForm.sessionType || 'regular',
+      }])
+      if (error) {
+        toast.error(`제출하지 못했습니다: ${error.message}`)
+        return
+      }
+      toast.success('사유서를 제출했습니다. 게시판에 등록되었습니다.')
+      setAbsenceForm((prev) => ({ ...prev, date: '', time: '', reason: '', proofUrl: '' }))
+      try {
+        await fetchAbsences(semester)
+      } catch (loadError) {
+        toast.error(`목록을 새로 불러오지 못했습니다: ${loadError.message}`)
+      }
+    })
+  }
+
+  if (identity.status !== 'ready' || state.status === 'loading') return <MemberPage><LoadingState label="사유서 게시판을 불러오는 중입니다." /></MemberPage>
+  if (state.status === 'error') return <MemberPage><ErrorState title="사유서 게시판을 불러오지 못했습니다." description={state.error} onRetry={() => window.location.reload()} /></MemberPage>
+
+  const weeks = Array.from({ length: semester.totalWeeks + 1 }, (_, index) => index)
+  const myAbsences = allAbsences.filter(isMine)
+  const myStats = [
+    { label: '총 제출', value: myAbsences.length, tone: 'text-slate-900' },
+    { label: '완전 인정', value: myAbsences.filter((row) => row.status?.includes('완전인정')).length, tone: 'text-emerald-700' },
+    { label: '부분 인정', value: myAbsences.filter((row) => row.status?.includes('부분인정')).length, tone: 'text-teal-700' },
+    { label: '불허', value: myAbsences.filter((row) => row.status?.includes('불허')).length, tone: 'text-red-700' },
+    { label: '결재 대기', value: myAbsences.filter((row) => !row.status || row.status === '대기').length, tone: 'text-amber-700' },
+  ]
+  const filteredAbsences = allAbsences.filter((row) => {
+    if (selectedFolder === 'all') return true
+    if (selectedFolder === 'none') return row.week === null || row.week === undefined
+    return row.week === selectedFolder
+  })
+  const hasUnassigned = allAbsences.some((row) => row.week === null || row.week === undefined)
+  const folderButton = (value, label) => (
+    <button key={String(value)} type="button" aria-pressed={selectedFolder === value} onClick={() => setSelectedFolder(value)} className={`min-h-9 shrink-0 rounded-md border px-3 text-sm font-bold ${selectedFolder === value ? 'border-teal-700 bg-teal-700 text-white' : 'border-slate-200 bg-white text-slate-600 hover:border-teal-400'}`}>{label}</button>
+  )
 
   return (
-    <>
-      <InternalNav />
-      <div className="min-h-screen bg-white text-slate-900 font-sans p-6 md:p-12 pb-32">
-      <div className="max-w-5xl mx-auto space-y-10">
+    <MemberPage>
+      <MemberHeader
+        eyebrow="아카이브"
+        title="사유서 게시판"
+        description="결석·지각·조퇴 사유서를 제출하고, 이번 학기 모두의 결재 내역을 확인합니다. 지난 학기 사유서는 과거 자료실에서 볼 수 있습니다."
+        actions={<Button href="/archive" icon={ArrowLeft}>자료실로</Button>}
+      />
 
-        <header className="mb-6 border-b border-slate-200 pb-6 flex flex-col md:flex-row md:justify-between md:items-end gap-4">
-          <div>
-            <h1 className="text-3xl md:text-4xl font-extrabold text-teal-800 tracking-tight">Absence Board</h1>
-            <p className="text-sm font-medium text-slate-500 mt-2">결석, 지각, 조퇴 사유서를 공개 제출하고 모두의 내역을 확인합니다.</p>
+      <section aria-labelledby="my-absence-stats" className="rounded-lg border border-slate-200 bg-white p-4 sm:p-5">
+        <h2 id="my-absence-stats" className="text-base font-bold text-slate-900">내 사유서 결재 현황 <span className="text-sm font-semibold text-slate-500">· {semester.name}</span></h2>
+        <dl className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-5">
+          {myStats.map((stat) => (
+            <div key={stat.label} className="rounded-md border border-slate-100 bg-slate-50 px-3 py-2.5">
+              <dt className="text-xs font-semibold text-slate-500">{stat.label}</dt>
+              <dd className={`text-xl font-extrabold ${stat.tone}`}>{stat.value}건</dd>
+            </div>
+          ))}
+        </dl>
+      </section>
+
+      <div className="mt-6 grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_400px]">
+        <section aria-labelledby="absence-board" className="min-w-0 rounded-lg border border-slate-200 bg-white p-4 sm:p-5">
+          <h2 id="absence-board" className="text-base font-bold text-slate-900">전체 사유서</h2>
+          <div className="mt-3 flex gap-2 overflow-x-auto pb-2" role="group" aria-label="주차별 보기">
+            {folderButton('all', '전체')}
+            {weeks.map((week) => folderButton(week, `W${week}`))}
+            {hasUnassigned && folderButton('none', '주차 미지정')}
           </div>
-        </header>
 
-        {/* 1. 나의 사유서 결재 현황 요약 */}
-        <div className="bg-white p-8 rounded-none shadow-sm border border-slate-200">
-          <h2 className="text-lg font-black text-slate-800 mb-6 flex items-center gap-2">
-            <span>👤</span> 내 사유서 결재 현황
-          </h2>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-            <div className="bg-slate-50 p-4 rounded-none flex flex-col items-center justify-center border border-slate-100">
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">총 제출</p>
-              <p className="text-2xl font-black text-slate-700">{myStats.total}건</p>
-            </div>
-            <div className="bg-emerald-50 p-4 rounded-none flex flex-col items-center justify-center border border-emerald-100">
-              <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-1">완전 인정</p>
-              <p className="text-2xl font-black text-emerald-600">{myStats.full}건</p>
-            </div>
-            <div className="bg-teal-50 p-4 rounded-none flex flex-col items-center justify-center border border-teal-100">
-              <p className="text-[10px] font-black text-teal-600 uppercase tracking-widest mb-1">부분 인정</p>
-              <p className="text-2xl font-black text-teal-600">{myStats.partial}건</p>
-            </div>
-            <div className="bg-red-50 p-4 rounded-none flex flex-col items-center justify-center border border-red-100">
-              <p className="text-[10px] font-black text-red-600 uppercase tracking-widest mb-1">불허 (반려)</p>
-              <p className="text-2xl font-black text-red-600">{myStats.reject}건</p>
-            </div>
-            <div className="bg-amber-50 p-4 rounded-none flex flex-col items-center justify-center border border-amber-100">
-              <p className="text-[10px] font-black text-amber-600 uppercase tracking-widest mb-1">결재 대기</p>
-              <p className="text-2xl font-black text-amber-600">{myStats.pending}건</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_400px] gap-8 items-start">
-          
-          {/* 2. 사유서 게시판 */}
-          <div className="bg-white p-8 rounded-none shadow-sm border border-slate-200">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-xl font-black text-slate-800">📋 전체 사유서 게시판</h2>
-            </div>
-
-            <div className="flex gap-2 mb-6 overflow-x-auto pb-4 no-scrollbar border-b border-slate-100">
-              <button onClick={() => setSelectedFolder('all')} className={`px-4 py-2.5 rounded-none text-xs font-black shrink-0 transition-all border ${selectedFolder === 'all' ? 'bg-slate-800 text-white shadow-sm border-slate-800' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}>전체 보기 📂</button>
-              {weeks.map(w => (
-                <button key={w} onClick={() => setSelectedFolder(w)} className={`px-4 py-2.5 rounded-none text-xs font-black shrink-0 transition-all border ${selectedFolder === w ? 'bg-teal-800 text-white shadow-sm border-teal-800' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}>W{w} 사유서</button>
-              ))}
-            </div>
-
-            <div className="space-y-4 max-h-[800px] overflow-y-auto pr-2 no-scrollbar">
-              {filteredAbsences.length === 0 ? (
-                <p className="text-slate-400 font-bold text-center py-12 border-2 border-dashed border-slate-100 rounded-none">해당 폴더에 제출된 사유서가 없습니다.</p>
-              ) : filteredAbsences.map(abs => {
-                const isMine = abs.user_name === user.user_metadata.name;
-                const isPartial = abs.status?.includes('부분인정');
+          {filteredAbsences.length === 0 ? (
+            <p className="mt-3 rounded-lg border border-dashed border-slate-300 px-4 py-12 text-center text-sm text-slate-500">이 주차에 제출된 사유서가 없습니다.</p>
+          ) : (
+            <ul className="mt-3 space-y-3">
+              {filteredAbsences.map((row) => {
+                const mine = isMine(row)
+                const isPartial = row.status?.includes('부분인정')
                 return (
-                  <div key={abs.id} className={`p-6 rounded-none border transition-all relative ${isMine ? 'bg-teal-50/50 border-teal-200' : 'bg-white border-slate-100 hover:border-slate-300'}`}>
-                    {isMine && <span className="absolute -top-3 -right-3 bg-teal-600 text-white text-[10px] font-black px-3 py-1 rounded-none shadow-sm">MY</span>}
-
-                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4 mb-4 border-b border-slate-100/50 pb-3">
-                      <div>
-                        <div className="flex items-center gap-2 mb-2">
-                          <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest ${abs.status === '대기' ? 'bg-slate-200 text-slate-500' : abs.status.includes('완전인정') ? 'bg-emerald-100 text-emerald-600' : abs.status.includes('부분인정') ? 'bg-teal-100 text-teal-600' : 'bg-red-100 text-red-600'}`}>
-                            {abs.status === '대기' ? '결재 대기중' : abs.status}
-                          </span>
-                          <span className="bg-teal-100 text-teal-800 px-2 py-0.5 rounded text-[9px] font-black uppercase">W{abs.week || '?'}</span>
-                          {abs.session_type === 'weekday' && <span className="bg-teal-800 text-white px-2 py-0.5 rounded text-[9px] font-black uppercase">평일</span>}
-                          <span className="bg-slate-800 text-white px-2 py-0.5 rounded text-[9px] font-black uppercase">{abs.type}</span>
-                        </div>
-                        <p className="font-black text-slate-800 flex items-center gap-2 text-lg">
-                          👤 {abs.user_name}
-                          <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-none">{abs.target_date} 해당</span>
-                        </p>
-                      </div>
-                      <span className="text-[9px] font-bold text-slate-400">제출: {formatTime(abs.created_at)}</span>
+                  <li key={row.id} className={`rounded-lg border p-4 ${mine ? 'border-teal-200 bg-teal-50/40' : 'border-slate-200 bg-white'}`}>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <StatusBadge tone={statusTone(row.status)}>{!row.status || row.status === '대기' ? '결재 대기' : row.status}</StatusBadge>
+                      <StatusBadge tone="teal">W{row.week ?? '?'}</StatusBadge>
+                      {row.session_type === 'weekday' && <StatusBadge tone="blue">평일세션</StatusBadge>}
+                      <StatusBadge tone="gray">{row.type}</StatusBadge>
+                      {mine && <StatusBadge tone="teal">내 사유서</StatusBadge>}
                     </div>
-                    
-                    <p className="text-sm font-bold text-slate-600 whitespace-pre-wrap leading-relaxed mb-4">{abs.reason}</p>
-                    
-                    {abs.proof_url && (
-                      <a href={abs.proof_url} target="_blank" rel="noopener noreferrer" className="inline-block px-3 py-1.5 bg-slate-100 text-slate-500 rounded-none text-[10px] font-black hover:bg-slate-200 transition-colors">🔗 증빙자료 보기</a>
-                    )}
-
-                    {/* 🌟 부분 인정일 경우 대체 과제 내용 표시 */}
-                    {abs.status !== '대기' && abs.admin_comment && (
-                      <div className={`mt-4 p-4 rounded-none border flex gap-3 items-start ${isPartial ? 'bg-teal-50 border-teal-100' : 'bg-slate-50 border-slate-100'}`}>
-                        <span className="text-base">{isPartial ? '📌' : '💬'}</span>
-                        <div>
-                          <p className={`text-[9px] font-black uppercase tracking-widest mb-1 ${isPartial ? 'text-teal-500' : 'text-slate-400'}`}>
-                            {isPartial ? '대체 과제 및 안내 사항' : '운영진 결재 코멘트'}
-                          </p>
-                          <p className={`text-xs font-bold whitespace-pre-wrap leading-relaxed ${isPartial ? 'text-teal-700' : 'text-slate-600'}`}>{abs.admin_comment}</p>
-                        </div>
+                    <div className="mt-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                      <p className="text-base font-bold text-slate-900">{row.user_name} <span className="text-sm font-semibold text-slate-500">· {row.target_date} 해당</span></p>
+                      <p className="text-xs text-slate-500">제출 {formatKst(row.created_at)}</p>
+                    </div>
+                    <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">{row.reason}</p>
+                    {row.proof_url && <Button size="sm" className="mt-3" href={row.proof_url} target="_blank" icon={ExternalLink}>증빙 자료 보기</Button>}
+                    {row.status !== '대기' && row.admin_comment && (
+                      <div className={`mt-3 rounded-md border p-3 ${isPartial ? 'border-teal-100 bg-teal-50' : 'border-slate-100 bg-slate-50'}`}>
+                        <p className={`text-xs font-bold ${isPartial ? 'text-teal-700' : 'text-slate-500'}`}>{isPartial ? '대체 과제 및 안내 사항' : '운영진 결재 코멘트'}</p>
+                        <p className={`mt-1 whitespace-pre-wrap text-sm leading-6 ${isPartial ? 'text-teal-800' : 'text-slate-700'}`}>{row.admin_comment}</p>
                       </div>
                     )}
-                  </div>
+                  </li>
                 )
               })}
+            </ul>
+          )}
+        </section>
+
+        <aside className="space-y-4 lg:sticky lg:top-24">
+          <div className={`rounded-lg border p-4 ${activeIsLate ? 'border-red-200 bg-red-50' : 'border-slate-200 bg-white'}`}>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <StatusBadge tone="gray">{semester.name || '학기 미설정'}</StatusBadge>
+              <StatusBadge tone={isWeekday ? 'blue' : 'teal'}>{isWeekday ? '평일세션' : '정규세션'}</StatusBadge>
             </div>
+            <p className="mt-2 text-sm font-semibold text-slate-600">W{absenceForm.week} 사유서 마감</p>
+            {activeDeadline ? (
+              <p className={`text-lg font-extrabold ${activeIsLate ? 'text-red-700' : 'text-emerald-700'}`}>{formatKst(activeDeadline, { weekday: true })}</p>
+            ) : <p className="text-sm font-bold text-slate-500">마감 미설정</p>}
+            {activeIsLate && <p className="mt-1 text-xs font-bold text-red-700">제출 기한이 지났습니다. 지금 제출하면 지각 제출로 기록됩니다.</p>}
           </div>
 
-          {/* 3. 사유서 제출 폼 */}
-          <div className="space-y-6 sticky top-8">
-            <div className={`p-6 rounded-none shadow-sm border transition-all ${activeIsLate ? 'bg-red-50 border-red-200' : 'bg-white border-slate-200'}`}>
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] font-black bg-slate-800 text-white px-3 py-1 rounded-none uppercase tracking-widest">{currentSemester || '학기 미설정'}</span>
-                <span className={`text-[10px] font-black px-3 py-1 rounded-none uppercase tracking-widest ${isWeekday ? 'bg-teal-800 text-white' : 'bg-teal-100 text-teal-800'}`}>{isWeekday ? '평일세션' : '정규세션'}</span>
-              </div>
-              <h2 className="text-lg font-black text-slate-800 mt-3 flex items-center gap-2 mb-4">
-                <span className="bg-teal-100 text-teal-800 w-6 h-6 flex items-center justify-center rounded-none text-xs">W{absenceForm.week}</span>
-                사유서 마감
-              </h2>
-              <div className="bg-slate-50 p-4 rounded-none border border-slate-200">
-                {activeDeadline ? (
-                  <p className={`font-black text-lg flex flex-col gap-1 ${activeIsLate ? 'text-red-500' : 'text-emerald-600'}`}>
-                    {formatTime(activeDeadline)}
-                    {activeIsLate && <span className="text-[9px] font-black uppercase tracking-widest text-red-400">제출 기한이 지났습니다 🚨</span>}
-                  </p>
-                ) : <p className="font-black text-sm text-slate-400">마감일 미설정</p>}
-              </div>
+          <form onSubmit={submit} className="space-y-4 rounded-lg border border-slate-200 bg-white p-4">
+            <h2 className="text-base font-bold text-slate-900">새 사유서 작성</h2>
+            {semester.type === 'vacation' && (
+              <Field label="세션 유형" hint={isWeekday ? '조 내 일정 조정에 실패했을 때, 전주 일요일 자정까지 제출합니다.' : undefined}>
+                <SegmentedControl label="세션 유형" value={absenceForm.sessionType} onChange={(value) => setAbsenceForm({ ...absenceForm, sessionType: value })} options={[{ value: 'regular', label: '정규세션' }, { value: 'weekday', label: '평일세션' }]} />
+              </Field>
+            )}
+            <Field label="해당 주차" htmlFor="absence-week">
+              <select id="absence-week" value={absenceForm.week} onChange={(event) => setAbsenceForm({ ...absenceForm, week: Number(event.target.value) })} className={inputClass}>
+                {weeks.map((week) => <option key={week} value={week}>{week}주차</option>)}
+              </select>
+            </Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="날짜" htmlFor="absence-date" required>
+                <input id="absence-date" type="date" value={absenceForm.date} onChange={(event) => setAbsenceForm({ ...absenceForm, date: event.target.value })} className={inputClass} />
+              </Field>
+              <Field label="구분" htmlFor="absence-type">
+                <select id="absence-type" value={absenceForm.type} onChange={(event) => setAbsenceForm({ ...absenceForm, type: event.target.value })} className={inputClass}>
+                  <option value="결석">결석</option>
+                  <option value="지각">지각</option>
+                  <option value="조퇴">조퇴</option>
+                </select>
+              </Field>
             </div>
-
-            <div className="bg-white p-8 rounded-none shadow-sm border border-slate-200 border-t-[3px] border-t-teal-800">
-              <div className="flex justify-between items-center border-b border-slate-200 pb-4 mb-6"><h3 className="text-sm font-black text-slate-900 uppercase tracking-widest flex items-center gap-2"><span>✍️</span> 새 사유서 작성</h3></div>
-              <div className="space-y-4">
-                {/* 🌟 방학학기: 세션 유형 선택 */}
-                {semesterType === 'vacation' && (
-                  <div>
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">세션 유형</label>
-                    <div className="flex border border-slate-300">
-                      <button type="button" onClick={() => setAbsenceForm({...absenceForm, sessionType: 'regular'})} className={`flex-1 py-2.5 text-xs font-bold transition-colors ${absenceForm.sessionType === 'regular' ? 'bg-teal-800 text-white' : 'bg-white text-slate-500 hover:text-teal-800'}`}>📚 정규세션</button>
-                      <button type="button" onClick={() => setAbsenceForm({...absenceForm, sessionType: 'weekday'})} className={`flex-1 py-2.5 text-xs font-bold border-l border-slate-300 transition-colors ${absenceForm.sessionType === 'weekday' ? 'bg-teal-800 text-white' : 'bg-white text-slate-500 hover:text-teal-800'}`}>🏖️ 평일세션</button>
-                    </div>
-                    {isWeekday && <p className="text-[11px] font-medium text-teal-700 mt-2 break-keep">조 내 일정 조정 실패 시, 전주 일요일 자정까지 제출.</p>}
-                  </div>
-                )}
-                <div>
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">해당 주차</label>
-                  <select value={absenceForm.week} onChange={e => setAbsenceForm({...absenceForm, week: Number(e.target.value)})} className="w-full bg-white text-slate-900 p-3 rounded-none font-bold text-sm outline-none border border-slate-300 focus:border-teal-600 cursor-pointer">
-                    {weeks.map(w => <option key={w} value={w}>{w}주차 사유서</option>)}
-                  </select>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div><label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">날짜</label><input type="date" value={absenceForm.date} onChange={e => setAbsenceForm({...absenceForm, date: e.target.value})} className="w-full bg-white text-slate-900 p-3 rounded-none font-bold text-sm outline-none border border-slate-300 focus:border-teal-600" /></div>
-                  <div><label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">구분</label><select value={absenceForm.type} onChange={e => setAbsenceForm({...absenceForm, type: e.target.value})} className="w-full bg-white text-slate-900 p-3 rounded-none font-bold text-sm outline-none border border-slate-300 focus:border-teal-600 cursor-pointer"><option value="결석">결석</option><option value="지각">지각</option><option value="조퇴">조퇴</option></select></div>
-                </div>
-                {absenceForm.type !== '결석' && (
-                  <div className="animate-in slide-in-from-top-2"><label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">예상 시간 (필수)</label><input type="time" value={absenceForm.time} onChange={e => setAbsenceForm({...absenceForm, time: e.target.value})} className="w-full bg-white text-slate-900 p-3 rounded-none font-bold text-sm outline-none border border-slate-300 focus:border-teal-600" /></div>
-                )}
-                <div><label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">상세 사유</label><textarea value={absenceForm.reason} onChange={e => setAbsenceForm({...absenceForm, reason: e.target.value})} className="w-full bg-white text-slate-900 p-4 rounded-none font-bold text-sm outline-none border border-slate-300 focus:border-teal-600 min-h-[100px]" placeholder="구체적인 사유를 작성해 주세요." /></div>
-                <div className="bg-slate-50 p-4 rounded-none border border-slate-200">
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-3">증빙 자료 링크 (선택)</label>
-                  <div className="flex flex-col gap-2">
-                    <a href={GOOGLE_DRIVE_FOLDER_URL} target="_blank" rel="noopener noreferrer" className="bg-teal-50 hover:bg-teal-100 text-teal-700 border border-teal-200 px-4 py-2.5 rounded-none font-black text-[10px] transition-all flex items-center justify-center gap-2"><span className="text-base">📁</span> Step 1. 드라이브 업로드</a>
-                    <input type="text" value={absenceForm.proofUrl} onChange={e => setAbsenceForm({...absenceForm, proofUrl: e.target.value})} className="w-full bg-white text-slate-900 p-3 rounded-none font-bold text-xs outline-none border border-slate-300 focus:border-teal-600" placeholder="Step 2. 공유 링크 붙여넣기" />
-                  </div>
-                </div>
-                <button onClick={handleSubmitAbsence} disabled={isSubmitting} className={`w-full py-4 text-white rounded-none font-black text-sm transition-all shadow-sm mt-2 active:scale-95 ${activeIsLate ? 'bg-red-600 hover:bg-red-700' : 'bg-teal-800 hover:bg-teal-900'}`}>
-                  {isSubmitting ? '제출 중...' : activeIsLate ? '지각 제출하기 🚨' : '게시판에 등록하기 🚀'}
-                </button>
-              </div>
+            {absenceForm.type !== '결석' && (
+              <Field label="예상 시간" htmlFor="absence-time" required>
+                <input id="absence-time" type="time" value={absenceForm.time} onChange={(event) => setAbsenceForm({ ...absenceForm, time: event.target.value })} className={inputClass} />
+              </Field>
+            )}
+            <Field label="상세 사유" htmlFor="absence-reason" required>
+              <textarea id="absence-reason" value={absenceForm.reason} onChange={(event) => setAbsenceForm({ ...absenceForm, reason: event.target.value })} className={textareaClass} placeholder="구체적인 사유를 작성해 주세요." />
+            </Field>
+            <Field label="증빙 자료 링크 (선택)" htmlFor="absence-proof" hint="드라이브에 먼저 올린 뒤 공유 링크를 붙여 넣으세요.">
+              <input id="absence-proof" value={absenceForm.proofUrl} onChange={(event) => setAbsenceForm({ ...absenceForm, proofUrl: event.target.value })} className={inputClass} placeholder="https://drive.google.com/…" />
+            </Field>
+            <div className="flex flex-wrap gap-2">
+              <Button href={GOOGLE_DRIVE_FOLDER_URL} target="_blank" icon={Link2}>증빙 드라이브 열기</Button>
+              <Button type="submit" variant={activeIsLate ? 'danger' : 'primary'} loading={submitting} className="flex-1">{activeIsLate ? '지각 제출' : '게시판에 등록'}</Button>
             </div>
-          </div>
-
-        </div>
+          </form>
+        </aside>
       </div>
-      </div>
-    </>
+    </MemberPage>
   )
 }

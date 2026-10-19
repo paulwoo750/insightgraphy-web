@@ -1,246 +1,296 @@
 'use client'
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
+// 학회원 홈: 이번 주차(주제·세션·출석) → 다가오는 마감과 내 제출 → 최근 자료 → 마이페이지 요약 → 일정
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import InternalNav from '@/app/components/InternalNav'
-import { currentSemesterIdFilter, fetchCurrentSemester } from '@/lib/semester'
+import { useRouter } from 'next/navigation'
+import { ArrowRight, CalendarDays, ChevronLeft, ChevronRight, ClipboardList, FileText, MapPin, Presentation, Video } from 'lucide-react'
+import { supabase } from '@/lib/supabase'
+import { currentSemesterIdFilter, deadlineLabel, displayTopic, fetchCurrentSemester, formatKst, formatKstDate, groupDeadlines, kstDateString, locationName, memberGroup } from '@/lib/semester'
+import { fetchSemesterSchedules, scheduleTimeLabel } from '@/lib/schedules'
+import { fetchMyRecords } from '@/lib/myRecords'
+import { inSemester, summarizeAttendance, summarizeFines } from '@/lib/memberRecords'
+import { normalizeFileCategory, fileCategoryLabel } from '@/lib/archive'
+import { MemberPage, useMember } from '@/app/components/MemberShell'
+import WeekOverviewCard from '@/app/components/WeekOverviewCard'
+import FileThumbnail from '@/app/components/FileThumbnail'
+import { ErrorState, LoadingState, Notice, StatusBadge } from '@/app/components/ui'
+
+const SUBMISSIONS = [
+  { key: 'proposal', label: '기획서', href: '/dashboard/proposal', icon: FileText },
+  { key: 'slide', label: '슬라이드', href: '/dashboard/slide', icon: Presentation },
+  { key: 'video', label: '발표영상', href: '/dashboard/video', icon: Video },
+]
+
+const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토']
 
 export default function HomeHub() {
   const router = useRouter()
-  const [user, setUser] = useState(null)
-  
+  const identity = useMember()
+  const [state, setState] = useState({ status: 'loading', error: '' })
+  const [semester, setSemester] = useState(null)
+  const [deadlines, setDeadlines] = useState({})
   const [schedules, setSchedules] = useState([])
-  const [currentDate, setCurrentDate] = useState(new Date()) 
-  const [deadlines, setDeadlines] = useState([])
+  const [scheduleError, setScheduleError] = useState(false)
+  const [files, setFiles] = useState([])
+  const [favorites, setFavorites] = useState([])
+  const [records, setRecords] = useState(null)
+  const [month, setMonth] = useState(() => {
+    const [year, monthNumber] = kstDateString().split('-').map(Number)
+    return new Date(year, monthNumber - 1, 1)
+  })
 
   useEffect(() => {
-    const initHub = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) {
-        router.push('/login')
-        return
-      }
-      setUser(session.user)
-
-      // 일정·마감은 학기별 행이라 현재 학기 것만 읽는다
-      const current = await fetchCurrentSemester()
-
-      const { data: schData } = await supabase.from('pr_schedules').select('*').or(currentSemesterIdFilter(current)).order('full_date', { ascending: true })
-      if (schData) setSchedules(schData)
-
-      const { data: dlData } = await supabase.from('pr_deadlines').select('*').or(currentSemesterIdFilter(current))
-      if (dlData) {
-        const now = new Date()
-        const excludeCategories = ['attendance_start', 'session_start', 'attendance_end']
-        const upcomingDl = dlData.filter(d => 
-          d.deadline_time && 
-          new Date(d.deadline_time) > now && 
-          !excludeCategories.includes(d.category)
-        )
-        
-        upcomingDl.sort((a, b) => new Date(a.deadline_time) - new Date(b.deadline_time))
-        setDeadlines(upcomingDl.slice(0, 6))
+    if (identity.status !== 'ready') return undefined
+    if (!identity.session) {
+      router.replace('/login?next=%2Fhome')
+      return undefined
+    }
+    let active = true
+    async function load() {
+      try {
+        const current = await fetchCurrentSemester()
+        const [deadlineResult, scheduleResult, fileResult, favoriteResult, myRecords] = await Promise.all([
+          supabase.from('pr_deadlines').select('week, category, deadline_time').or(currentSemesterIdFilter(current)),
+          fetchSemesterSchedules(current, { publicOnly: false }),
+          supabase.from('files_metadata').select('*').eq('semester', current.code).order('created_at', { ascending: false }).limit(300),
+          supabase.from('pr_config').select('value').eq('key', 'favorite_locations').maybeSingle(),
+          fetchMyRecords({ member: identity.member, session: identity.session }),
+        ])
+        if (!active) return
+        if (deadlineResult.error || fileResult.error) throw deadlineResult.error || fileResult.error
+        setSemester(current)
+        setDeadlines(groupDeadlines(deadlineResult.data))
+        setSchedules(scheduleResult.data || [])
+        setScheduleError(Boolean(scheduleResult.error))
+        setFiles(fileResult.data || [])
+        try {
+          setFavorites(JSON.parse(favoriteResult.data?.value || '[]'))
+        } catch {
+          setFavorites([])
+        }
+        setRecords(myRecords)
+        setState({ status: 'ready', error: '' })
+      } catch (error) {
+        if (active) setState({ status: 'error', error: error.message })
       }
     }
-    
-    initHub()
-  }, [router])
-
-  const handleLogout = async () => {
-    await supabase.auth.signOut()
-    router.push('/login')
-  }
-
-  const formatTime = (dateStr) => {
-    if(!dateStr) return ''
-    const d = new Date(dateStr)
-    const month = d.getMonth() + 1
-    const date = d.getDate()
-    let hours = d.getHours()
-    const minutes = String(d.getMinutes()).padStart(2, '0')
-    const ampm = hours >= 12 ? '오후' : '오전'
-    hours = hours % 12
-    hours = hours ? hours : 12
-    return `${month}/${date} ${ampm} ${hours}:${minutes}`
-  }
-
-  const getCategoryLabel = (category) => {
-    switch(category) {
-      case 'proposal': return '기획서 제출';
-      case 'slide': return '슬라이드 제출';
-      case 'video': return '발표영상 등록';
-      case 'proposal_comment': return '기획서 피드백';
-      case 'vote_feedback': return '정성 피드백';
-      case 'video_comment': return '셀프 피드백';
-      case 'absence': return '사유서 제출';
-      case 'weekday_upload': return '평일세션 자료·영상';
-      case 'weekday_feedback': return '평일세션 정성 피드백';
-      case 'weekday_self': return '평일세션 셀프 피드백';
-      case 'weekday_absence': return '평일세션 불참 사유서';
-      default: return `${category} 마감`;
+    load()
+    return () => {
+      active = false
     }
-  }
+  }, [identity.status, identity.session, identity.member, router])
 
-  const year = currentDate.getFullYear();
-  const month = currentDate.getMonth();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const firstDayOfMonth = new Date(year, month, 1).getDay();
-  const blanks = Array.from({ length: firstDayOfMonth }, (_, i) => i);
-  const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+  const name = identity.member?.name || identity.session?.user?.user_metadata?.name || '학회원'
+  const week = semester?.currentWeek ?? 1
+  const setup = semester?.weeklySetup?.[week] || {}
+  const myGroup = semester ? memberGroup(semester.weeklySetup, week, name) : null
+  const myTeam = setup.evalMode === 'team' ? (setup.memberTeams || setup.members || {})[name] : null
+  const myUploaderNames = useMemo(() => [name, myTeam ? `Team ${myTeam}` : null].filter(Boolean), [name, myTeam])
 
-  const eventsThisMonth = schedules.filter(s => {
-    if (!s.full_date) return false;
-    const [sy, sm] = s.full_date.split('-');
-    return parseInt(sy) === year && parseInt(sm) === month + 1;
-  });
+  const mySubmissionsByWeek = useMemo(() => {
+    const map = {}
+    for (const file of files) {
+      const mine = (identity.member && file.uploader_member_id === identity.member.id) || myUploaderNames.includes(file.uploader)
+      if (!mine) continue
+      const key = `${file.week}:${normalizeFileCategory(file.file_category)}`
+      map[key] = map[key] || file
+    }
+    return map
+  }, [files, identity.member, myUploaderNames])
 
-  if (!user) return <div className="min-h-screen bg-white flex items-center justify-center font-bold text-slate-400">로딩 중...</div>
+  const upcoming = useMemo(() => {
+    const now = Date.now()
+    const rows = []
+    for (const [weekKey, map] of Object.entries(deadlines)) {
+      for (const [category, at] of Object.entries(map)) {
+        if (['attendance_start', 'session_start', 'attendance_end'].includes(category)) continue
+        if (!at || new Date(at).getTime() < now) continue
+        rows.push({ week: Number(weekKey), category, at, submitted: mySubmissionsByWeek[`${weekKey}:${category}`] })
+      }
+    }
+    return rows.sort((a, b) => new Date(a.at) - new Date(b.at)).slice(0, 6)
+  }, [deadlines, mySubmissionsByWeek])
+
+  const summary = useMemo(() => {
+    if (!records || !semester) return null
+    const semesterRef = { id: semester.id, code: semester.code, status: 'active' }
+    const attendance = records.attendance.filter((row) => inSemester(row, semesterRef))
+    const fines = records.fines.filter((row) => inSemester(row, semesterRef))
+    return { ...summarizeAttendance(attendance), fines: summarizeFines(fines) }
+  }, [records, semester])
+
+  if (identity.status !== 'ready' || state.status === 'loading') return <MemberPage><LoadingState label="홈을 불러오는 중입니다." /></MemberPage>
+  if (state.status === 'error') return <MemberPage><ErrorState title="홈 정보를 불러오지 못했습니다." description={state.error} onRetry={() => window.location.reload()} /></MemberPage>
+
+  const weekDeadlines = deadlines[week] || {}
+  const weekSchedule = schedules.find((row) => String(row.week || '') === String(week) && !row.is_break)
+  const today = kstDateString()
+  const year = month.getFullYear()
+  const monthIndex = month.getMonth()
+  const daysInMonth = new Date(year, monthIndex + 1, 0).getDate()
+  const firstDay = new Date(year, monthIndex, 1).getDay()
+  const monthKey = `${year}-${String(monthIndex + 1).padStart(2, '0')}`
+  const monthEvents = schedules.filter((row) => String(row.full_date || '').startsWith(monthKey))
+  const recentFiles = files.slice(0, 6)
 
   return (
-    <div className="min-h-screen bg-white flex flex-col font-sans relative pb-20">
-      
-      <InternalNav />
-
-      <div className="max-w-[1200px] w-full mx-auto grid grid-cols-1 xl:grid-cols-[1fr_350px] gap-12 mt-12 px-6">
-        
-        {/* ======================================================== */}
-        {/* 🌟 좌측: 메인 워크스페이스 */}
-        {/* ======================================================== */}
-        <div className="space-y-12">
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
-            
-            {/* 🌟 1. 출석 섹션 (높이 360px 고정) */}
-            <div 
-              onClick={() => router.push('/attendance')}
-              className="bg-gradient-to-br from-teal-700 via-teal-800 to-slate-900 p-8 text-white relative overflow-hidden flex flex-col justify-between cursor-pointer group h-[360px] shadow-sm rounded-none"
-            >
-              <img src="/logo.png" alt="IG Logo" className="absolute -right-10 -bottom-10 w-80 h-80 object-contain opacity-20 transform -rotate-12 group-hover:scale-110 transition-transform duration-500" />
-              
-              <div className="relative z-10 flex flex-col justify-center h-full">
-                <p className="text-[10px] font-black uppercase tracking-[0.2em] mb-2 opacity-80 text-teal-100 mt-4">Welcome back,</p>
-                <h1 className="text-4xl md:text-5xl font-extrabold mb-1 drop-shadow-sm">{user.user_metadata?.name || '학회원'} 님</h1>
-                <p className="text-xs font-medium opacity-80 text-teal-50 mt-1">InsightGraphy 멤버십</p>
-              </div>
-
-              <div className="relative z-10 flex justify-between items-end pt-4 border-t border-white/20">
-                <div className="bg-white/10 px-4 py-2.5 text-xs font-bold flex items-center gap-2 backdrop-blur-md border border-white/20 hover:bg-white text-white hover:text-teal-900 transition-all">
-                  세션 출석체크 →
-                </div>
-                <button onClick={(e) => { e.stopPropagation(); handleLogout(); }} className="px-2 py-1 text-[10px] font-bold uppercase tracking-widest transition-colors text-white/60 hover:text-white">로그아웃</button>
-              </div>
-            </div>
-
-            {/* 🌟 2. 마감일 알림 (높이 360px 고정) */}
-            <div className="border-t-[3px] border-teal-800 pt-5 flex flex-col h-[360px]">
-              <div className="flex justify-between items-end mb-4">
-                <h2 className="text-lg font-extrabold text-slate-900">다가오는 마감 일정</h2>
-                <span className="text-[10px] font-black text-teal-600 uppercase tracking-widest">Upcoming</span>
-              </div>
-              <div className="border-t border-slate-200 flex-1 overflow-y-auto no-scrollbar">
-                {deadlines.length === 0 ? (
-                  <p className="text-xs font-medium text-slate-400 py-10 text-center border-b border-slate-100">예정된 마감일이 없습니다.</p>
-                ) : deadlines.map((d, idx) => (
-                  <div key={idx} className="flex justify-between items-center py-4 border-b border-slate-100 group hover:bg-slate-50 transition-colors px-1">
-                    <span className="text-[13px] font-bold text-slate-800 flex items-center gap-3">
-                      <span className="text-[9px] font-black bg-teal-800 text-white px-2 py-0.5 rounded-none w-10 text-center">{d.week}W</span>
-                      {getCategoryLabel(d.category)}
-                    </span>
-                    <span className="text-[11px] font-extrabold text-teal-700">{formatTime(d.deadline_time)}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* 🌟 퀵 메뉴 */}
-          <div className="border-t-[3px] border-teal-800 pt-5">
-            <h2 className="text-lg font-extrabold text-slate-900 mb-6">Quick Services</h2>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-x-8 gap-y-10 border-t border-slate-100 pt-8">
-              <Tile href="/dashboard/proposal" icon="📄" title="기획서 제출" desc="과제 양식 및 제출" iconColor="text-blue-600" hoverText="group-hover:text-teal-800" />
-              <Tile href="/dashboard/slide" icon="🖼️" title="발표 슬라이드" desc="발표용 ppt 드라이브" iconColor="text-purple-600" hoverText="group-hover:text-teal-800" />
-              <Tile href="/dashboard/video" icon="🎬" title="발표영상" desc="발표 영상 및 피드백" iconColor="text-red-600" hoverText="group-hover:text-teal-800" />
-              <Tile href="/vote/score" icon="🗳️" title="실시간 투표" desc="오늘의 세션 평가" iconColor="text-teal-600" hoverText="group-hover:text-teal-800" />
-              
-              <Tile href="/vote/results/ranking" icon="🏆" title="결과 & 랭킹" desc="내 점수와 랭킹 확인" iconColor="text-amber-500" hoverText="group-hover:text-teal-800" />
-              <Tile href="/archive" icon="📚" title="아카이브" desc="과거 자료 열람" iconColor="text-slate-700" hoverText="group-hover:text-teal-800" />
-              <Tile href="/archive/absence" icon="📝" title="사유서" desc="결석/지각/조퇴 제출" iconColor="text-rose-600" hoverText="group-hover:text-teal-800" />
-              <Tile href="/mypage" icon="👤" title="마이페이지" desc="출석·벌금·평가 기록" iconColor="text-teal-600" hoverText="group-hover:text-teal-800" />
-            </div>
-          </div>
+    <MemberPage>
+      <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p className="text-sm font-bold text-teal-700">{semester.name} · {week}주차</p>
+          <h1 className="text-2xl font-extrabold tracking-tight text-slate-950 sm:text-3xl">{name}님, 반가워요</h1>
         </div>
+        {records?.nameFallback && <StatusBadge tone="amber">학회원 명단과 연결되지 않은 계정</StatusBadge>}
+      </div>
 
-        {/* ======================================================== */}
-        {/* 🌟 우측: 사이드바 (달력 + 일정) */}
-        {/* ======================================================== */}
-        <aside className="w-full xl:w-[350px] flex flex-col space-y-12">
-          
-          {/* 🌟 3. 달력 섹션 (높이 360px 고정) */}
-          <div className="border-t-[3px] border-teal-800 pt-5 flex flex-col h-[360px]">
-            <div className="flex justify-between items-end mb-4">
-              <h3 className="text-lg font-extrabold text-slate-900">Calendar</h3>
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.4fr)_minmax(320px,0.9fr)]">
+        <div className="min-w-0 space-y-6">
+          <WeekOverviewCard
+            tour="member-week-card"
+            semesterName={semester.name}
+            week={week}
+            topic={displayTopic(semester.weekTopics, week)}
+            cancelled={semester.weeks?.[week]?.status === 'cancelled'}
+            scheduleDate={weekSchedule?.full_date}
+            scheduleTitle={weekSchedule ? `${weekSchedule.title} · ${scheduleTimeLabel(weekSchedule)}` : ''}
+            attendance={{ open: weekDeadlines.attendance_start, late: weekDeadlines.session_start, end: weekDeadlines.attendance_end }}
+            locationLabel={locationName(setup.location, favorites)}
+            groupLabel={myTeam ? `${myTeam}팀` : myGroup ? `${myGroup}조` : setup.members?.[name] === '결석' ? '이번 주 편성 제외' : ''}
+            deadlines={['proposal', 'slide', 'video'].map((key) => ({ key, at: weekDeadlines[key] }))}
+            actions={
+              <>
+                <Link href="/attendance" className="inline-flex min-h-10 items-center gap-1.5 rounded-md bg-teal-700 px-4 text-sm font-bold text-white hover:bg-teal-800"><MapPin className="h-4 w-4" aria-hidden="true" />출석하기</Link>
+                <Link href={`/dashboard/slide?week=${week}`} className="inline-flex min-h-10 items-center gap-1.5 rounded-md border border-slate-300 px-4 text-sm font-bold text-slate-700 hover:bg-slate-50">W{week} 자료실<ArrowRight className="h-4 w-4" aria-hidden="true" /></Link>
+                <Link href="/archive/absence" className="inline-flex min-h-10 items-center gap-1.5 rounded-md border border-slate-300 px-4 text-sm font-bold text-slate-700 hover:bg-slate-50"><ClipboardList className="h-4 w-4" aria-hidden="true" />사유서</Link>
+              </>
+            }
+          />
+
+          <section aria-labelledby="my-submissions" className="rounded-lg border border-slate-200 p-4 sm:p-5">
+            <h2 id="my-submissions" className="text-base font-bold text-slate-900">W{week} 내 제출</h2>
+            <ul className="mt-3 grid gap-2 sm:grid-cols-3">
+              {SUBMISSIONS.map((item) => {
+                const file = mySubmissionsByWeek[`${week}:${item.key}`]
+                const Icon = item.icon
+                return (
+                  <li key={item.key}>
+                    <Link href={`${item.href}?week=${week}`} className="flex items-center gap-3 rounded-md border border-slate-200 px-3 py-2.5 hover:border-teal-400">
+                      <Icon className="h-5 w-5 text-slate-400" aria-hidden="true" />
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-sm font-bold text-slate-900">{item.label}</span>
+                        <span className="block text-xs text-slate-500">{file ? formatKst(file.created_at) : weekDeadlines[item.key] ? `마감 ${formatKst(weekDeadlines[item.key])}` : '마감 미정'}</span>
+                      </span>
+                      <StatusBadge tone={file ? (file.is_late ? 'amber' : 'green') : 'gray'}>{file ? (file.is_late ? '지각 제출' : '제출') : '미제출'}</StatusBadge>
+                    </Link>
+                  </li>
+                )
+              })}
+            </ul>
+          </section>
+
+          <section aria-labelledby="recent-files" data-tour="member-recent">
+            <div className="mb-3 flex items-end justify-between gap-2">
+              <h2 id="recent-files" className="text-base font-bold text-slate-900">최근 올라온 자료</h2>
+              <Link href={`/dashboard/slide?week=${week}`} className="text-sm font-bold text-teal-700 hover:underline">자료실 가기</Link>
             </div>
-            
-            <div className="border-t border-slate-200 flex-1 flex flex-col pt-5">
-              <div className="flex justify-between items-center mb-5 px-2">
-                <button onClick={() => setCurrentDate(new Date(year, month - 1, 1))} className="text-slate-400 hover:text-teal-800 font-black text-sm transition-colors">◀</button>
-                <h4 className="text-sm font-extrabold text-slate-800 tracking-widest">{year}. {String(month + 1).padStart(2, '0')}</h4>
-                <button onClick={() => setCurrentDate(new Date(year, month + 1, 1))} className="text-slate-400 hover:text-teal-800 font-black text-sm transition-colors">▶</button>
-              </div>
-              
-              <div className="grid grid-cols-7 text-center text-[10px] font-bold text-slate-400 mb-2">
-                <div className="text-red-500">SU</div><div>MO</div><div>TU</div><div>WE</div><div>TH</div><div>FR</div><div className="text-teal-600">SA</div>
-              </div>
-              
-              <div className="grid grid-cols-7 gap-y-1 gap-x-1 flex-1 content-start">
-                {blanks.map(b => <div key={`blank-${b}`} className="h-8" />)}
-                {days.map(d => {
-                  const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-                  const hasEvent = schedules.some(s => s.full_date === dateStr);
-                  const isToday = new Date().toISOString().split('T')[0] === dateStr;
+            {recentFiles.length === 0 ? <p className="rounded-md border border-dashed border-slate-300 px-4 py-8 text-center text-sm text-slate-500">이번 학기에 올라온 자료가 없습니다.</p> : (
+              <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {recentFiles.map((file) => {
+                  const category = normalizeFileCategory(file.file_category)
+                  const href = `/dashboard/${category === 'weekday_slide' ? 'slide' : category === 'weekday_video' ? 'video' : category}?week=${file.week}${String(category).startsWith('weekday') ? '&session=weekday' : ''}`
                   return (
-                    <div key={d} className={`h-8 flex items-center justify-center text-[11px] font-bold transition-all ${isToday ? 'border-b-2 border-teal-800 text-teal-800' : hasEvent ? 'text-teal-900 bg-teal-50 rounded-none border border-teal-100' : 'text-slate-500 hover:text-teal-800'}`}>
-                      {d}
-                    </div>
+                    <li key={file.id} className="min-w-0">
+                      <FileThumbnail url={file.file_url} storagePath={file.storage_path} title={file.file_name} width={640} />
+                      <Link href={href} className="mt-2 block">
+                        <span className="block truncate text-sm font-bold text-slate-900" title={file.file_name}>{file.uploader} · W{file.week} {fileCategoryLabel(file.file_category, { short: true })}</span>
+                        <span className="block text-xs text-slate-500">{formatKst(file.created_at)}</span>
+                      </Link>
+                    </li>
                   )
                 })}
+              </ul>
+            )}
+          </section>
+        </div>
+
+        <aside className="min-w-0 space-y-6">
+          <section aria-labelledby="upcoming-deadlines" data-tour="member-deadlines" className="rounded-lg border border-slate-200">
+            <h2 id="upcoming-deadlines" className="border-b border-slate-100 px-4 py-3 text-base font-bold text-slate-900">다가오는 마감</h2>
+            {upcoming.length === 0 ? <p className="px-4 py-8 text-center text-sm text-slate-500">예정된 마감이 없습니다.</p> : (
+              <ul className="divide-y divide-slate-100">
+                {upcoming.map((item) => (
+                  <li key={`${item.week}-${item.category}`} className="flex items-center gap-3 px-4 py-3">
+                    <span className="w-10 shrink-0 rounded bg-teal-800 py-0.5 text-center text-xs font-bold text-white">W{item.week}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-bold text-slate-800">{deadlineLabel(item.category)}</span>
+                      <span className="block text-xs text-slate-500">{formatKst(item.at)}</span>
+                    </span>
+                    {['proposal', 'slide', 'video'].includes(item.category) && <StatusBadge tone={item.submitted ? 'green' : 'gray'}>{item.submitted ? '제출함' : '아직'}</StatusBadge>}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section aria-labelledby="mypage-summary" data-tour="member-mypage-summary" className="rounded-lg border border-slate-200 p-4">
+            <div className="flex items-center justify-between">
+              <h2 id="mypage-summary" className="text-base font-bold text-slate-900">이번 학기 내 기록</h2>
+              <Link href="/mypage" className="text-sm font-bold text-teal-700 hover:underline">마이페이지</Link>
+            </div>
+            {!summary ? <p className="mt-3 text-sm text-slate-500">기록을 불러오지 못했습니다.</p> : (
+              <dl className="mt-3 grid grid-cols-2 gap-2 text-center sm:grid-cols-4 xl:grid-cols-2">
+                <SummaryStat label="출석" value={summary.presentLike} />
+                <SummaryStat label="지각" value={summary.counts.late} tone={summary.counts.late ? 'amber' : ''} />
+                <SummaryStat label="무단결석" value={summary.counts.unauthorized} tone={summary.counts.unauthorized ? 'red' : ''} />
+                <SummaryStat label="미납 벌금" value={`₩${summary.fines.unpaidTotal.toLocaleString()}`} tone={summary.fines.unpaidTotal ? 'red' : ''} />
+              </dl>
+            )}
+            {records?.ambiguousName && <p className="mt-2 text-xs text-slate-500">이름이 같은 학회원이 있어, 학회원 연결이 안 된 예전 기록 일부는 빠졌을 수 있습니다.</p>}
+          </section>
+
+          <section aria-labelledby="calendar-title" className="rounded-lg border border-slate-200 p-4">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 id="calendar-title" className="flex items-center gap-1.5 text-base font-bold text-slate-900"><CalendarDays className="h-4 w-4 text-teal-700" aria-hidden="true" />{year}년 {monthIndex + 1}월</h2>
+              <div className="flex gap-1">
+                <button type="button" onClick={() => setMonth(new Date(year, monthIndex - 1, 1))} className="grid h-8 w-8 place-items-center rounded-md hover:bg-slate-100" aria-label="이전 달"><ChevronLeft className="h-4 w-4" aria-hidden="true" /></button>
+                <button type="button" onClick={() => setMonth(new Date(year, monthIndex + 1, 1))} className="grid h-8 w-8 place-items-center rounded-md hover:bg-slate-100" aria-label="다음 달"><ChevronRight className="h-4 w-4" aria-hidden="true" /></button>
               </div>
             </div>
-          </div>
-
-          {/* 🌟 스케줄 섹션 */}
-          <div className="border-t-[3px] border-teal-800 pt-5">
-            <h4 className="text-lg font-extrabold text-slate-900 mb-4">Schedule</h4>
-            <div className="border-t border-slate-200 pt-2 max-h-[400px] overflow-y-auto no-scrollbar">
-              {eventsThisMonth.length > 0 ? eventsThisMonth.sort((a,b) => new Date(a.full_date) - new Date(b.full_date)).map((ev, idx) => (
-                <div key={idx} className="flex gap-4 items-start py-4 border-b border-slate-100 last:border-0 group transition-all px-1">
-                  <div className={`w-[3px] h-full min-h-[36px] shrink-0 ${ev.is_public ? 'bg-teal-700' : 'bg-slate-300'}`} />
-                  <div className="flex-1">
-                    <p className="text-[10px] font-bold text-slate-400 mb-1">{ev.date_display} {ev.is_allday ? '(종일)' : `(${ev.start_time})`}</p>
-                    <p className={`text-[14px] font-bold text-slate-800 ${ev.is_break ? 'line-through text-slate-400' : 'group-hover:text-teal-800 transition-colors'}`}>{ev.title}</p>
-                    {ev.description && <p className="text-[11px] text-slate-500 font-medium mt-1.5 leading-snug">{ev.description}</p>}
-                  </div>
-                </div>
-              )) : <p className="text-sm font-medium text-slate-400 text-center py-10">이달의 일정이 없습니다.</p>}
+            {scheduleError && <Notice tone="danger" className="mb-2">일정을 불러오지 못했습니다.</Notice>}
+            <div className="grid grid-cols-7 gap-1 text-center text-xs">
+              {WEEKDAYS.map((day, index) => <div key={day} className={`py-1 font-bold ${index === 0 ? 'text-red-500' : index === 6 ? 'text-teal-700' : 'text-slate-500'}`}>{day}</div>)}
+              {Array.from({ length: firstDay }, (_, index) => <div key={`blank-${index}`} />)}
+              {Array.from({ length: daysInMonth }, (_, index) => {
+                const day = index + 1
+                const dateStr = `${monthKey}-${String(day).padStart(2, '0')}`
+                const has = schedules.some((row) => row.full_date === dateStr)
+                return <div key={day} className={`grid h-8 place-items-center rounded font-semibold ${dateStr === today ? 'bg-slate-900 text-white' : has ? 'bg-teal-50 text-teal-900 ring-1 ring-inset ring-teal-200' : 'text-slate-600'}`}>{day}</div>
+              })}
             </div>
-          </div>
-
+            <ul className="mt-3 divide-y divide-slate-100">
+              {monthEvents.length === 0 ? <li className="py-4 text-center text-sm text-slate-500">이달의 일정이 없습니다.</li> : monthEvents.map((row) => (
+                <li key={row.id} className="flex gap-3 py-2.5">
+                  <span className="w-16 shrink-0 text-xs font-bold text-slate-600">{formatKstDate(row.full_date)}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className={`block text-sm font-bold ${row.is_break ? 'text-slate-400 line-through' : 'text-slate-800'}`}>{row.title}</span>
+                    <span className="block text-xs text-slate-500">{scheduleTimeLabel(row)}{!row.is_public ? ' · 내부 일정' : ''}</span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </section>
         </aside>
-
       </div>
-    </div>
+    </MemberPage>
   )
 }
 
-function Tile({ href, icon, title, desc, iconColor, hoverText }) {
+function SummaryStat({ label, value, tone = '' }) {
+  const color = tone === 'red' ? 'text-red-600' : tone === 'amber' ? 'text-amber-700' : 'text-slate-900'
   return (
-    <Link href={href} className="group flex flex-col gap-1.5 border-b border-transparent hover:border-teal-200 pb-5 transition-all">
-      <div className="flex items-center gap-3 mb-1">
-        <span className={`text-2xl shrink-0 ${iconColor}`}>{icon}</span>
-        <h3 className={`text-[15px] font-extrabold text-slate-800 tracking-tight transition-colors ${hoverText}`}>{title}</h3>
-      </div>
-      <p className="text-[11px] font-medium text-slate-500 leading-relaxed border-l-2 border-slate-100 pl-4 ml-1 group-hover:border-teal-400 transition-colors">{desc}</p>
-    </Link>
+    <div className="rounded-md bg-slate-50 px-2 py-2.5">
+      <dt className="text-xs font-semibold text-slate-500">{label}</dt>
+      <dd className={`text-lg font-extrabold ${color}`}>{value}</dd>
+    </div>
   )
 }

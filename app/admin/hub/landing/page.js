@@ -1,252 +1,337 @@
 'use client'
-import { useState, useEffect } from 'react'
-import Link from 'next/link'
+// 메인(루트 랜딩) 문구와 노출 항목
+// 다가오는 일정: 자동(현재 학기 공개 일정 중 오늘 이후 가까운 4개) 또는 직접 선택
+import { useCallback, useEffect, useId, useMemo, useState } from 'react'
+import { CalendarDays, ExternalLink, RotateCcw, Save } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { DEFAULT_LANDING, mergeContent } from '@/lib/siteContent'
-import { currentSemesterIdFilter, fetchCurrentSemester } from '@/lib/semester'
-
-function TabButton({ id, label, activeTab, onSelect }) {
-  return (
-    <button onClick={() => onSelect(id)} className={`px-5 py-2.5 text-xs font-bold transition-colors border-b-[3px] ${activeTab === id ? 'border-teal-800 text-teal-800' : 'border-transparent text-slate-400 hover:text-slate-700'}`}>
-      {label}
-    </button>
-  )
-}
+import { formatKstDate, kstDateString, sameJson } from '@/lib/semester'
+import { fetchActiveSemesterRef, fetchSemesterSchedules, LANDING_SCHEDULE_LIMIT, pickUpcoming, scheduleTimeLabel } from '@/lib/schedules'
+import { useSiteUrls } from '@/lib/siteUrls'
+import { useAdminRole } from '@/app/admin/_components/AdminShell'
+import {
+  AdminPage,
+  Button,
+  EmptyState,
+  ErrorState,
+  Field,
+  inputClass,
+  LoadingState,
+  Notice,
+  PageHeader,
+  Panel,
+  ReadOnlyBanner,
+  SaveStatus,
+  SegmentedControl,
+  StatusBadge,
+  Tabs,
+  textareaClass,
+  useAsyncAction,
+  useToast,
+  useUnsavedChanges,
+} from '@/app/admin/_components/AdminUI'
 
 export default function LandingManager() {
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [tab, setTab] = useState('landing') // landing | select
-
-  // 공개 페이지 문구
+  const { role, canWrite } = useAdminRole()
+  const toast = useToast()
+  const site = useSiteUrls()
+  const [run, saving] = useAsyncAction()
+  const [state, setState] = useState({ status: 'loading', error: '' })
+  const [tab, setTab] = useState('select')
   const [land, setLand] = useState(DEFAULT_LANDING)
+  const [baseLand, setBaseLand] = useState(DEFAULT_LANDING)
+  const [schedules, setSchedules] = useState([])
+  const [semesterName, setSemesterName] = useState('')
+  const [showcases, setShowcases] = useState([])
+  const [selection, setSelection] = useState({ mode: 'auto', schedules: [], showcases: [] })
+  const [baseSelection, setBaseSelection] = useState({ mode: 'auto', schedules: [], showcases: [] })
+  const [modeColumnReady, setModeColumnReady] = useState(false)
+  const [savedAt, setSavedAt] = useState('')
+  const [failed, setFailed] = useState(false)
 
-  // 대문에 노출할 항목 선택
-  const [allSchedules, setAllSchedules] = useState([])
-  const [allShowcases, setAllShowcases] = useState([])
-  const [selectedSchIds, setSelectedSchIds] = useState([])
-  const [selectedShowIds, setSelectedShowIds] = useState([])
-
-  async function fetchLandingData() {
-
-    const { data: cfgRows } = await supabase.from('pr_config').select('key, value').eq('key', 'landing_content')
-    const pick = (k) => { try { return JSON.parse(cfgRows?.find(r => r.key === k)?.value || 'null') } catch { return null } }
-    setLand(mergeContent(DEFAULT_LANDING, pick('landing_content')))
-
-    // 대문 노출 후보는 현재 학기 공개 일정이다 (지난 학기 선택은 다음 저장 때 빠진다)
-    const current = await fetchCurrentSemester()
-    const { data: schData } = await supabase.from('pr_schedules').select('*').or(currentSemesterIdFilter(current)).eq('is_public', true).order('full_date', { ascending: true })
-    if (schData) setAllSchedules(schData)
-
-    const { data: showData } = await supabase.from('pr_showcase').select('*').order('created_at', { ascending: false })
-    if (showData) setAllShowcases(showData)
-
-    const { data: config } = await supabase.from('pr_landing_config').select('*').eq('id', 'main').single()
-    if (config) {
-      if (config.selected_schedules && schData) setSelectedSchIds(config.selected_schedules.filter(id => schData.some(s => s.id === id)))
-      if (config.selected_showcases && showData) setSelectedShowIds(config.selected_showcases.filter(id => showData.some(s => s.id === id)))
+  const load = useCallback(async () => {
+    setState({ status: 'loading', error: '' })
+    const [contentResult, { semester, error: semesterError }, showResult, configResult] = await Promise.all([
+      supabase.from('pr_config').select('value').eq('key', 'landing_content').maybeSingle(),
+      fetchActiveSemesterRef(),
+      supabase.from('pr_showcase').select('*').order('created_at', { ascending: false }),
+      supabase.from('pr_landing_config').select('*').eq('id', 'main').maybeSingle(),
+    ])
+    const scheduleResult = await fetchSemesterSchedules(semester, { publicOnly: true })
+    const error = contentResult.error || semesterError || showResult.error || configResult.error || scheduleResult.error
+    if (error) {
+      setState({ status: 'error', error: error.message })
+      return
     }
-
-    setLoading(false)
-  }
-
-  useEffect(() => {
-    void Promise.resolve().then(fetchLandingData)
+    let saved = null
+    try {
+      saved = contentResult.data?.value ? JSON.parse(contentResult.data.value) : null
+    } catch {
+      saved = null
+    }
+    const content = mergeContent(DEFAULT_LANDING, saved)
+    const config = configResult.data || {}
+    const nextSelection = {
+      mode: config.schedule_mode === 'manual' ? 'manual' : 'auto',
+      // 지난 학기·비공개·삭제된 일정 ID는 화면에서 빼지만, 저장하기 전까지 DB 값은 그대로 둔다
+      schedules: (config.selected_schedules || []).filter((id) => (scheduleResult.data || []).some((row) => String(row.id) === String(id))),
+      showcases: (config.selected_showcases || []).filter((id) => (showResult.data || []).some((row) => row.id === id)),
+    }
+    setLand(content)
+    setBaseLand(content)
+    setSchedules(scheduleResult.data || [])
+    setSemesterName(semester?.name || '')
+    setShowcases(showResult.data || [])
+    setSelection(nextSelection)
+    setBaseSelection(nextSelection)
+    setModeColumnReady(Object.hasOwn(config, 'schedule_mode'))
+    setState({ status: 'ready', error: '' })
   }, [])
 
-  // 중첩 객체 업데이트 헬퍼
-  const upLand = (section, field, value) => setLand(p => ({ ...p, [section]: { ...p[section], [field]: value } }))
-  const upActItem = (idx, field, value) => setLand(p => ({
-    ...p, activities: { ...p.activities, items: p.activities.items.map((it, i) => i === idx ? { ...it, [field]: value } : it) }
+  useEffect(() => {
+    const timer = setTimeout(load, 0)
+    return () => clearTimeout(timer)
+  }, [load])
+
+  const contentDirty = !sameJson(land, baseLand)
+  const selectionDirty = !sameJson(selection, baseSelection)
+  const dirtyCount = (contentDirty ? 1 : 0) + (selectionDirty ? 1 : 0)
+  useUnsavedChanges(dirtyCount > 0)
+
+  const today = kstDateString()
+  const preview = useMemo(() => {
+    const auto = pickUpcoming(schedules, { today })
+    if (selection.mode === 'auto') return { items: auto, fallback: false }
+    const picked = pickUpcoming(schedules.filter((row) => selection.schedules.map(String).includes(String(row.id))), { today, includeBreaks: true })
+    return picked.length ? { items: picked, fallback: false } : { items: auto, fallback: true }
+  }, [schedules, selection, today])
+
+  const upLand = (section, field, value) => setLand((current) => ({ ...current, [section]: { ...current[section], [field]: value } }))
+  const upActItem = (index, field, value) => setLand((current) => ({
+    ...current,
+    activities: { ...current.activities, items: current.activities.items.map((item, itemIndex) => itemIndex === index ? { ...item, [field]: value } : item) },
   }))
 
-  const handleScheduleToggle = (id) => {
-    if (selectedSchIds.includes(id)) setSelectedSchIds(selectedSchIds.filter(i => i !== id))
-    else { if (selectedSchIds.length >= 4) return alert('다가오는 일정은 최대 4개까지만 선택할 수 있습니다.'); setSelectedSchIds([...selectedSchIds, id]) }
-  }
-  const handleShowcaseToggle = (id) => {
-    if (selectedShowIds.includes(id)) setSelectedShowIds(selectedShowIds.filter(i => i !== id))
-    else { if (selectedShowIds.length >= 3) return alert('Best Practice 쇼케이스는 최대 3개까지만 선택할 수 있습니다.'); setSelectedShowIds([...selectedShowIds, id]) }
-  }
-
-  const handleSaveAll = async () => {
-    setSaving(true)
-    const { error: e1 } = await supabase.from('pr_config').upsert([
-      { key: 'landing_content', value: JSON.stringify(land) }
-    ])
-    const { error: e2 } = await supabase.from('pr_landing_config').upsert({
-      id: 'main', selected_schedules: selectedSchIds, selected_showcases: selectedShowIds
+  function toggleSchedule(id) {
+    setSelection((current) => {
+      if (current.schedules.includes(id)) return { ...current, schedules: current.schedules.filter((item) => item !== id) }
+      if (current.schedules.length >= LANDING_SCHEDULE_LIMIT) {
+        toast.warning(`다가오는 일정은 최대 ${LANDING_SCHEDULE_LIMIT}개까지 고를 수 있습니다.`)
+        return current
+      }
+      return { ...current, schedules: [...current.schedules, id] }
     })
-    if (e1 || e2) alert('저장 실패: ' + (e1 || e2).message)
-    else alert('공개 페이지 설정이 저장되었습니다! 🏠')
-    setSaving(false)
   }
 
-  const resetLanding = () => { if (confirm('랜딩 문구를 기본값으로 되돌릴까요? (저장 전까지는 반영되지 않습니다)')) setLand(DEFAULT_LANDING) }
+  function toggleShowcase(id) {
+    setSelection((current) => {
+      if (current.showcases.includes(id)) return { ...current, showcases: current.showcases.filter((item) => item !== id) }
+      if (current.showcases.length >= 3) {
+        toast.warning('우수 작품은 최대 3개까지 고를 수 있습니다.')
+        return current
+      }
+      return { ...current, showcases: [...current.showcases, id] }
+    })
+  }
 
-  if (loading) return <div className="min-h-screen bg-white flex justify-center items-center font-bold text-slate-400">데이터 로딩 중... 🔄</div>
+  async function saveAll() {
+    if (!canWrite || dirtyCount === 0) return
+    if (selection.mode === 'manual' && !modeColumnReady) {
+      toast.error('직접 선택 모드를 저장하려면 STEP 18 SQL이 필요합니다. 자동 모드는 SQL 없이도 동작합니다.')
+      return
+    }
+    await run(async () => {
+      const failures = []
+      if (contentDirty) {
+        const { error } = await supabase.from('pr_config').upsert([{ key: 'landing_content', value: JSON.stringify(land) }])
+        if (error) failures.push(`대문 문구: ${error.message}`)
+        else setBaseLand(land)
+      }
+      if (selectionDirty) {
+        const row = { id: 'main', selected_schedules: selection.schedules, selected_showcases: selection.showcases }
+        if (modeColumnReady) row.schedule_mode = selection.mode
+        const { error } = await supabase.from('pr_landing_config').upsert(row)
+        if (error) failures.push(`노출 항목: ${error.message}`)
+        else setBaseSelection(selection)
+      }
+      if (failures.length) {
+        setFailed(true)
+        toast.error(failures.join(' / '), { title: contentDirty && selectionDirty && failures.length === 1 ? '일부만 저장되었습니다' : '저장하지 못했습니다', duration: 0 })
+        return
+      }
+      setFailed(false)
+      setSavedAt(new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date()))
+      toast.success('메인 화면 설정을 저장했습니다.')
+    })
+  }
+
+  if (state.status === 'loading') return <AdminPage><LoadingState /></AdminPage>
+  if (state.status === 'error') return <AdminPage><ErrorState title="메인 설정을 불러오지 못했습니다." description={state.error} onRetry={load} /></AdminPage>
 
   return (
-    <div className="min-h-screen bg-white text-slate-900 font-sans p-6 md:p-12 pb-32">
-      <div className="max-w-4xl mx-auto">
+    <AdminPage>
+      <PageHeader
+        eyebrow="외부 사이트"
+        title="메인"
+        description="공개 홈페이지 첫 화면의 문구와, 다가오는 일정·우수 작품 노출을 관리합니다."
+        actions={
+          <>
+            <SaveStatus state={saving ? 'saving' : failed ? 'error' : dirtyCount ? 'dirty' : 'clean'} dirtyCount={dirtyCount} savedAt={savedAt} />
+            <Button icon={ExternalLink} href={site.publicUrl('/')} target="_blank">공개 메인 열기</Button>
+            <Button variant="primary" icon={Save} onClick={saveAll} loading={saving} disabled={!canWrite || dirtyCount === 0}>저장</Button>
+          </>
+        }
+      />
+      <ReadOnlyBanner role={role} />
 
-        <header className="mb-6 border-b border-slate-200 pb-6 flex flex-col md:flex-row md:justify-between md:items-end gap-4">
-          <div>
-            <Link href="/admin/hub" className="text-xs font-black text-slate-400 hover:text-teal-800 uppercase tracking-widest mb-3 block transition-colors">← Back to Hub</Link>
-            <h1 className="text-3xl md:text-4xl font-extrabold text-teal-800 tracking-tight">공개 페이지 문구 관리</h1>
-            <p className="text-sm font-medium text-slate-500 mt-2">대문 문구와 대문에 노출할 일정·쇼케이스를 관리합니다.</p>
-          </div>
-          <div className="flex gap-2 shrink-0">
-            <a href="/" target="_blank" rel="noopener noreferrer" className="px-4 py-2.5 border border-slate-300 text-slate-600 text-xs font-bold hover:border-teal-700 hover:text-teal-800 transition-colors">대문 미리보기 ↗</a>
-            <button onClick={handleSaveAll} disabled={saving} className="px-6 py-2.5 bg-teal-800 text-white text-xs font-bold hover:bg-teal-900 transition-colors disabled:bg-slate-300">{saving ? '저장 중...' : '전체 저장 💾'}</button>
-          </div>
-        </header>
+      <div className="mb-5 rounded-md border border-slate-200 bg-white px-2">
+        <Tabs tabs={[{ key: 'select', label: '노출 항목' }, { key: 'landing', label: '대문 문구' }]} value={tab} onChange={setTab} />
+      </div>
 
-        <div className="flex gap-1 border-b border-slate-200 mb-8 overflow-x-auto no-scrollbar">
-          <TabButton id="landing" label="🏠 대문 문구" activeTab={tab} onSelect={setTab} />
-          <TabButton id="select" label="✅ 대문 노출 항목" activeTab={tab} onSelect={setTab} />
-          <Link href="/admin/hub/schedule" className="ml-auto shrink-0 px-5 py-2.5 text-xs font-bold text-teal-700 hover:text-teal-900">전체 일정·타임라인 관리 →</Link>
+      {tab === 'select' && (
+        <div className="grid gap-5 xl:grid-cols-2">
+          <Panel
+            title="다가오는 일정"
+            description={`${semesterName || '현재 학기'} 공개 일정 기준 · 휴회는 자동 목록에서 빠집니다`}
+            action={<Button size="sm" variant="ghost" icon={CalendarDays} href="/admin/hub/schedule">전체 일정</Button>}
+          >
+            <div className="space-y-4 p-4 sm:p-5">
+              <SegmentedControl
+                label="일정 노출 방식"
+                value={selection.mode}
+                onChange={(mode) => setSelection((current) => ({ ...current, mode }))}
+                disabled={!canWrite}
+                options={[
+                  { value: 'auto', label: '자동 (가까운 4개)' },
+                  { value: 'manual', label: '직접 선택', disabled: !modeColumnReady, title: modeColumnReady ? undefined : 'STEP 18 SQL 적용 후 사용할 수 있습니다' },
+                ]}
+              />
+              {!modeColumnReady && <p className="text-xs text-slate-500">직접 선택 모드는 STEP 18 SQL 적용 후 쓸 수 있습니다. 지금은 자동 모드로 표시됩니다.</p>}
+
+              <div>
+                <p className="mb-2 text-sm font-bold text-slate-800">공개 메인에 보일 일정 ({today} 기준)</p>
+                {preview.fallback && <Notice tone="warning" className="mb-2">고른 일정이 모두 지났거나 비공개라서 자동 목록으로 보입니다.</Notice>}
+                {preview.items.length === 0 ? (
+                  <EmptyState title="표시할 일정이 없습니다." description={`메인에는 "${land.sessions.empty}" 문구가 보입니다.`} />
+                ) : (
+                  <ol className="divide-y divide-slate-100 rounded-md border border-slate-200">
+                    {preview.items.map((row) => (
+                      <li key={row.id} className="flex items-center justify-between gap-3 px-3 py-2.5 text-sm">
+                        <span className="min-w-0"><span className="font-bold text-slate-900">{formatKstDate(row.full_date)}</span> <span className="text-slate-700">{row.title}</span></span>
+                        <span className="shrink-0 text-xs text-slate-500">{scheduleTimeLabel(row)}</span>
+                      </li>
+                    ))}
+                  </ol>
+                )}
+              </div>
+
+              {selection.mode === 'manual' && (
+                <div>
+                  <p className="mb-2 text-sm font-bold text-slate-800">직접 고르기 ({selection.schedules.length}/{LANDING_SCHEDULE_LIMIT})</p>
+                  <div className="max-h-[420px] space-y-1.5 overflow-y-auto">
+                    {schedules.filter((row) => row.full_date >= today).map((row) => (
+                      <label key={row.id} className={`flex cursor-pointer items-center gap-3 rounded-md border px-3 py-2 text-sm ${selection.schedules.includes(row.id) ? 'border-teal-600 bg-teal-50' : 'border-slate-200 hover:border-slate-300'}`}>
+                        <input type="checkbox" checked={selection.schedules.includes(row.id)} onChange={() => toggleSchedule(row.id)} disabled={!canWrite} className="h-4 w-4 accent-teal-700" />
+                        <span className="w-20 shrink-0 font-bold text-slate-700">{formatKstDate(row.full_date)}</span>
+                        <span className="min-w-0 flex-1 truncate text-slate-800">{row.title}</span>
+                        {row.is_break && <StatusBadge tone="red">휴회</StatusBadge>}
+                      </label>
+                    ))}
+                    {schedules.filter((row) => row.full_date >= today).length === 0 && <p className="py-6 text-center text-sm text-slate-500">오늘 이후 공개 일정이 없습니다.</p>}
+                  </div>
+                </div>
+              )}
+            </div>
+          </Panel>
+
+          <Panel title="우수 작품" description={`메인에 노출할 작품 최대 3개 (${selection.showcases.length}/3)`}>
+            <div className="max-h-[640px] space-y-1.5 overflow-y-auto p-4">
+              {showcases.length === 0 ? <EmptyState title="쇼케이스 작품이 없습니다." description="쇼케이스 화면에서 먼저 작품을 추가하세요." /> : showcases.map((item) => (
+                <label key={item.id} className={`flex cursor-pointer items-center gap-3 rounded-md border p-2.5 ${selection.showcases.includes(item.id) ? 'border-teal-600 bg-teal-50' : 'border-slate-200 hover:border-slate-300'}`}>
+                  <input type="checkbox" checked={selection.showcases.includes(item.id)} onChange={() => toggleShowcase(item.id)} disabled={!canWrite} className="h-4 w-4 accent-teal-700" />
+                  <div className="h-12 w-20 shrink-0 overflow-hidden rounded bg-slate-100">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={item.thumb_url || '/showcase/thumb1.png'} alt="" className="h-full w-full object-cover" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-bold text-teal-700">{item.author}</p>
+                    <p className="truncate text-sm font-bold text-slate-800">{item.title}</p>
+                  </div>
+                </label>
+              ))}
+            </div>
+          </Panel>
         </div>
+      )}
 
-        {/* ================= 대문 문구 ================= */}
-        {tab === 'landing' && (
-          <div className="space-y-10">
-            <Section title="1. 히어로 (첫 화면)" onReset={resetLanding} resetLabel="랜딩 전체 초기화">
-              <Field label="상단 작은 문구" value={land.hero.eyebrow} onChange={v => upLand('hero', 'eyebrow', v)} />
-              <div className="grid grid-cols-2 gap-4">
-                <Field label="큰 제목 (1줄)" value={land.hero.titleLine1} onChange={v => upLand('hero', 'titleLine1', v)} />
-                <Field label="큰 제목 (2줄)" value={land.hero.titleLine2} onChange={v => upLand('hero', 'titleLine2', v)} />
+      {tab === 'landing' && (
+        <div className="space-y-5">
+          <Panel title="1. 첫 화면" action={<Button size="sm" variant="ghost" icon={RotateCcw} disabled={!canWrite} onClick={() => { if (confirm('대문 문구를 기본값으로 되돌릴까요? 저장해야 반영됩니다.')) setLand(DEFAULT_LANDING) }}>기본값으로</Button>}>
+            <div className="grid gap-4 p-4 sm:p-5 md:grid-cols-2">
+              <TextField label="상단 작은 문구" value={land.hero.eyebrow} onChange={(value) => upLand('hero', 'eyebrow', value)} disabled={!canWrite} />
+              <div />
+              <TextField label="큰 제목 첫 줄" value={land.hero.titleLine1} onChange={(value) => upLand('hero', 'titleLine1', value)} disabled={!canWrite} />
+              <TextField label="큰 제목 둘째 줄" value={land.hero.titleLine2} onChange={(value) => upLand('hero', 'titleLine2', value)} disabled={!canWrite} />
+              <TextField label="소개 문구 (줄바꿈 가능)" value={land.hero.desc} onChange={(value) => upLand('hero', 'desc', value)} disabled={!canWrite} textarea className="md:col-span-2" />
+              <TextField label="왼쪽 버튼" value={land.hero.btnPrimary} onChange={(value) => upLand('hero', 'btnPrimary', value)} disabled={!canWrite} />
+              <TextField label="오른쪽 버튼" value={land.hero.btnSecondary} onChange={(value) => upLand('hero', 'btnSecondary', value)} disabled={!canWrite} />
+            </div>
+          </Panel>
+          <Panel title="2. 핵심 활동 카드">
+            <div className="space-y-4 p-4 sm:p-5">
+              <div className="grid gap-4 md:grid-cols-2">
+                <TextField label="섹션 제목" value={land.activities.title} onChange={(value) => upLand('activities', 'title', value)} disabled={!canWrite} />
+                <TextField label="카드 아래 링크 문구" value={land.activities.cardLink} onChange={(value) => upLand('activities', 'cardLink', value)} disabled={!canWrite} />
               </div>
-              <Field label="소개 문구 (줄바꿈으로 여러 줄)" value={land.hero.desc} onChange={v => upLand('hero', 'desc', v)} textarea rows={4} />
-              <div className="grid grid-cols-2 gap-4">
-                <Field label="왼쪽 버튼" value={land.hero.btnPrimary} onChange={v => upLand('hero', 'btnPrimary', v)} />
-                <Field label="오른쪽 버튼" value={land.hero.btnSecondary} onChange={v => upLand('hero', 'btnSecondary', v)} />
-              </div>
-            </Section>
-
-            <Section title="2. 핵심 활동 (4개 카드)">
-              <Field label="섹션 제목" value={land.activities.title} onChange={v => upLand('activities', 'title', v)} />
-              <Field label="카드 하단 링크 문구" value={land.activities.cardLink} onChange={v => upLand('activities', 'cardLink', v)} />
-              <div className="space-y-4 mt-2">
-                {land.activities.items.map((it, i) => (
-                  <div key={i} className="border border-slate-200 border-l-[3px] border-l-teal-800 p-4">
-                    <p className="text-[10px] font-black text-teal-700 uppercase tracking-widest mb-3">카드 {i + 1}</p>
-                    <div className="grid grid-cols-[70px_1fr] gap-3 mb-3">
-                      <Field label="아이콘" value={it.icon} onChange={v => upActItem(i, 'icon', v)} />
-                      <Field label="제목" value={it.title} onChange={v => upActItem(i, 'title', v)} />
+              <div className="grid gap-4 lg:grid-cols-2">
+                {land.activities.items.map((item, index) => (
+                  <div key={index} className="space-y-3 rounded-md border border-slate-200 p-4">
+                    <p className="text-sm font-bold text-teal-800">카드 {index + 1}</p>
+                    <div className="grid grid-cols-[80px_minmax(0,1fr)] gap-3">
+                      <TextField label="아이콘" value={item.icon} onChange={(value) => upActItem(index, 'icon', value)} disabled={!canWrite} />
+                      <TextField label="제목" value={item.title} onChange={(value) => upActItem(index, 'title', value)} disabled={!canWrite} />
                     </div>
-                    <Field label="설명" value={it.desc} onChange={v => upActItem(i, 'desc', v)} textarea rows={2} />
-                    <Field label="연결 주소" value={it.href} onChange={v => upActItem(i, 'href', v)} />
+                    <TextField label="설명" value={item.desc} onChange={(value) => upActItem(index, 'desc', value)} disabled={!canWrite} textarea />
+                    <TextField label="연결 주소" value={item.href} onChange={(value) => upActItem(index, 'href', value)} disabled={!canWrite} />
                   </div>
                 ))}
               </div>
-            </Section>
-
-            <Section title="3. 우수 작품 (Best Practices)">
-              <Field label="제목" value={land.showcase.title} onChange={v => upLand('showcase', 'title', v)} />
-              <Field label="설명" value={land.showcase.desc} onChange={v => upLand('showcase', 'desc', v)} />
-              <div className="grid grid-cols-2 gap-4">
-                <Field label="버튼" value={land.showcase.btn} onChange={v => upLand('showcase', 'btn', v)} />
-                <Field label="항목이 없을 때 문구" value={land.showcase.empty} onChange={v => upLand('showcase', 'empty', v)} />
+            </div>
+          </Panel>
+          <div className="grid gap-5 lg:grid-cols-2">
+            <Panel title="3. 우수 작품">
+              <div className="grid gap-4 p-4 sm:p-5">
+                <TextField label="제목" value={land.showcase.title} onChange={(value) => upLand('showcase', 'title', value)} disabled={!canWrite} />
+                <TextField label="설명" value={land.showcase.desc} onChange={(value) => upLand('showcase', 'desc', value)} disabled={!canWrite} />
+                <TextField label="버튼" value={land.showcase.btn} onChange={(value) => upLand('showcase', 'btn', value)} disabled={!canWrite} />
+                <TextField label="작품이 없을 때 문구" value={land.showcase.empty} onChange={(value) => upLand('showcase', 'empty', value)} disabled={!canWrite} />
               </div>
-            </Section>
-
-            <Section title="4. 다가오는 일정">
-              <Field label="제목" value={land.sessions.title} onChange={v => upLand('sessions', 'title', v)} />
-              <Field label="인용 문구" value={land.sessions.quote} onChange={v => upLand('sessions', 'quote', v)} />
-              <div className="grid grid-cols-2 gap-4">
-                <Field label="버튼" value={land.sessions.btn} onChange={v => upLand('sessions', 'btn', v)} />
-                <Field label="일정이 없을 때 문구" value={land.sessions.empty} onChange={v => upLand('sessions', 'empty', v)} />
+            </Panel>
+            <Panel title="4. 다가오는 일정 · 5. 푸터">
+              <div className="grid gap-4 p-4 sm:p-5">
+                <TextField label="일정 제목" value={land.sessions.title} onChange={(value) => upLand('sessions', 'title', value)} disabled={!canWrite} />
+                <TextField label="인용 문구" value={land.sessions.quote} onChange={(value) => upLand('sessions', 'quote', value)} disabled={!canWrite} />
+                <TextField label="버튼" value={land.sessions.btn} onChange={(value) => upLand('sessions', 'btn', value)} disabled={!canWrite} />
+                <TextField label="일정이 없을 때 문구" value={land.sessions.empty} onChange={(value) => upLand('sessions', 'empty', value)} disabled={!canWrite} />
+                <TextField label="푸터 저작권 문구" value={land.footer.text} onChange={(value) => upLand('footer', 'text', value)} disabled={!canWrite} />
               </div>
-            </Section>
-
-            <Section title="5. 푸터">
-              <Field label="저작권 문구" value={land.footer.text} onChange={v => upLand('footer', 'text', v)} />
-            </Section>
+            </Panel>
           </div>
-        )}
-
-        {/* ================= 대문 노출 항목 선택 ================= */}
-        {tab === 'select' && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            <section>
-              <div className="mb-4 flex justify-between items-end border-b border-slate-200 pb-3">
-                <div>
-                  <h2 className="text-lg font-extrabold text-slate-900">다가오는 일정</h2>
-                  <p className="text-xs font-medium text-slate-400 mt-1">대문에 노출할 일정 <b className="text-teal-800">최대 4개</b></p>
-                </div>
-                <span className="bg-teal-50 text-teal-800 px-3 py-1 text-xs font-black">{selectedSchIds.length} / 4</span>
-              </div>
-              <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1">
-                {allSchedules.map(s => (
-                  <label key={s.id} className={`flex items-center justify-between p-3 cursor-pointer transition-colors border ${selectedSchIds.includes(s.id) ? 'border-teal-700 bg-teal-50' : 'border-slate-200 hover:border-slate-400'}`}>
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="bg-slate-900 text-white px-2 py-0.5 text-[9px] font-black shrink-0">{s.date_display}</span>
-                        <span className="text-sm font-bold text-slate-800 truncate">{s.title}</span>
-                      </div>
-                      <span className="text-xs font-medium text-slate-400 truncate block">{s.description || '설명 없음'}</span>
-                    </div>
-                    <input type="checkbox" checked={selectedSchIds.includes(s.id)} onChange={() => handleScheduleToggle(s.id)} className="w-5 h-5 accent-teal-700 cursor-pointer shrink-0 ml-3" />
-                  </label>
-                ))}
-                {allSchedules.length === 0 && <p className="text-center text-xs text-slate-400 py-10">일정표 관리에서 먼저 일정을 추가해주세요.</p>}
-              </div>
-            </section>
-
-            <section>
-              <div className="mb-4 flex justify-between items-end border-b border-slate-200 pb-3">
-                <div>
-                  <h2 className="text-lg font-extrabold text-slate-900">우수 작품</h2>
-                  <p className="text-xs font-medium text-slate-400 mt-1">대문에 노출할 작품 <b className="text-teal-800">최대 3개</b></p>
-                </div>
-                <span className="bg-teal-50 text-teal-800 px-3 py-1 text-xs font-black">{selectedShowIds.length} / 3</span>
-              </div>
-              <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1">
-                {allShowcases.map(item => (
-                  <label key={item.id} className={`flex items-center gap-3 p-3 cursor-pointer transition-colors border ${selectedShowIds.includes(item.id) ? 'border-teal-700 bg-teal-50' : 'border-slate-200 hover:border-slate-400'}`}>
-                    <div className="w-20 h-14 bg-slate-100 overflow-hidden shrink-0">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={item.thumb_url || '/showcase/thumb1.png'} alt="thumb" className="w-full h-full object-cover" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-[10px] font-black text-teal-700 uppercase tracking-widest">{item.author}</p>
-                      <h3 className="text-sm font-bold text-slate-800 truncate">{item.title}</h3>
-                    </div>
-                    <input type="checkbox" checked={selectedShowIds.includes(item.id)} onChange={() => handleShowcaseToggle(item.id)} className="w-5 h-5 accent-teal-700 cursor-pointer shrink-0" />
-                  </label>
-                ))}
-                {allShowcases.length === 0 && <p className="text-center text-xs text-slate-400 py-10">쇼케이스 관리에서 먼저 작품을 추가해주세요.</p>}
-              </div>
-            </section>
-          </div>
-        )}
-
-      </div>
-    </div>
+        </div>
+      )}
+    </AdminPage>
   )
 }
 
-function Section({ title, children, onReset, resetLabel }) {
+function TextField({ label, value, onChange, disabled, textarea = false, className = '' }) {
+  const id = useId()
   return (
-    <section>
-      <div className="flex justify-between items-end border-b border-teal-800 pb-2 mb-5">
-        <p className="text-[10px] font-black text-teal-700 uppercase tracking-widest">{title}</p>
-        {onReset && <button onClick={onReset} className="text-[10px] font-bold text-slate-400 hover:text-red-600 transition-colors">{resetLabel}</button>}
-      </div>
-      <div className="space-y-4">{children}</div>
-    </section>
-  )
-}
-
-function Field({ label, value, onChange, textarea, rows = 3, highlight }) {
-  const cls = `w-full border ${highlight ? 'border-teal-600' : 'border-slate-300'} p-3 text-sm font-bold outline-none focus:border-teal-700 transition-colors`
-  return (
-    <div>
-      <label className={`text-[10px] font-black uppercase tracking-widest block mb-2 ${highlight ? 'text-teal-700' : 'text-slate-500'}`}>{label}</label>
-      {textarea
-        ? <textarea rows={rows} value={value ?? ''} onChange={e => onChange(e.target.value)} className={cls + ' resize-y leading-relaxed'} />
-        : <input type="text" value={value ?? ''} onChange={e => onChange(e.target.value)} className={cls} />}
-    </div>
+    <Field label={label} className={className} htmlFor={id}>
+      {textarea ? (
+        <textarea id={id} value={value ?? ''} onChange={(event) => onChange(event.target.value)} disabled={disabled} rows={3} className={textareaClass} />
+      ) : (
+        <input id={id} value={value ?? ''} onChange={(event) => onChange(event.target.value)} disabled={disabled} className={inputClass} />
+      )}
+    </Field>
   )
 }

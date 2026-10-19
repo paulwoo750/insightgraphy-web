@@ -4,7 +4,8 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { supabase } from '@/lib/supabase'
 import { DEFAULT_SCHEDULE, loadSiteContent } from '@/lib/siteContent'
-import { currentSemesterIdFilter, fetchCurrentSemester } from '@/lib/semester'
+import { fetchActiveSemesterRef, fetchSemesterSchedules } from '@/lib/schedules'
+import { kstDateString } from '@/lib/semester'
 
 function PublicNav() {
   return (
@@ -52,7 +53,12 @@ function PublicNav() {
 export default function SchedulePage() {
   const [loading, setLoading] = useState(true)
   const [fullSchedule, setFullSchedule] = useState([])
-  const [currentDate, setCurrentDate] = useState(new Date(2026, 2, 1))
+  const [loadError, setLoadError] = useState('')
+  // 달력은 이번 달(한국 날짜)부터 보여 준다
+  const [currentDate, setCurrentDate] = useState(() => {
+    const [year, month] = kstDateString().split('-').map(Number)
+    return new Date(year, month - 1, 1)
+  })
   // 🌟 관리자가 편집한 문구 (pr_config.schedule_content)
   const [c, setC] = useState(DEFAULT_SCHEDULE)
 
@@ -60,16 +66,12 @@ export default function SchedulePage() {
     async function fetchSchedules() {
       setLoading(true)
       setC(await loadSiteContent(supabase, 'schedule_content', DEFAULT_SCHEDULE))
-      // 현재 학기의 외부 공개용 일정만 타임라인과 달력에 표시한다.
-      const current = await fetchCurrentSemester()
-      const { data, error } = await supabase
-        .from('pr_schedules')
-        .select('*')
-        .or(currentSemesterIdFilter(current))
-        .eq('is_public', true)
-        .order('full_date', { ascending: true })
+      // 현재 학기의 외부 공개용 일정만 타임라인과 달력에 표시한다 (메인·학회원 홈과 같은 조회 규칙).
+      const { semester, error: semesterError } = await fetchActiveSemesterRef()
+      const { data, error } = semesterError ? { data: [], error: semesterError } : await fetchSemesterSchedules(semester, { publicOnly: true })
 
-      if (!error && data) setFullSchedule(data)
+      if (error) setLoadError('일정을 불러오지 못했습니다. 잠시 후 새로고침해 주세요.')
+      else setFullSchedule(data)
       setLoading(false)
     }
 
@@ -108,6 +110,7 @@ export default function SchedulePage() {
         <div className="max-w-4xl mx-auto px-6">
           <p className="text-[#32a4a1] text-xs font-black tracking-[0.4em] uppercase mb-4">{c.header.eyebrow}</p>
           <h1 className="text-5xl md:text-6xl font-black tracking-tighter uppercase">{c.header.title}</h1>
+          {loadError && <p role="alert" className="mt-6 inline-block rounded-full bg-red-50 px-4 py-2 text-sm font-bold text-red-700">{loadError}</p>}
         </div>
       </header>
 

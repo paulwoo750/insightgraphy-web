@@ -4,7 +4,8 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { supabase } from '@/lib/supabase'
 import { DEFAULT_LANDING, loadSiteContent } from '@/lib/siteContent'
-import { currentSemesterIdFilter, fetchCurrentSemester } from '@/lib/semester'
+import { fetchLandingSchedules } from '@/lib/schedules'
+import { formatKstDate } from '@/lib/semester'
 
 // 상단 네비게이션
 function PublicNav() {
@@ -53,6 +54,7 @@ function PublicNav() {
 export default function LandingPage() {
   const [loading, setLoading] = useState(true)
   const [upcomingSchedules, setUpcomingSchedules] = useState([])
+  const [scheduleError, setScheduleError] = useState(false)
   const [bestPractices, setBestPractices] = useState([])
   // 🌟 관리자가 편집한 문구 (pr_config.landing_content)
   const [c, setC] = useState(DEFAULT_LANDING)
@@ -63,23 +65,16 @@ export default function LandingPage() {
     // 0. 편집 가능한 문구 불러오기
     setC(await loadSiteContent(supabase, 'landing_content', DEFAULT_LANDING))
 
-    // 1. 관리자가 선택한 ID 목록 가져오기
-    const { data: config } = await supabase.from('pr_landing_config').select('*').eq('id', 'main').single()
-    
-    if (config) {
-      // 2. 선택된 스케줄 데이터 쏙쏙 빼오기 (학기 전환 전에 고른 지난 학기 일정은 제외)
-      if (config.selected_schedules && config.selected_schedules.length > 0) {
-        const current = await fetchCurrentSemester()
-        const { data: schData } = await supabase
-          .from('pr_schedules')
-          .select('*')
-          .in('id', config.selected_schedules)
-          .or(currentSemesterIdFilter(current))
-          .order('full_date', { ascending: true })
-        if (schData) setUpcomingSchedules(schData)
-      }
+    // 1. 메인 노출 설정 (일정 자동/직접 선택, 쇼케이스 선택)
+    const { data: config } = await supabase.from('pr_landing_config').select('*').eq('id', 'main').maybeSingle()
 
-      // 3. 선택된 쇼케이스 데이터 쏙쏙 빼오기
+    // 2. 다가오는 일정: 현재 학기 공개 일정 중 오늘(한국 날짜) 이후 가까운 4개 (직접 선택 모드면 고른 일정)
+    const landingSchedules = await fetchLandingSchedules({ config: config || {} })
+    setUpcomingSchedules(landingSchedules.items)
+    setScheduleError(Boolean(landingSchedules.error))
+
+    if (config) {
+      // 3. 선택된 쇼케이스
       if (config.selected_showcases && config.selected_showcases.length > 0) {
         const { data: showData } = await supabase
           .from('pr_showcase')
@@ -203,17 +198,21 @@ export default function LandingPage() {
           <div className="grid grid-cols-1 gap-4">
             {loading ? (
               <div className="text-center text-slate-400 py-10 font-bold">로딩 중... 🔄</div>
+            ) : scheduleError ? (
+              <div className="py-10 text-center text-slate-500 font-bold border-2 border-dashed border-slate-200 rounded-[2rem]">
+                일정을 불러오지 못했습니다. 잠시 후 새로고침해 주세요.
+              </div>
             ) : upcomingSchedules.length > 0 ? (
               upcomingSchedules.map((item, idx) => (
                 <div key={idx} className="flex flex-col md:flex-row items-center gap-4 bg-white p-5 rounded-[2.5rem] shadow-sm border border-slate-100 hover:shadow-md transition-all group">
                   <div className="flex items-center justify-center gap-4 w-full md:w-auto md:min-w-[150px]">
-                    {item.type === 'regular' ? (
+                    {item.type === 'regular' && item.week ? (
                        <span className="text-[10px] font-black text-slate-400 uppercase">Week {item.week}</span>
                     ) : (
                        <span className="text-[10px] font-black text-slate-400 uppercase">Special</span>
                     )}
                     <div className={`${getTypeColor(item.type)} text-white px-5 py-2.5 rounded-2xl font-black text-xs text-center shadow-sm`}>
-                      {item.date_display}
+                      {formatKstDate(item.full_date) || item.date_display}
                     </div>
                   </div>
                   

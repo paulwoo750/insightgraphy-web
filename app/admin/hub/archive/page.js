@@ -15,11 +15,13 @@ import {
   isSnapshotRow,
   normalizeFileCategory,
 } from '@/lib/archive'
-import { AdminPage, EmptyState, PageHeader, Panel, StatusBadge } from '@/app/admin/_components/AdminUI'
+import { useAdminRole } from '@/app/admin/_components/AdminShell'
+import { AdminPage, EmptyState, PageHeader, Panel, ReadOnlyBanner, StatusBadge } from '@/app/admin/_components/AdminUI'
 
 const RESOURCE_TONES = { edu: 'teal', special: 'blue', template: 'gray' }
 
 export default function ArchiveAdminPage() {
+  const { role, canWrite } = useAdminRole()
   const [loading, setLoading] = useState(true)
   const [message, setMessage] = useState('')
   const [currentCode, setCurrentCode] = useState('')
@@ -71,13 +73,15 @@ export default function ArchiveAdminPage() {
   const snapshots = archiveRows.filter(isSnapshotRow).sort((a, b) => String(b.file_type).localeCompare(String(a.file_type)))
 
   async function deleteFile(file) {
+    if (!canWrite) return
     if (!confirm(`'${file.file_name}'을 삭제할까요? 제출 기록이 영구 삭제됩니다.`)) return
-    const { error } = await deleteSubmittedFile(file)
-    setMessage(error ? `삭제 실패: ${error.message}` : '제출 자료를 삭제했습니다.')
+    const { error, storageError } = await deleteSubmittedFile(file)
+    setMessage(error ? `삭제 실패: ${error.message}` : storageError ? `제출 기록은 삭제했지만 업로드 원본(${file.storage_path})을 지우지 못했습니다: ${storageError.message}. Supabase Storage에서 직접 지워 주세요.` : '제출 자료를 삭제했습니다.')
     if (!error) loadArchive()
   }
 
   async function deleteResource(row) {
+    if (!canWrite) return
     if (!confirm(`'${row.title}' 자료를 삭제할까요?`)) return
     const { error } = await supabase.from('archive_files').delete().eq('id', row.id)
     setMessage(error ? `삭제 실패: ${error.message}` : '공용 자료를 삭제했습니다.')
@@ -85,7 +89,7 @@ export default function ArchiveAdminPage() {
   }
 
   async function saveName(name) {
-    if (!name.trim()) return
+    if (!canWrite || !name.trim()) return
     const update = editTarget.table === 'archive_files' ? { title: name.trim() } : { file_name: name.trim() }
     const { error } = await supabase.from(editTarget.table).update(update).eq('id', editTarget.id)
     setMessage(error ? `이름 수정 실패: ${error.message}` : '이름을 수정했습니다.')
@@ -97,7 +101,7 @@ export default function ArchiveAdminPage() {
   return (
     <AdminPage>
       <PageHeader
-        eyebrow="Archive"
+        eyebrow="학회원 시스템"
         title="아카이브"
         description={`현재 학기(${currentCode || '미지정'})를 제외한 학기의 제출 자료와 공용 자료실을 관리합니다. 학기를 전환하면 이전 학기 자료가 자동으로 이곳에 모입니다.`}
         actions={
@@ -107,6 +111,7 @@ export default function ArchiveAdminPage() {
           </Link>
         }
       />
+      <ReadOnlyBanner role={role} />
 
       {message && <div className={`mb-4 rounded-md border px-4 py-3 text-sm font-semibold ${message.includes('실패') ? 'border-red-200 bg-red-50 text-red-700' : 'border-teal-200 bg-teal-50 text-teal-800'}`}>{message}</div>}
 
@@ -134,7 +139,7 @@ export default function ArchiveAdminPage() {
                 {semesterCodes.map((code) => (
                   <Chip key={code} active={code === activeSemester} onClick={() => { setSelectedSemester(code); setCategoryFilter('all') }}>
                     {semesterNames[code] || code}
-                    <span className="ml-1.5 text-[10px] opacity-70">{pastFiles.filter((file) => file.semester === code).length}</span>
+                    <span className="ml-1.5 text-xs opacity-70">{pastFiles.filter((file) => file.semester === code).length}</span>
                   </Chip>
                 ))}
               </div>
@@ -149,7 +154,7 @@ export default function ArchiveAdminPage() {
                   {visibleFiles.map((file) => (
                     <Row
                       key={file.id}
-                      badge={<><StatusBadge tone={FILE_CATEGORIES[normalizeFileCategory(file.file_category)]?.session === 'weekday' ? 'teal' : 'gray'}>{fileCategoryLabel(file.file_category, { short: true })}</StatusBadge><span className="w-9 text-[11px] font-bold text-slate-400">W{file.week ?? '?'}</span></>}
+                      badge={<><StatusBadge tone={FILE_CATEGORIES[normalizeFileCategory(file.file_category)]?.session === 'weekday' ? 'teal' : 'gray'}>{fileCategoryLabel(file.file_category, { short: true })}</StatusBadge><span className="w-9 text-xs font-bold text-slate-400">W{file.week ?? '?'}</span></>}
                       title={file.file_name}
                       href={file.file_url}
                       meta={file.uploader}
@@ -219,12 +224,12 @@ function snapshotSize(row) {
 }
 
 function Stat({ label, value }) {
-  return <div className="rounded-md border border-slate-200 bg-white p-4"><p className="text-[11px] font-semibold text-slate-500">{label}</p><p className="mt-1.5 text-xl font-bold text-slate-950">{value}</p></div>
+  return <div className="rounded-md border border-slate-200 bg-white p-4"><p className="text-xs font-semibold text-slate-500">{label}</p><p className="mt-1.5 text-xl font-bold text-slate-950">{value}</p></div>
 }
 
 function Chip({ active, onClick, small = false, children }) {
   return (
-    <button type="button" onClick={onClick} className={`inline-flex items-center rounded-md border font-bold transition-colors ${small ? 'min-h-7 px-2.5 text-[11px]' : 'min-h-8 px-3 text-xs'} ${active ? 'border-teal-700 bg-teal-700 text-white' : 'border-slate-200 bg-white text-slate-600 hover:border-teal-300 hover:text-teal-800'}`}>
+    <button type="button" onClick={onClick} className={`inline-flex items-center rounded-md border font-bold transition-colors ${small ? 'min-h-7 px-2.5 text-xs' : 'min-h-8 px-3 text-xs'} ${active ? 'border-teal-700 bg-teal-700 text-white' : 'border-slate-200 bg-white text-slate-600 hover:border-teal-300 hover:text-teal-800'}`}>
       {children}
     </button>
   )

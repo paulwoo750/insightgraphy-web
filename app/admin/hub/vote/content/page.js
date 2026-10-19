@@ -1,301 +1,225 @@
 'use client'
-import { useState, useEffect } from 'react'
-import Link from 'next/link'
+// 평가표(채점 기준) 편집: 버전 → 카테고리 → 평가 항목 → 점수별 기준
+// 이미 발표에 쓰인 버전은 지난 평가 결과 보존을 위해 삭제할 수 없다.
+import { useCallback, useEffect, useState } from 'react'
+import { Plus, Save, Trash2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { sameJson } from '@/lib/semester'
+import { useAdminRole } from '@/app/admin/_components/AdminShell'
+import {
+  AdminPage,
+  Button,
+  EmptyState,
+  ErrorState,
+  IconButton,
+  inputClass,
+  LoadingState,
+  PageHeader,
+  Panel,
+  ReadOnlyBanner,
+  SaveStatus,
+  Tabs,
+  textareaClass,
+  useAsyncAction,
+  useToast,
+  useUnsavedChanges,
+} from '@/app/admin/_components/AdminUI'
 
-function migrateLegacyData(legacyObj) {
-  if (!legacyObj || Array.isArray(legacyObj)) return legacyObj || []
-
-  const iItems = []
-  const gItems = []
-  const dItems = []
-  const cItems = []
-  Object.keys(legacyObj).forEach((key) => {
-    const item = { id: key, label: legacyObj[key].label, criteria: legacyObj[key].criteria }
-    if (key.startsWith('i')) iItems.push(item)
-    else if (key.startsWith('g')) gItems.push(item)
-    else if (key.startsWith('d')) dItems.push(item)
-    else cItems.push(item)
-  })
-
-  const categories = []
-  if (iItems.length > 0) categories.push({ id: `cat_i_${Date.now()}`, title: '인사이트', icon: '💡', color: 'blue', items: iItems })
-  if (gItems.length > 0) categories.push({ id: `cat_g_${Date.now()}`, title: '그래픽', icon: '🎨', color: 'purple', items: gItems })
-  if (dItems.length > 0) categories.push({ id: `cat_d_${Date.now()}`, title: '딜리버리', icon: '🎤', color: 'pink', items: dItems })
-  if (cItems.length > 0) categories.push({ id: `cat_c_${Date.now()}`, title: '상호보완성', icon: '🔗', color: 'emerald', items: cItems })
-  return categories
+const COLORS = {
+  blue: { label: '파랑', chip: 'bg-blue-50 text-blue-700', dot: 'bg-blue-500', border: 'border-blue-200' },
+  purple: { label: '보라', chip: 'bg-purple-50 text-purple-700', dot: 'bg-purple-500', border: 'border-purple-200' },
+  pink: { label: '분홍', chip: 'bg-pink-50 text-pink-700', dot: 'bg-pink-500', border: 'border-pink-200' },
+  emerald: { label: '초록', chip: 'bg-emerald-50 text-emerald-700', dot: 'bg-emerald-500', border: 'border-emerald-200' },
+  amber: { label: '주황', chip: 'bg-amber-50 text-amber-800', dot: 'bg-amber-500', border: 'border-amber-200' },
 }
 
+function migrateLegacyData(legacy) {
+  if (!legacy || Array.isArray(legacy)) return legacy || []
+  const buckets = { i: [], g: [], d: [], c: [] }
+  Object.keys(legacy).forEach((key) => {
+    const item = { id: key, label: legacy[key].label, criteria: legacy[key].criteria }
+    const bucket = key.startsWith('i') ? 'i' : key.startsWith('g') ? 'g' : key.startsWith('d') ? 'd' : 'c'
+    buckets[bucket].push(item)
+  })
+  const meta = { i: ['인사이트', '💡', 'blue'], g: ['그래픽', '🎨', 'purple'], d: ['딜리버리', '🎤', 'pink'], c: ['상호보완성', '🔗', 'emerald'] }
+  return Object.entries(buckets).filter(([, items]) => items.length).map(([key, items]) => ({ id: `cat_${key}`, title: meta[key][0], icon: meta[key][1], color: meta[key][2], items }))
+}
+
+let counter = 0
+const newId = (prefix) => `${prefix}_${Date.now()}_${counter++}`
+
 export default function VoteContentManager() {
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  
-  const [versions, setVersions] = useState([]) // ['v1', 'v2']
-  const [activeVersion, setActiveVersion] = useState('')
-  
-  // 전체 기준표 데이터 상태 (버전 이름을 key로, 카테고리 배열을 value로 가짐)
-  const [rubricData, setRubricData] = useState({})
+  const { role, canWrite } = useAdminRole()
+  const toast = useToast()
+  const [run, saving] = useAsyncAction()
+  const [state, setState] = useState({ status: 'loading', error: '' })
+  const [rubrics, setRubrics] = useState({})
+  const [base, setBase] = useState({})
+  const [usedVersions, setUsedVersions] = useState(new Set())
+  const [active, setActive] = useState('')
+  const [newVersion, setNewVersion] = useState('')
+  const [deleted, setDeleted] = useState([])
 
-  // 테마 색상 옵션
-  const colorOptions = [
-    { label: '파랑', value: 'blue' },
-    { label: '보라', value: 'purple' },
-    { label: '분홍', value: 'pink' },
-    { label: '초록', value: 'emerald' },
-    { label: '주황', value: 'amber' }
-  ]
-
-  async function fetchData() {
-    const { data } = await supabase.from('pr_vote_criteria').select('*')
-    
-    if (data && data.length > 0) {
-      const loadedVersions = []
-      const loadedData = {}
-      
-      data.forEach(row => {
-        loadedVersions.push(row.version)
-        loadedData[row.version] = migrateLegacyData(row.criteria_data)
-      })
-      
-      setVersions(loadedVersions)
-      setRubricData(loadedData)
-      setActiveVersion(loadedVersions[0])
-    } else {
-      // 데이터가 아예 없으면 기본 v1 생성
-      setVersions(['v1'])
-      setRubricData({ v1: [] })
-      setActiveVersion('v1')
+  const load = useCallback(async () => {
+    setState({ status: 'loading', error: '' })
+    const [criteriaResult, usedResult] = await Promise.all([
+      supabase.from('pr_vote_criteria').select('*'),
+      supabase.from('presentations').select('eval_version'),
+    ])
+    if (criteriaResult.error) {
+      setState({ status: 'error', error: criteriaResult.error.message })
+      return
     }
-    setLoading(false)
-  }
-
-  useEffect(() => {
-    void Promise.resolve().then(fetchData)
+    const loaded = Object.fromEntries((criteriaResult.data || []).map((row) => [row.version, migrateLegacyData(row.criteria_data)]))
+    const data = Object.keys(loaded).length ? loaded : { v1: [] }
+    setRubrics(data)
+    setBase(data)
+    setUsedVersions(new Set((usedResult.data || []).map((row) => row.eval_version).filter(Boolean)))
+    setActive((current) => current && data[current] ? current : Object.keys(data)[0])
+    setDeleted([])
+    setState({ status: 'ready', error: '' })
   }, [])
 
-  // 🌟 데이터 안전 업데이트 도우미 (점수칸 2개씩 생기는 버그 해결!)
-  const updateActiveData = (updater) => {
-    setRubricData(prev => {
-      // 현재 활성화된 버전의 데이터를 통째로 복사 (Deep Copy)해서 안전하게 수정
-      const clonedData = JSON.parse(JSON.stringify(prev[activeVersion] || []))
-      updater(clonedData)
-      return { ...prev, [activeVersion]: clonedData }
+  useEffect(() => {
+    const timer = setTimeout(load, 0)
+    return () => clearTimeout(timer)
+  }, [load])
+
+  const dirty = !sameJson(rubrics, base) || deleted.length > 0
+  useUnsavedChanges(dirty)
+
+  function update(updater) {
+    setRubrics((current) => {
+      const copy = JSON.parse(JSON.stringify(current[active] || []))
+      updater(copy)
+      return { ...current, [active]: copy }
     })
   }
 
-  // --- 버전(Version) 관리 ---
-  const handleAddVersion = () => {
-    const vName = prompt('새로운 버전의 이름을 입력하세요. (예: v3, mid-term)')
-    if (!vName) return
-    if (versions.includes(vName)) return alert('이미 존재하는 버전 이름입니다.')
-    
-    setVersions([...versions, vName])
-    setRubricData(prev => ({ ...prev, [vName]: [] }))
-    setActiveVersion(vName)
+  function addVersion(event) {
+    event.preventDefault()
+    const name = newVersion.trim()
+    if (!name) return
+    if (rubrics[name]) {
+      toast.error('이미 있는 버전 이름입니다.')
+      return
+    }
+    setRubrics((current) => ({ ...current, [name]: JSON.parse(JSON.stringify(current[active] || [])) }))
+    setActive(name)
+    setNewVersion('')
+    toast.info(`${active} 내용을 복사해 ${name} 버전을 만들었습니다. 저장해야 반영됩니다.`)
   }
 
-  const handleDeleteVersion = async (vName) => {
-    if (!confirm(`정말 [${vName}] 버전을 완전히 삭제할까요? 복구할 수 없습니다.`)) return
-    await supabase.from('pr_vote_criteria').delete().eq('version', vName)
-    
-    const newVersions = versions.filter(v => v !== vName)
-    setVersions(newVersions)
-    if (activeVersion === vName) setActiveVersion(newVersions[0] || '')
-  }
-
-  // --- 카테고리(Category) 관리 ---
-  const addCategory = () => {
-    updateActiveData(data => {
-      data.push({ id: `cat_${Date.now()}`, title: "새로운 카테고리", icon: "📌", color: "blue", items: [] })
+  function removeVersion(version) {
+    if (usedVersions.has(version)) {
+      toast.error(`${version} 버전은 이미 발표 평가에 쓰여 지울 수 없습니다. 지난 평가 결과를 보존하기 위해서입니다.`)
+      return
+    }
+    if (!confirm(`${version} 버전을 지울까요? 저장해야 반영됩니다.`)) return
+    setRubrics((current) => {
+      const next = { ...current }
+      delete next[version]
+      return next
     })
+    if (base[version]) setDeleted((list) => [...list, version])
+    setActive(Object.keys(rubrics).find((key) => key !== version) || '')
   }
 
-  const removeCategory = (cIdx) => {
-    if(confirm('이 카테고리와 내부 항목을 모두 삭제할까요?')) updateActiveData(data => data.splice(cIdx, 1))
-  }
-
-  const updateCategory = (cIdx, field, val) => updateActiveData(data => { data[cIdx][field] = val })
-
-  // --- 평가 항목(Item) 관리 ---
-  const addItem = (cIdx) => {
-    updateActiveData(data => {
-      data[cIdx].items.push({ id: `item_${Date.now()}`, label: "새로운 평가 항목", criteria: [{ s: 10, t: "최고 점수 기준" }, { s: 0, t: "최하 점수 기준" }] })
-    })
-  }
-
-  const removeItem = (cIdx, iIdx) => {
-    if(confirm('이 평가 항목을 삭제할까요?')) updateActiveData(data => data[cIdx].items.splice(iIdx, 1))
-  }
-
-  const updateItemLabel = (cIdx, iIdx, val) => updateActiveData(data => { data[cIdx].items[iIdx].label = val })
-
-  // --- 점수 기준(Criteria) 관리 ---
-  const addCriteriaRow = (cIdx, iIdx) => {
-    updateActiveData(data => {
-      data[cIdx].items[iIdx].criteria.push({ s: 0, t: "새 평가 기준" })
-      data[cIdx].items[iIdx].criteria.sort((a,b) => b.s - a.s) // 추가 후 자동 정렬
-    })
-  }
-
-  const removeCriteriaRow = (cIdx, iIdx, critIdx) => {
-    updateActiveData(data => { data[cIdx].items[iIdx].criteria.splice(critIdx, 1) })
-  }
-
-  const updateCriteria = (cIdx, iIdx, critIdx, field, val) => {
-    updateActiveData(data => {
-      data[cIdx].items[iIdx].criteria[critIdx][field] = field === 's' ? Number(val) : val
-      if (field === 's') data[cIdx].items[iIdx].criteria.sort((a,b) => b.s - a.s) // 점수 바뀌면 즉시 정렬
-    })
-  }
-
-  // --- 전체 저장 ---
-  const handleSave = async () => {
-    setSaving(true)
-    for (const v of versions) {
-      const { error } = await supabase.from('pr_vote_criteria').upsert({ version: v, criteria_data: rubricData[v] })
-      if (error) {
-        alert(`${v} 버전 저장 실패: ${error.message}`)
-        setSaving(false)
+  async function save() {
+    if (!canWrite || !dirty) return
+    await run(async () => {
+      const failures = []
+      for (const [version, data] of Object.entries(rubrics)) {
+        if (sameJson(data, base[version])) continue
+        const { error } = await supabase.from('pr_vote_criteria').upsert({ version, criteria_data: data })
+        if (error) failures.push(`${version}: ${error.message}`)
+      }
+      for (const version of deleted) {
+        const { error } = await supabase.from('pr_vote_criteria').delete().eq('version', version)
+        if (error) failures.push(`${version} 삭제: ${error.message}`)
+      }
+      if (failures.length) {
+        toast.error(failures.join(' / '), { title: '일부만 저장되었습니다', duration: 0 })
         return
       }
-    }
-    alert('모든 채점 시스템 셋업이 성공적으로 저장되었습니다! 📝')
-    setSaving(false)
+      toast.success('평가표를 저장했습니다. 다음 발표 셋업부터 바뀐 기준이 보입니다.')
+      await load()
+    })
   }
 
-  if (loading) return <div className="p-10 text-center font-black text-slate-500 min-h-screen flex items-center justify-center">루브릭 데이터 로딩 중... 🔄</div>
+  if (state.status === 'loading') return <AdminPage><LoadingState /></AdminPage>
+  if (state.status === 'error') return <AdminPage><ErrorState title="평가표를 불러오지 못했습니다." description={state.error} onRetry={load} /></AdminPage>
+
+  const categories = rubrics[active] || []
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans p-6 md:p-12 pb-32">
-      <div className="max-w-5xl mx-auto space-y-10">
-        
-        {/* 헤더 */}
-        <header className="flex justify-between items-end mb-8 border-b border-slate-200 pb-6 sticky top-16 bg-slate-50/90 backdrop-blur-md z-20 pt-4">
-          <div>
-            <Link href="/admin/hub/vote" className="text-xs font-black text-slate-400 hover:text-teal-500 uppercase tracking-widest mb-2 block transition-colors">
-              ← Back to Vote Hub
-            </Link>
-            <h1 className="text-4xl font-black uppercase tracking-tighter text-slate-800 flex items-center gap-3">
-              <span className="text-4xl">📝</span> Dynamic Rubric Editor
-            </h1>
-            <p className="text-xs font-bold text-slate-500 mt-2">버전, 카테고리, 평가 항목, 세부 기준까지 모든 것을 내 마음대로 커스텀하세요.</p>
-          </div>
-          <button onClick={handleSave} disabled={saving} className="bg-slate-900 text-white px-8 py-3 rounded-none font-black uppercase tracking-widest hover:bg-teal-600 transition-all shadow-sm active:scale-95">
-            {saving ? 'Saving...' : 'Save All 💾'}
-          </button>
-        </header>
+    <AdminPage>
+      <PageHeader
+        eyebrow="학회원 시스템 · 투표 및 평가"
+        title="평가표"
+        description="학회원 채점 화면에 보이는 카테고리·평가 항목·점수별 기준을 버전별로 편집합니다."
+        actions={<><SaveStatus state={saving ? 'saving' : dirty ? 'dirty' : 'clean'} dirtyCount={dirty ? 1 : 0} /><Button variant="primary" icon={Save} onClick={save} loading={saving} disabled={!canWrite || !dirty}>저장</Button></>}
+      />
+      <ReadOnlyBanner role={role} />
 
-        {/* 🌟 동적 버전 탭 관리 🌟 */}
-        <div className="flex flex-wrap items-center gap-3 mb-8 bg-white p-4 rounded-none shadow-sm border border-slate-100">
-          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-2">Versions</span>
-          {versions.map(v => (
-            <div key={v} className="flex items-center gap-1">
-              <button 
-                onClick={() => setActiveVersion(v)} 
-                className={`px-6 py-2.5 rounded-none font-black text-sm transition-all border-2 ${activeVersion === v ? 'bg-teal-600 text-white border-teal-600 shadow-sm' : 'bg-slate-50 text-slate-500 border-slate-200 hover:border-slate-300'}`}
-              >
-                {v.toUpperCase()} 버전
-              </button>
-              <button onClick={() => handleDeleteVersion(v)} className="w-8 h-8 rounded-none flex items-center justify-center text-slate-300 hover:bg-red-50 hover:text-red-500 font-black transition-colors">✕</button>
-            </div>
-          ))}
-          <button onClick={handleAddVersion} className="px-5 py-2.5 rounded-none font-black text-sm border-2 border-dashed border-teal-300 text-teal-500 hover:bg-teal-50 transition-colors ml-2">
-            + 새 버전 추가
-          </button>
+      <Panel className="mb-5">
+        <div className="flex flex-wrap items-center gap-3 px-3">
+          <Tabs tabs={Object.keys(rubrics).map((version) => ({ key: version, label: `${version}${usedVersions.has(version) ? ' · 사용 중' : ''}` }))} value={active} onChange={setActive} label="평가표 버전" className="border-b-0" />
+          <form onSubmit={addVersion} className="ml-auto flex items-center gap-2 py-2">
+            <input aria-label="새 버전 이름" value={newVersion} onChange={(event) => setNewVersion(event.target.value)} placeholder="새 버전 이름 (예: v3)" disabled={!canWrite} className={`${inputClass} h-9 w-44`} />
+            <Button type="submit" size="sm" icon={Plus} disabled={!canWrite || !newVersion.trim()}>복사해서 추가</Button>
+            {active && <Button size="sm" variant="danger" icon={Trash2} onClick={() => removeVersion(active)} disabled={!canWrite}>이 버전 삭제</Button>}
+          </form>
         </div>
+      </Panel>
 
-        {/* 🌟 동적 카테고리 에디터 본문 🌟 */}
-        {activeVersion && (
-          <div className="space-y-12 animate-in fade-in duration-500">
-            {(rubricData[activeVersion] || []).map((cat, cIdx) => {
-              
-              // 색상 테마 클래스 매칭
-              const colorBg = `bg-${cat.color}-50`
-              const colorText = `text-${cat.color}-600`
-              const colorBorder = `border-${cat.color}-200`
-              
-              return (
-                <div key={cat.id} className="bg-white p-8 rounded-none shadow-sm border border-slate-200 relative overflow-hidden group">
-                  <button onClick={() => removeCategory(cIdx)} className="absolute top-6 right-6 text-red-300 hover:text-red-600 font-black text-xs bg-red-50 px-3 py-1.5 rounded-none opacity-0 group-hover:opacity-100 transition-opacity">카테고리 삭제 🗑️</button>
-                  
-                  {/* 1️⃣ 카테고리 설정 (아이콘, 이름, 색상) */}
-                  <div className="flex flex-col md:flex-row md:items-center gap-4 mb-8 pb-6 border-b border-slate-100 pr-20">
-                    <input type="text" value={cat.icon} onChange={(e) => updateCategory(cIdx, 'icon', e.target.value)} className="w-16 h-16 text-4xl text-center bg-slate-50 rounded-none outline-none focus:ring-2 focus:ring-teal-200" placeholder="💡" />
-                    <input type="text" value={cat.title} onChange={(e) => updateCategory(cIdx, 'title', e.target.value)} className={`flex-1 text-3xl font-black ${colorText} outline-none bg-transparent placeholder-slate-300`} placeholder="카테고리명 (예: 1. 인사이트)" />
-                    
-                    <div className="flex gap-2 bg-slate-50 p-2 rounded-none">
-                      {colorOptions.map(c => (
-                        <button 
-                          key={c.value} 
-                          onClick={() => updateCategory(cIdx, 'color', c.value)}
-                          className={`w-6 h-6 rounded-none border-2 ${cat.color === c.value ? 'border-slate-800 scale-110 shadow-sm' : 'border-transparent opacity-50 hover:opacity-100'} bg-${c.value}-500`}
-                          title={c.label}
-                        />
+      {categories.length === 0 ? <Panel><EmptyState title="카테고리가 없습니다." action={<Button icon={Plus} disabled={!canWrite} onClick={() => update((data) => data.push({ id: newId('cat'), title: '새 카테고리', icon: '📌', color: 'blue', items: [] }))}>카테고리 추가</Button>} /></Panel> : (
+        <div className="space-y-5">
+          {categories.map((category, categoryIndex) => {
+            const color = COLORS[category.color] || COLORS.blue
+            return (
+              <Panel
+                key={category.id}
+                title={<span className="flex items-center gap-2"><span aria-hidden="true">{category.icon}</span>{category.title}</span>}
+                action={<Button size="sm" variant="danger" icon={Trash2} disabled={!canWrite} onClick={() => { if (confirm(`'${category.title}' 카테고리와 항목을 모두 지울까요?`)) update((data) => data.splice(categoryIndex, 1)) }}>카테고리 삭제</Button>}
+              >
+                <div className="space-y-4 p-4 sm:p-5">
+                  <div className="grid gap-3 sm:grid-cols-[80px_minmax(0,1fr)_auto]">
+                    <input aria-label="아이콘" value={category.icon} onChange={(event) => update((data) => { data[categoryIndex].icon = event.target.value })} disabled={!canWrite} className={`${inputClass} text-center text-xl`} />
+                    <input aria-label="카테고리 이름" value={category.title} onChange={(event) => update((data) => { data[categoryIndex].title = event.target.value })} disabled={!canWrite} className={inputClass} />
+                    <div className="flex items-center gap-1.5" role="radiogroup" aria-label="색상">
+                      {Object.entries(COLORS).map(([key, value]) => (
+                        <button key={key} type="button" role="radio" aria-checked={category.color === key} aria-label={value.label} disabled={!canWrite} onClick={() => update((data) => { data[categoryIndex].color = key })} className={`h-7 w-7 rounded-full ${value.dot} ${category.color === key ? 'ring-2 ring-slate-900 ring-offset-2' : 'opacity-50 hover:opacity-100'}`} />
                       ))}
                     </div>
                   </div>
-
-                  {/* 2️⃣ 내부 평가 항목(Items) 리스트 */}
-                  <div className="space-y-6">
-                    {cat.items.map((item, iIdx) => (
-                      <div key={item.id} className={`bg-slate-50 p-6 rounded-none border ${colorBorder} shadow-sm relative group/item`}>
-                        <button onClick={() => removeItem(cIdx, iIdx)} className="absolute top-4 right-4 w-8 h-8 rounded-none bg-white flex items-center justify-center text-red-400 hover:bg-red-50 hover:text-red-600 font-black opacity-0 group-hover/item:opacity-100 transition-all shadow-sm">✕</button>
-                        
-                        {/* 평가 항목명 */}
-                        <div className="flex items-center gap-3 mb-4 pr-10">
-                          <span className={`${colorBg} ${colorText} px-3 py-1 rounded-none text-xs font-black uppercase`}>항목 {iIdx + 1}</span>
-                          <input type="text" value={item.label} onChange={(e) => updateItemLabel(cIdx, iIdx, e.target.value)} className="flex-1 text-xl font-black text-slate-800 outline-none bg-transparent border-b border-transparent focus:border-slate-300 pb-1" placeholder="항목 이름 (예: 1-1. 주제의 명료성)" />
-                        </div>
-
-                        {/* 점수 기준표(Criteria) 에디터 */}
-                        <div className="space-y-2 bg-white p-4 rounded-none shadow-inner border border-slate-100">
-                          {item.criteria.map((crit, critIdx) => (
-                            <div key={critIdx} className="flex items-start gap-3 group/crit">
-                              <input 
-                                type="number" 
-                                value={crit.s} 
-                                onChange={(e) => updateCriteria(cIdx, iIdx, critIdx, 's', e.target.value)}
-                                className={`w-16 ${colorBg} ${colorText} font-black text-center p-3 rounded-none outline-none focus:ring-2`}
-                                placeholder="점수"
-                              />
-                              <textarea 
-                                rows="2"
-                                value={crit.t} 
-                                onChange={(e) => updateCriteria(cIdx, iIdx, critIdx, 't', e.target.value)}
-                                className="flex-1 bg-slate-50 text-sm font-bold text-slate-600 p-3 rounded-none outline-none focus:ring-2 focus:ring-slate-200 resize-none leading-relaxed"
-                                placeholder="이 점수에 해당하는 평가 기준 설명"
-                              />
-                              <button onClick={() => removeCriteriaRow(cIdx, iIdx, critIdx)} className="mt-2 w-8 h-8 flex items-center justify-center text-slate-300 hover:text-red-500 font-black opacity-0 group-hover/crit:opacity-100 transition-opacity">✕</button>
-                            </div>
-                          ))}
-                          
-                          <button onClick={() => addCriteriaRow(cIdx, iIdx)} className={`w-full py-3 mt-2 border-2 border-dashed ${colorBorder} ${colorText} rounded-none font-black text-xs hover:${colorBg} transition-colors`}>
-                            + 세부 점수칸 추가 (Add Criteria)
-                          </button>
-                        </div>
+                  {category.items.map((item, itemIndex) => (
+                    <div key={item.id} className={`space-y-3 rounded-md border bg-slate-50 p-4 ${color.border}`}>
+                      <div className="flex items-center gap-2">
+                        <span className={`shrink-0 rounded px-2 py-0.5 text-xs font-bold ${color.chip}`}>항목 {itemIndex + 1}</span>
+                        <input aria-label={`항목 ${itemIndex + 1} 이름`} value={item.label} onChange={(event) => update((data) => { data[categoryIndex].items[itemIndex].label = event.target.value })} disabled={!canWrite} className={inputClass} />
+                        <IconButton icon={Trash2} label={`항목 ${itemIndex + 1} 삭제`} variant="danger" size="sm" disabled={!canWrite} onClick={() => { if (confirm('이 평가 항목을 지울까요?')) update((data) => data[categoryIndex].items.splice(itemIndex, 1)) }} />
                       </div>
-                    ))}
-
-                    {/* 항목 추가 버튼 */}
-                    <div className="text-center pt-4">
-                      <button onClick={() => addItem(cIdx)} className={`px-6 py-4 bg-white border border-slate-200 rounded-none font-black ${colorText} shadow-sm hover:shadow-sm transition-all`}>
-                        + 이 카테고리에 새로운 평가 항목 추가
-                      </button>
+                      <div className="space-y-2">
+                        {item.criteria.map((criterion, criterionIndex) => (
+                          <div key={criterionIndex} className="flex items-start gap-2">
+                            <input aria-label="점수" type="number" value={criterion.s} onChange={(event) => update((data) => { data[categoryIndex].items[itemIndex].criteria[criterionIndex].s = Number(event.target.value); data[categoryIndex].items[itemIndex].criteria.sort((a, b) => b.s - a.s) })} disabled={!canWrite} className={`${inputClass} w-20 text-center`} />
+                            <textarea aria-label="점수 기준 설명" rows={2} value={criterion.t} onChange={(event) => update((data) => { data[categoryIndex].items[itemIndex].criteria[criterionIndex].t = event.target.value })} disabled={!canWrite} className={`${textareaClass} min-h-10`} />
+                            <IconButton icon={Trash2} label="기준 삭제" size="sm" disabled={!canWrite} onClick={() => update((data) => data[categoryIndex].items[itemIndex].criteria.splice(criterionIndex, 1))} />
+                          </div>
+                        ))}
+                        <Button size="sm" icon={Plus} disabled={!canWrite} onClick={() => update((data) => { data[categoryIndex].items[itemIndex].criteria.push({ s: 0, t: '새 평가 기준' }) })}>점수 기준 추가</Button>
+                      </div>
                     </div>
-
-                  </div>
+                  ))}
+                  <Button icon={Plus} disabled={!canWrite} onClick={() => update((data) => data[categoryIndex].items.push({ id: newId('item'), label: '새 평가 항목', criteria: [{ s: 10, t: '최고 점수 기준' }, { s: 0, t: '최하 점수 기준' }] }))}>평가 항목 추가</Button>
                 </div>
-              )
-            })}
-
-            {/* 거대한 카테고리 추가 버튼 */}
-            <button onClick={addCategory} className="w-full py-10 bg-slate-900 text-white rounded-none font-black text-xl shadow-sm hover:bg-teal-600 hover:scale-[1.01] transition-all">
-              + 새로운 카테고리 (Category) 추가하기
-            </button>
-            
-          </div>
-        )}
-      </div>
-    </div>
+              </Panel>
+            )
+          })}
+          <Button variant="dark" icon={Plus} className="w-full" disabled={!canWrite} onClick={() => update((data) => data.push({ id: newId('cat'), title: '새 카테고리', icon: '📌', color: 'blue', items: [] }))}>카테고리 추가</Button>
+        </div>
+      )}
+    </AdminPage>
   )
 }

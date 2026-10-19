@@ -1,72 +1,45 @@
 'use client'
+
 import Link from 'next/link'
+import { ArrowRight, ListOrdered, NotebookPen } from 'lucide-react'
+import { AdminPage, PageHeader } from '@/app/admin/_components/AdminUI'
+
+const sections = [
+  {
+    href: '/admin/hub/vote/setup',
+    icon: ListOrdered,
+    title: '발표 세션 셋업',
+    description: '세션 및 제출의 편성으로 주차별 발표 순서와 채점표 버전을 확정하고, 채점 진행을 확인합니다.',
+    action: '셋업 열기',
+  },
+  {
+    href: '/admin/hub/vote/content',
+    icon: NotebookPen,
+    title: '투표 화면 내용·평가표',
+    description: '학회원 투표 화면의 안내 문구와 Insight·Graphic·Delivery 채점 기준, 평가표 버전을 편집합니다.',
+    action: '내용 편집',
+  },
+]
 
 export default function VoteManagerHub() {
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans p-6 md:p-12 pb-32">
-      <div className="max-w-5xl mx-auto space-y-12">
-        
-        {/* 상단 헤더 */}
-        <header className="flex justify-between items-end mb-12 border-b border-slate-200 pb-6">
-          <div>
-            <Link href="/admin/hub" className="text-xs font-black text-slate-400 hover:text-teal-500 uppercase tracking-widest mb-2 block transition-colors">
-              ← Back to Admin Hub
+    <AdminPage>
+      <PageHeader eyebrow="학회원 시스템" title="투표 및 평가" description="실시간 채점의 발표 순서와 학회원에게 보이는 평가 안내를 관리합니다." />
+      <div className="grid gap-4 md:grid-cols-2">
+        {sections.map((section) => {
+          const Icon = section.icon
+          return (
+            <Link key={section.href} href={section.href} className="group flex min-h-[200px] flex-col justify-between rounded-md border border-slate-200 bg-white p-6 transition-colors hover:border-teal-500">
+              <div>
+                <Icon className="h-7 w-7 text-teal-700" aria-hidden="true" />
+                <h2 className="mt-4 text-lg font-bold text-slate-900">{section.title}</h2>
+                <p className="mt-1.5 break-keep text-sm leading-6 text-slate-600">{section.description}</p>
+              </div>
+              <span className="mt-6 inline-flex items-center gap-1 text-sm font-bold text-teal-700">{section.action}<ArrowRight className="h-4 w-4" aria-hidden="true" /></span>
             </Link>
-            <h1 className="text-4xl font-black uppercase tracking-tighter text-slate-800 flex items-center gap-3">
-              <span className="text-4xl">🗳️</span> Vote & Score System
-            </h1>
-            <p className="text-xs font-bold text-slate-500 mt-2">실시간 채점 시스템의 안내 문구와 발표 세션을 관리하세요.</p>
-          </div>
-        </header>
-
-        {/* 2가지 선택 메뉴 카드 */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          
-          {/* 1. 내용 수정 (Content Edit) */}
-          <Link 
-            href="/admin/hub/vote/content"
-            className="bg-white p-10 rounded-none shadow-sm border-2 border-transparent hover:border-teal-400 hover:shadow-sm transition-all group flex flex-col justify-between min-h-[300px]"
-          >
-            <div>
-              <div className="text-6xl mb-6 group-hover:scale-110 transition-transform origin-left">📝</div>
-              <h2 className="text-2xl font-black uppercase tracking-tight mb-4 text-slate-800 group-hover:text-teal-600 transition-colors">
-                투표 화면 내용 수정
-              </h2>
-              <p className="text-sm text-slate-500 font-medium break-keep leading-relaxed">
-                유저들이 보는 투표 페이지의 상단 안내 문구, 채점 기준(Insight, Graphic, Delivery) 세부 설명 등을 텍스트 에디터로 편집합니다.
-              </p>
-            </div>
-            <div className="text-right mt-8 opacity-0 group-hover:opacity-100 transition-opacity">
-              <span className="text-[11px] font-black uppercase tracking-widest text-teal-600 bg-teal-50 px-4 py-2 rounded-none border border-teal-200">
-                Edit Content ⚙️
-              </span>
-            </div>
-          </Link>
-
-          {/* 2. 발표 셋업 (Session Setup) */}
-          <Link 
-            href="/admin/hub/vote/setup"
-            className="bg-white p-10 rounded-none shadow-sm border-2 border-transparent hover:border-teal-500 hover:shadow-sm transition-all group flex flex-col justify-between min-h-[300px]"
-          >
-            <div>
-              <div className="text-6xl mb-6 group-hover:scale-110 transition-transform origin-left">📊</div>
-              <h2 className="text-2xl font-black uppercase tracking-tight mb-4 text-slate-800 group-hover:text-teal-600 transition-colors">
-                발표 세션 셋업
-              </h2>
-              <p className="text-sm text-slate-500 font-medium break-keep leading-relaxed">
-                이번 주차의 발표자 명단 등록, 조 편성, 투표 활성화(ON/OFF) 제어 및 제출된 피드백 확인 등 실시간 세션을 관리합니다.
-              </p>
-            </div>
-            <div className="text-right mt-8 opacity-0 group-hover:opacity-100 transition-opacity">
-              <span className="text-[11px] font-black uppercase tracking-widest text-teal-600 bg-teal-50 px-4 py-2 rounded-none border border-teal-200">
-                Session Setup ⚙️
-              </span>
-            </div>
-          </Link>
-
-        </div>
-
+          )
+        })}
       </div>
-    </div>
+    </AdminPage>
   )
 }

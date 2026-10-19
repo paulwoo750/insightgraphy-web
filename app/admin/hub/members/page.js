@@ -17,8 +17,8 @@ import {
   X,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
-import { useAdminContext } from '@/app/admin/_components/AdminShell'
-import { AdminPage, EmptyState, PageHeader, Panel, StatusBadge } from '@/app/admin/_components/AdminUI'
+import { useAdminContext, useAdminRole } from '@/app/admin/_components/AdminShell'
+import { AdminPage, EmptyState, PageHeader, Panel, ReadOnlyBanner, StatusBadge } from '@/app/admin/_components/AdminUI'
 
 const execRoles = ['member', '학회장', '부학회장', '총무', '기획부장', '교육부장', '홍보부장']
 const memberStatuses = [
@@ -64,6 +64,7 @@ function statusLabel(status) {
 
 export default function AdminMembersPage() {
   const { semester: activeSemester, admin } = useAdminContext() || {}
+  const { canWrite } = useAdminRole()
   const [members, setMembers] = useState([])
   const [semesters, setSemesters] = useState([])
   const [semesterId, setSemesterId] = useState('')
@@ -404,16 +405,17 @@ export default function AdminMembersPage() {
   return (
     <AdminPage>
       <PageHeader
-        eyebrow="People Directory"
+        eyebrow="운영 기준"
         title="학회원 관리"
         description="학회원 기본 정보는 한 번만 등록하고, 학기별 참여 여부와 직책은 선택한 학기 명단에서 관리합니다."
         actions={
-          <button type="button" onClick={openNewMember} className="inline-flex min-h-10 items-center gap-2 rounded-md bg-teal-700 px-4 text-sm font-bold text-white hover:bg-teal-800">
+          <button type="button" onClick={openNewMember} disabled={!canWrite} className="inline-flex min-h-10 items-center gap-2 rounded-md bg-teal-700 px-4 text-sm font-bold text-white hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-50">
             <Plus className="h-4 w-4" aria-hidden="true" />
             학회원 등록
           </button>
         }
       />
+      <ReadOnlyBanner role={admin?.role} />
 
       {message && (
         <div className={`mb-4 rounded-md border px-4 py-3 text-sm font-semibold ${message.includes('실패') ? 'border-red-200 bg-red-50 text-red-700' : 'border-teal-200 bg-teal-50 text-teal-800'}`}>
@@ -448,21 +450,21 @@ export default function AdminMembersPage() {
                   <button key={item.value} type="button" onClick={() => { setDirectoryTab(item.value); setSelectedMemberIds([]) }} className={`inline-flex min-h-9 shrink-0 items-center gap-2 rounded px-3 text-xs font-bold ${directoryTab === item.value ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>
                     <Icon className="h-4 w-4" aria-hidden="true" />
                     {item.label}
-                    <span className="text-[10px] text-slate-400">{count}</span>
+                    <span className="text-xs text-slate-400">{count}</span>
                   </button>
                 )
               })}
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-xs font-semibold text-slate-500">{selectedMemberIds.length}명 선택</span>
-              <button type="button" onClick={() => bulkMoveMembers('active')} disabled={saving || selectedMemberIds.length === 0} className="inline-flex min-h-9 items-center gap-2 rounded-md border border-teal-200 bg-teal-50 px-3 text-xs font-bold text-teal-800 hover:bg-teal-100 disabled:opacity-40">
+              <button type="button" onClick={() => bulkMoveMembers('active')} disabled={!canWrite || saving || selectedMemberIds.length === 0} className="inline-flex min-h-9 items-center gap-2 rounded-md border border-teal-200 bg-teal-50 px-3 text-xs font-bold text-teal-800 hover:bg-teal-100 disabled:opacity-40">
                 <ArrowLeftRight className="h-4 w-4" aria-hidden="true" /> 활동으로 이동
               </button>
-              <button type="button" onClick={() => bulkMoveMembers('alumni')} disabled={saving || selectedMemberIds.length === 0} className="inline-flex min-h-9 items-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 text-xs font-bold text-blue-800 hover:bg-blue-100 disabled:opacity-40">
+              <button type="button" onClick={() => bulkMoveMembers('alumni')} disabled={!canWrite || saving || selectedMemberIds.length === 0} className="inline-flex min-h-9 items-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 text-xs font-bold text-blue-800 hover:bg-blue-100 disabled:opacity-40">
                 <GraduationCap className="h-4 w-4" aria-hidden="true" /> 졸업으로 이관
               </button>
               {canDeleteMembers && (
-                <button type="button" onClick={deleteSelectedMembers} disabled={saving || selectedMemberIds.length === 0} className="inline-flex min-h-9 items-center gap-2 rounded-md border border-red-200 bg-red-50 px-3 text-xs font-bold text-red-700 hover:bg-red-100 disabled:opacity-40">
+                <button type="button" onClick={deleteSelectedMembers} disabled={!canWrite || saving || selectedMemberIds.length === 0} className="inline-flex min-h-9 items-center gap-2 rounded-md border border-red-200 bg-red-50 px-3 text-xs font-bold text-red-700 hover:bg-red-100 disabled:opacity-40">
                   <Trash2 className="h-4 w-4" aria-hidden="true" /> 영구 삭제
                 </button>
               )}
@@ -491,7 +493,7 @@ export default function AdminMembersPage() {
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[860px] border-collapse text-left">
-                <thead className="bg-white text-[11px] font-bold text-slate-500">
+                <thead className="bg-white text-xs font-bold text-slate-500">
                   <tr className="border-b border-slate-200">
                     <th className="w-12 px-4 py-3">
                       <input type="checkbox" checked={filteredMembers.length > 0 && filteredMembers.every((member) => selectedMemberIds.includes(member.id))} onChange={toggleAllVisible} aria-label="현재 목록 전체 선택" className="accent-teal-700" />
@@ -517,7 +519,7 @@ export default function AdminMembersPage() {
                             <div className="grid h-9 w-9 shrink-0 place-items-center bg-slate-900 text-xs font-bold text-white">{member.name.slice(0, 1)}</div>
                             <div>
                               <p className="text-sm font-bold text-slate-900">{member.name}</p>
-                              <p className="mt-0.5 text-[11px] text-slate-500">{member.generation || '기수 미입력'} · {member.is_public ? '공개' : '비공개'}{member.status === 'pending' ? ` · ${member.requested_status === 'alumni' ? '졸업' : '활동'} 요청` : ''}</p>
+                              <p className="mt-0.5 text-xs text-slate-500">{member.generation || '기수 미입력'} · {member.is_public ? '공개' : '비공개'}{member.status === 'pending' ? ` · ${member.requested_status === 'alumni' ? '졸업' : '활동'} 요청` : ''}</p>
                             </div>
                           </div>
                         </td>
@@ -530,7 +532,7 @@ export default function AdminMembersPage() {
                           <select
                             value={membership?.participation_status || 'not_enrolled'}
                             onChange={(event) => updateMembership(member.id, { participation_status: event.target.value === 'not_enrolled' ? 'withdrawn' : event.target.value })}
-                            disabled={!semesterId}
+                            disabled={!canWrite || !semesterId}
                             className="h-8 w-28 rounded-md border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-700 outline-none focus:border-teal-600 disabled:bg-slate-100"
                           >
                             <option value="not_enrolled">미편성</option>
@@ -541,7 +543,7 @@ export default function AdminMembersPage() {
                           <select
                             value={membership?.role || 'member'}
                             onChange={(event) => updateMembership(member.id, { role: event.target.value, participation_status: membership?.participation_status === 'withdrawn' ? 'active' : membership?.participation_status || 'active' })}
-                            disabled={!semesterId || !membership || membership.participation_status === 'withdrawn'}
+                            disabled={!canWrite || !semesterId || !membership || membership.participation_status === 'withdrawn'}
                             className="h-8 w-28 rounded-md border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-700 outline-none focus:border-teal-600 disabled:bg-slate-100 disabled:text-slate-400"
                           >
                             {execRoles.map((role) => <option key={role} value={role}>{role === 'member' ? '일반' : role}</option>)}
@@ -577,7 +579,7 @@ export default function AdminMembersPage() {
                 {photoFile ? photoFile.name : '사진 선택'}
                 <input type="file" accept="image/*" onChange={(event) => setPhotoFile(event.target.files?.[0] || null)} className="sr-only" />
               </label>
-              <button type="button" onClick={uploadGroupPhoto} disabled={!photoFile || uploadingPhoto} className="mt-2 inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-md bg-slate-900 px-3 text-xs font-bold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40">
+              <button type="button" onClick={uploadGroupPhoto} disabled={!canWrite || !photoFile || uploadingPhoto} className="mt-2 inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-md bg-slate-900 px-3 text-xs font-bold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40">
                 <Upload className="h-4 w-4" aria-hidden="true" />
                 {uploadingPhoto ? '업로드 중' : '단체사진 적용'}
               </button>
@@ -598,7 +600,7 @@ export default function AdminMembersPage() {
           <div className="max-h-[calc(100vh-2rem)] w-full max-w-xl overflow-y-auto rounded-md border border-slate-200 bg-white shadow-xl">
             <div className="flex min-h-16 items-center justify-between border-b border-slate-200 px-5">
               <div>
-                <p className="text-[10px] font-bold uppercase text-teal-700">Member Record</p>
+                <p className="text-xs font-bold text-teal-700">학회원 정보</p>
                 <h2 id="member-form-title" className="text-base font-bold text-slate-950">{editingId ? '학회원 정보 수정' : '새 학회원 등록'}</h2>
               </div>
               <button type="button" onClick={() => setFormOpen(false)} className="grid h-9 w-9 place-items-center rounded-md text-slate-500 hover:bg-slate-100" aria-label="닫기">
@@ -631,7 +633,7 @@ export default function AdminMembersPage() {
               )}
               <div className="mt-6 flex justify-end gap-2 border-t border-slate-200 pt-4">
                 <button type="button" onClick={() => setFormOpen(false)} className="min-h-10 rounded-md border border-slate-200 px-4 text-sm font-bold text-slate-600 hover:bg-slate-50">취소</button>
-                <button type="submit" disabled={saving} className="inline-flex min-h-10 items-center gap-2 rounded-md bg-teal-700 px-4 text-sm font-bold text-white hover:bg-teal-800 disabled:opacity-50">
+                <button type="submit" disabled={!canWrite || saving} className="inline-flex min-h-10 items-center gap-2 rounded-md bg-teal-700 px-4 text-sm font-bold text-white hover:bg-teal-800 disabled:opacity-50">
                   <Check className="h-4 w-4" aria-hidden="true" />
                   {saving ? '저장 중' : '저장'}
                 </button>
@@ -653,7 +655,7 @@ function Summary({ label, value, tone = 'gray' }) {
   const tones = { gray: 'border-t-slate-300', teal: 'border-t-teal-600', blue: 'border-t-blue-600', green: 'border-t-emerald-600', red: 'border-t-red-600' }
   return (
     <div className={`rounded-md border border-slate-200 border-t-[3px] bg-white p-4 ${tones[tone]}`}>
-      <p className="text-[11px] font-semibold text-slate-500">{label}</p>
+      <p className="text-xs font-semibold text-slate-500">{label}</p>
       <p className="mt-1.5 text-xl font-bold text-slate-950">{value}</p>
     </div>
   )
@@ -673,7 +675,7 @@ function DataRule({ icon: Icon, label, source }) {
     <div className="flex items-center gap-3 px-4 py-3">
       <Icon className="h-4 w-4 shrink-0 text-slate-500" aria-hidden="true" />
       <span className="min-w-0 flex-1 font-semibold text-slate-700">{label}</span>
-      <code className="rounded bg-slate-100 px-2 py-1 text-[10px] text-slate-500">{source}</code>
+      <code className="rounded bg-slate-100 px-2 py-1 text-xs text-slate-500">{source}</code>
     </div>
   )
 }
