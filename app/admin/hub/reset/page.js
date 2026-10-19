@@ -95,7 +95,7 @@ export default function SemesterCloseoutPage() {
                 <CloseoutStep number="1" icon={Database} title="기록 연결 확인" description="출석, 벌금, 사유서, 파일과 점수가 현재 학기 ID에 연결됐는지 위 집계로 확인합니다." status="확인" />
                 <CloseoutStep number="2" icon={Archive} title="공개 자료 정리" description="아카이브 화면에서 공개 범위와 파일명을 검토합니다. 원본 파일은 삭제하지 않습니다." href="/admin/hub/archive" status="검토" />
                 <CloseoutStep number="3" icon={CalendarCheck} title="다음 학기 생성" description="학기 및 주차 화면에서 준비 상태의 새 학기와 주차를 생성합니다." href="/admin/hub/semesters" status="준비" />
-                <CloseoutStep number="4" icon={CheckCircle2} title="현재 학기 전환" description="검토가 끝난 새 학기를 현재 학기로 전환합니다. 기존 학기는 종료 상태로 보존됩니다." href="/admin/hub/semesters" status="전환" />
+                <CloseoutStep number="4" icon={CheckCircle2} title="현재 학기 전환" description="검토가 끝난 새 학기를 현재 학기로 전환합니다. 기존 학기는 종료 상태로 보존되고, 타임라인·마감·조 편성은 학기별로 나뉘어 새 학기는 빈 상태로 시작합니다." href="/admin/hub/semesters" status="전환" />
               </div>
             </Panel>
 

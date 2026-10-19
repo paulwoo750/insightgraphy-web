@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 import InternalNav from '@/app/components/InternalNav'
+import { currentSemesterIdFilter, fetchCurrentSemester } from '@/lib/semester'
 
 export default function HomeHub() {
   const router = useRouter()
@@ -12,7 +13,6 @@ export default function HomeHub() {
   const [schedules, setSchedules] = useState([])
   const [currentDate, setCurrentDate] = useState(new Date()) 
   const [deadlines, setDeadlines] = useState([])
-  const [currentWeek, setCurrentWeek] = useState(1)
 
   useEffect(() => {
     const initHub = async () => {
@@ -23,14 +23,13 @@ export default function HomeHub() {
       }
       setUser(session.user)
 
-      const { data: schData } = await supabase.from('pr_schedules').select('*').order('full_date', { ascending: true })
+      // 일정·마감은 학기별 행이라 현재 학기 것만 읽는다
+      const current = await fetchCurrentSemester()
+
+      const { data: schData } = await supabase.from('pr_schedules').select('*').or(currentSemesterIdFilter(current)).order('full_date', { ascending: true })
       if (schData) setSchedules(schData)
 
-      const { data: configData } = await supabase.from('pr_config').select('*').eq('key', 'current_week').single()
-      const week = configData ? Number(configData.value) : 1
-      setCurrentWeek(week)
-
-      const { data: dlData } = await supabase.from('pr_deadlines').select('*')
+      const { data: dlData } = await supabase.from('pr_deadlines').select('*').or(currentSemesterIdFilter(current))
       if (dlData) {
         const now = new Date()
         const excludeCategories = ['attendance_start', 'session_start', 'attendance_end']

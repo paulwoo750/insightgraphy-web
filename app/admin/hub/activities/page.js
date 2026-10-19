@@ -27,7 +27,7 @@ export default function IntegratedActivitiesManager() {
 
         <div className="flex flex-col lg:flex-row gap-8">
           <aside className="w-full lg:w-64 shrink-0">
-            <div className="bg-white p-4 rounded-none shadow-sm border border-slate-100 flex flex-col gap-2 sticky top-8">
+            <div className="bg-white p-4 rounded-none shadow-sm border border-slate-100 flex flex-col gap-2 sticky top-24">
               {tabs.map((tab) => (
                 <button key={tab.id} onClick={() => setActiveTab(tab.id)}
                   className={`flex items-center gap-3 w-full px-5 py-4 rounded-none font-black text-sm transition-all ${
@@ -463,7 +463,7 @@ function EducationManager() {
   return (
     <div className="space-y-8">
       {/* 1. 상단 컨트롤 바 */}
-      <div className="bg-white p-6 rounded-none shadow-sm border border-slate-100 flex justify-between items-center sticky top-24 z-10">
+      <div className="bg-white p-6 rounded-none shadow-sm border border-slate-100 flex justify-between items-center sticky top-40 z-10">
         <div>
           <h2 className="text-xl font-black text-slate-800">📚 교육 세션 전체 관리</h2>
           <p className="text-xs font-bold text-slate-400 mt-1">수정 후 반드시 우측의 Save All 버튼을 눌러주세요.</p>
@@ -682,7 +682,7 @@ function UnionManager() {
   return (
     <div className="space-y-8">
       {/* 1. 상단 컨트롤 바 */}
-      <div className="bg-white p-6 rounded-none shadow-sm border border-slate-100 flex justify-between items-center sticky top-24 z-10">
+      <div className="bg-white p-6 rounded-none shadow-sm border border-slate-100 flex justify-between items-center sticky top-40 z-10">
         <div>
           <h2 className="text-xl font-black text-slate-800">✨ 연합 세션 전체 관리</h2>
           <p className="text-xs font-bold text-slate-400 mt-1">학기별 프로젝트와 활동 사진을 관리하세요.</p>
@@ -956,7 +956,7 @@ function CorporateManager() {
   return (
     <div className="space-y-8">
       {/* 1. 상단 컨트롤 바 */}
-      <div className="bg-white p-6 rounded-none shadow-sm border border-slate-100 flex justify-between items-center sticky top-24 z-10">
+      <div className="bg-white p-6 rounded-none shadow-sm border border-slate-100 flex justify-between items-center sticky top-40 z-10">
         <div>
           <h2 className="text-xl font-black text-slate-800">🤝 기업 세션 전체 관리</h2>
           <p className="text-xs font-bold text-slate-400 mt-1">파트너사와 케이스 스터디를 관리하세요.</p>

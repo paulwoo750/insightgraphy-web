@@ -110,7 +110,7 @@ export default function AdminShowcasePage() {
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_2fr] gap-8">
           
           {/* 좌측: 업로드 폼 */}
-          <div className="bg-white p-8 rounded-none shadow-sm border border-slate-100 h-fit sticky top-8">
+          <div className="bg-white p-8 rounded-none shadow-sm border border-slate-100 h-fit sticky top-24">
             <h2 className="text-lg font-black uppercase mb-6 text-slate-800">New Artwork Upload</h2>
             <form onSubmit={handleUpload} className="space-y-4">
               

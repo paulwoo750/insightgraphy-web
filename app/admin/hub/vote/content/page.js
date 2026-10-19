@@ -170,7 +170,7 @@ export default function VoteContentManager() {
       <div className="max-w-5xl mx-auto space-y-10">
         
         {/* 헤더 */}
-        <header className="flex justify-between items-end mb-8 border-b border-slate-200 pb-6 sticky top-0 bg-slate-50/90 backdrop-blur-md z-20 pt-4">
+        <header className="flex justify-between items-end mb-8 border-b border-slate-200 pb-6 sticky top-16 bg-slate-50/90 backdrop-blur-md z-20 pt-4">
           <div>
             <Link href="/admin/hub/vote" className="text-xs font-black text-slate-400 hover:text-teal-500 uppercase tracking-widest mb-2 block transition-colors">
               ← Back to Vote Hub

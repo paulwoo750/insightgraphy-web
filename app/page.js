@@ -4,6 +4,7 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { supabase } from '@/lib/supabase'
 import { DEFAULT_LANDING, loadSiteContent } from '@/lib/siteContent'
+import { currentSemesterIdFilter, fetchCurrentSemester } from '@/lib/semester'
 
 // 상단 네비게이션
 function PublicNav() {
@@ -56,11 +57,7 @@ export default function LandingPage() {
   // 🌟 관리자가 편집한 문구 (pr_config.landing_content)
   const [c, setC] = useState(DEFAULT_LANDING)
 
-  useEffect(() => {
-    fetchLandingData()
-  }, [])
-
-  const fetchLandingData = async () => {
+  async function fetchLandingData() {
     setLoading(true)
 
     // 0. 편집 가능한 문구 불러오기
@@ -70,12 +67,14 @@ export default function LandingPage() {
     const { data: config } = await supabase.from('pr_landing_config').select('*').eq('id', 'main').single()
     
     if (config) {
-      // 2. 선택된 스케줄 데이터 쏙쏙 빼오기
+      // 2. 선택된 스케줄 데이터 쏙쏙 빼오기 (학기 전환 전에 고른 지난 학기 일정은 제외)
       if (config.selected_schedules && config.selected_schedules.length > 0) {
+        const current = await fetchCurrentSemester()
         const { data: schData } = await supabase
           .from('pr_schedules')
           .select('*')
           .in('id', config.selected_schedules)
+          .or(currentSemesterIdFilter(current))
           .order('full_date', { ascending: true })
         if (schData) setUpcomingSchedules(schData)
       }
@@ -92,6 +91,10 @@ export default function LandingPage() {
     
     setLoading(false)
   }
+
+  useEffect(() => {
+    void Promise.resolve().then(fetchLandingData)
+  }, [])
 
   // 스케줄 타입에 따른 예쁜 색상 매칭 마법 🎨
   const getTypeColor = (type) => {

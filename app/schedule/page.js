@@ -4,6 +4,7 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { supabase } from '@/lib/supabase'
 import { DEFAULT_SCHEDULE, loadSiteContent } from '@/lib/siteContent'
+import { currentSemesterIdFilter, fetchCurrentSemester } from '@/lib/semester'
 
 function PublicNav() {
   return (
@@ -59,10 +60,12 @@ export default function SchedulePage() {
     async function fetchSchedules() {
       setLoading(true)
       setC(await loadSiteContent(supabase, 'schedule_content', DEFAULT_SCHEDULE))
-      // 외부 공개용 일정만 타임라인과 달력에 표시한다.
+      // 현재 학기의 외부 공개용 일정만 타임라인과 달력에 표시한다.
+      const current = await fetchCurrentSemester()
       const { data, error } = await supabase
         .from('pr_schedules')
         .select('*')
+        .or(currentSemesterIdFilter(current))
         .eq('is_public', true)
         .order('full_date', { ascending: true })
 

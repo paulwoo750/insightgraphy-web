@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
-import { fetchCurrentSemester, fetchSemesterMembers, parseJson, syncWeekTopicsToSemester } from '@/lib/semester'
+import { currentSemesterIdFilter, fetchCurrentSemester, fetchSemesterMembers, parseJson, syncWeekTopicsToSemester } from '@/lib/semester'
 
 export default function DashboardManager() {
   const [loading, setLoading] = useState(true)
@@ -65,8 +65,8 @@ export default function DashboardManager() {
       is_active: member.status === 'active',
     })))
 
-    // 마감 시간 불러오기
-    const { data: dlData } = await supabase.from('pr_deadlines').select('*')
+    // 마감 시간 불러오기 (학기별 행: 새 학기는 빈 마감으로 시작한다)
+    const { data: dlData } = await supabase.from('pr_deadlines').select('*').or(currentSemesterIdFilter(current))
     const dlState = {}
     if (dlData) {
       dlData.forEach(d => {
@@ -172,7 +172,7 @@ export default function DashboardManager() {
     for (let w = 0; w <= totalWeeks; w++) {
       deadlineCategories.forEach(cat => {
         if (deadlines[w]?.[cat]) {
-          deadlineUpserts.push({ week: w, category: cat, deadline_time: new Date(deadlines[w][cat]).toISOString() })
+          deadlineUpserts.push({ semester_id: semesterId, week: w, category: cat, deadline_time: new Date(deadlines[w][cat]).toISOString() })
         } else {
           deadlineDeletes.push({ week: w, category: cat })
         }
@@ -180,13 +180,14 @@ export default function DashboardManager() {
     }
     
     if (deadlineUpserts.length > 0) {
-      const { error } = await supabase.from('pr_deadlines').upsert(deadlineUpserts, { onConflict: 'week, category' })
+      const { error } = await supabase.from('pr_deadlines').upsert(deadlineUpserts, { onConflict: 'semester_id,week,category' })
       if (error) alert('마감 시간 저장 오류: ' + error.message)
     }
 
+    // 비운 마감은 이번 학기 행만 지운다 (지난 학기 같은 주차 마감은 보존)
     if (deadlineDeletes.length > 0) {
       for (const item of deadlineDeletes) {
-        await supabase.from('pr_deadlines').delete().eq('week', item.week).eq('category', item.category)
+        await supabase.from('pr_deadlines').delete().or(currentSemesterIdFilter({ id: semesterId })).eq('week', item.week).eq('category', item.category)
       }
     }
 
@@ -252,7 +253,7 @@ export default function DashboardManager() {
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans p-6 md:p-12 pb-32">
       <div className="max-w-[1500px] mx-auto space-y-12">
         
-        <header className="flex flex-col md:flex-row md:justify-between md:items-end gap-6 mb-8 border-b border-slate-200 pb-6 sticky top-0 bg-slate-50/90 backdrop-blur-md z-20 pt-4">
+        <header className="flex flex-col md:flex-row md:justify-between md:items-end gap-6 mb-8 border-b border-slate-200 pb-6 sticky top-16 bg-slate-50/90 backdrop-blur-md z-20 pt-4">
           <div>
             <Link href="/admin/hub" className="text-xs font-black text-slate-400 hover:text-teal-600 uppercase tracking-widest mb-2 block transition-colors">← Back to Hub</Link>
             <h1 className="text-4xl font-black uppercase tracking-tighter text-slate-800 flex items-center gap-3">
@@ -758,7 +759,7 @@ export default function DashboardManager() {
           </div>
 
           {/* [우측] 제출 현황판 (Submission Tracker) */}
-          <div className="bg-slate-900 p-8 rounded-none text-white shadow-sm h-fit sticky top-8">
+          <div className="bg-slate-900 p-8 rounded-none text-white shadow-sm h-fit sticky top-24">
             <h2 className="text-lg font-black uppercase mb-2 text-teal-400">Submission Tracker 👀</h2>
             <p className="text-[10px] font-bold text-slate-400 mb-6 pb-4 border-b border-slate-800">대시보드 과제 제출 현황</p>
             

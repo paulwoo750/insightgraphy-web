@@ -15,6 +15,7 @@ import {
   UsersRound,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { currentSemesterIdFilter, fetchCurrentSemester } from '@/lib/semester'
 import { useAdminContext } from '@/app/admin/_components/AdminShell'
 import { AdminPage, EmptyState, PageHeader, Panel, StatusBadge } from '@/app/admin/_components/AdminUI'
 
@@ -48,7 +49,10 @@ export default function AdminHubPage() {
         semester?.id
           ? supabase.from('semester_memberships').select('id', { count: 'exact', head: true }).eq('semester_id', semester.id).eq('participation_status', 'active')
           : Promise.resolve({ count: 0 }),
-        supabase.from('calendar_events').select('id, title, event_date, event_type').gte('event_date', today).order('event_date').limit(5),
+        // 일정의 기준 테이블은 학기별 pr_schedules다(calendar_events는 1회 백필 후 동기화되지 않는다).
+        fetchCurrentSemester().then((current) =>
+          supabase.from('pr_schedules').select('id, title, full_date, type').or(currentSemesterIdFilter(current)).gte('full_date', today).order('full_date').limit(5)
+        ),
         supabase.from('data_migration_issues').select('id', { count: 'exact', head: true }).is('resolved_at', null),
       ])
 
@@ -153,10 +157,10 @@ export default function AdminHubPage() {
             <div className="divide-y divide-slate-100">
               {summary.upcomingEvents.map((event) => (
                 <Link key={event.id} href="/admin/hub/schedule" className="flex items-center gap-3 px-4 py-4 hover:bg-slate-50">
-                  <div className="w-16 shrink-0 text-xs font-bold text-slate-500">{localDate(event.event_date)}</div>
+                  <div className="w-16 shrink-0 text-xs font-bold text-slate-500">{localDate(event.full_date)}</div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-bold text-slate-800">{event.title}</p>
-                    <div className="mt-1"><StatusBadge tone="gray">{event.event_type}</StatusBadge></div>
+                    <div className="mt-1"><StatusBadge tone="gray">{event.type}</StatusBadge></div>
                   </div>
                 </Link>
               ))}

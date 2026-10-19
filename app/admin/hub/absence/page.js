@@ -10,6 +10,7 @@ export default function AbsenceAdmin() {
 
   // 🌟 시스템 설정 상태
   const [currentSemester, setCurrentSemester] = useState('')
+  const [semesterId, setSemesterId] = useState(null)
   const [totalWeeks, setTotalWeeks] = useState(12)
   const [absenceLateFine, setAbsenceLateFine] = useState(20000) 
   const [processingId, setProcessingId] = useState(null)
@@ -43,13 +44,14 @@ export default function AbsenceAdmin() {
     const current = await fetchCurrentSemester()
     const wks = current.totalWeeks
     setCurrentSemester(current.code)
+    setSemesterId(current.id)
     setTotalWeeks(wks)
     setSemesterType(current.type)
     const penalties = parseJson(current.config.penalty_rules, {})
     if (penalties.absenceLate) setAbsenceLateFine(penalties.absenceLate)
 
     // 2. 주차별 사유서 마감일 불러오기 (정규 = absence / 평일세션 = weekday_absence)
-    const { data: dlData } = await supabase.from('pr_deadlines').select('*').in('category', ['absence', 'weekday_absence'])
+    const { data: dlData } = await supabase.from('pr_deadlines').select('*').or(currentSemesterIdFilter(current)).in('category', ['absence', 'weekday_absence'])
     const regDl = Array(wks + 1).fill('')
     const wdDl = Array(wks + 1).fill('')
 
@@ -103,7 +105,7 @@ export default function AbsenceAdmin() {
 
     const collect = (arr, category) => {
       arr.forEach((time, idx) => {
-        if (time) dlInserts.push({ week: idx, category, deadline_time: new Date(time).toISOString() })
+        if (time) dlInserts.push({ semester_id: semesterId, week: idx, category, deadline_time: new Date(time).toISOString() })
         else dlDeletes.push({ week: idx, category })
       })
     }
@@ -111,13 +113,14 @@ export default function AbsenceAdmin() {
     if (semesterType === 'vacation') collect(weekdayDeadlines, 'weekday_absence')
 
     if (dlInserts.length > 0) {
-      const { error } = await supabase.from('pr_deadlines').upsert(dlInserts, { onConflict: 'week, category' })
+      const { error } = await supabase.from('pr_deadlines').upsert(dlInserts, { onConflict: 'semester_id,week,category' })
       if (error) alert('마감 시간 저장 오류: ' + error.message)
     }
 
+    // 비운 마감은 이번 학기 행만 지운다 (지난 학기 같은 주차 마감은 보존)
     if (dlDeletes.length > 0) {
       for (const item of dlDeletes) {
-        await supabase.from('pr_deadlines').delete().eq('week', item.week).eq('category', item.category)
+        await supabase.from('pr_deadlines').delete().or(currentSemesterIdFilter({ id: semesterId })).eq('week', item.week).eq('category', item.category)
       }
     }
 
@@ -202,7 +205,7 @@ export default function AbsenceAdmin() {
         <div className="grid grid-cols-1 xl:grid-cols-[400px_1fr] gap-8 items-start">
           
           {/* 좌측: 마감 기한 설정 */}
-          <div className="bg-white p-8 rounded-none shadow-sm border border-slate-200 sticky top-8">
+          <div className="bg-white p-8 rounded-none shadow-sm border border-slate-200 sticky top-24">
             <div className="flex justify-between items-center mb-6 border-b border-slate-100 pb-4">
               <h2 className="text-xl font-black text-slate-800">⏰ 주차별 마감 기한</h2>
               <button onClick={handleSaveDeadlines} disabled={saving} className="bg-slate-900 text-white px-4 py-2 rounded-none font-black text-xs hover:bg-teal-600 transition-colors shadow-sm active:scale-95">

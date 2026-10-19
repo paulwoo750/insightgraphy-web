@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import InternalNav from '@/app/components/InternalNav'
-import { fetchCurrentSemester, fetchSemesterMembers, formatDateTime, groupDeadlines, memberGroup, nearestDeadlineWeek, submissionTopic } from '@/lib/semester'
+import { currentSemesterIdFilter, fetchCurrentSemester, fetchSemesterMembers, formatDateTime, groupDeadlines, memberGroup, nearestDeadlineWeek, submissionTopic } from '@/lib/semester'
 
 export default function VideoRoom() {
   const router = useRouter()
@@ -81,7 +81,7 @@ export default function VideoRoom() {
     setTotalWeeks(semester.totalWeeks)
     setWeeklySetup(semester.weeklySetup)
 
-    const { data: dlData } = await supabase.from('pr_deadlines').select('*')
+    const { data: dlData } = await supabase.from('pr_deadlines').select('*').or(currentSemesterIdFilter(semester))
     const initialWeek = nearestDeadlineWeek(dlData, 'video')
     setDeadlines(groupDeadlines(dlData))
     setSelectedWeek(initialWeek)

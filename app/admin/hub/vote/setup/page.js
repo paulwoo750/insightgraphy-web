@@ -388,7 +388,7 @@ export default function VoteSetup() {
 
         {/* 🌟 실시간 채점 트래커 */}
         <div className="lg:col-span-1 space-y-6">
-          <div className="border-t-[3px] border-slate-900 pt-6 sticky top-8">
+          <div className="border-t-[3px] border-slate-900 pt-6 sticky top-24">
             <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-8 border-b border-slate-200 pb-4">Live Tracking</h3>
             <div className="space-y-6 max-h-[75vh] overflow-y-auto pr-2 no-scrollbar">
               {currentPs.length === 0 ? (

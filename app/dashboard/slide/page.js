@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import InternalNav from '@/app/components/InternalNav'
-import { fetchCurrentSemester, formatDateTime, groupDeadlines, groupSubmissionsByTeam, memberGroup, nearestDeadlineWeek, submissionTopic } from '@/lib/semester'
+import { currentSemesterIdFilter, fetchCurrentSemester, formatDateTime, groupDeadlines, groupSubmissionsByTeam, memberGroup, nearestDeadlineWeek, submissionTopic } from '@/lib/semester'
 
 export default function SlideRoom() {
   const router = useRouter()
@@ -66,7 +66,7 @@ export default function SlideRoom() {
     setTotalWeeks(semester.totalWeeks)
     setWeeklySetup(semester.weeklySetup)
 
-    const { data: dlData } = await supabase.from('pr_deadlines').select('*').in('category', ['slide', 'weekday_upload'])
+    const { data: dlData } = await supabase.from('pr_deadlines').select('*').or(currentSemesterIdFilter(semester)).in('category', ['slide', 'weekday_upload'])
     const initialWeek = nearestDeadlineWeek(dlData, 'slide')
     setDeadlines(groupDeadlines(dlData))
     setSelectedWeek(initialWeek)

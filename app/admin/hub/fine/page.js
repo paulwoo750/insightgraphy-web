@@ -39,7 +39,8 @@ export default function FineAdmin() {
       const { weeklySetup, totalWeeks, type: semesterType, code: semester } = current
       setCurrentSemester(semester)
 
-      const { data: dlData } = await supabase.from('pr_deadlines').select('*')
+      // 학기 필터 필수: 지난 학기의 같은 주차 마감으로 지각·미제출을 판정하면 안 된다
+      const { data: dlData } = await supabase.from('pr_deadlines').select('*').or(currentSemesterIdFilter(current))
       const deadlines = dlData || []
 
       // 학기 필터 필수: 지난 학기의 같은 주차 제출물이 이번 학기 제출로 잡히면 미제출 벌금이 누락된다
@@ -631,7 +632,7 @@ export default function FineAdmin() {
             </div>
           </div>
 
-          <div className="space-y-6 sticky top-8">
+          <div className="space-y-6 sticky top-24">
             <div className="bg-slate-900 p-8 rounded-none shadow-sm border border-slate-800 text-white">
               <h2 className="text-lg font-black mb-6 border-b border-slate-700 pb-3 flex items-center gap-2">
                 <span>✍️</span> 수동 벌금 부과

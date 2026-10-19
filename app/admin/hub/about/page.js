@@ -150,7 +150,7 @@ export default function AboutManager() {
       <div className="max-w-4xl mx-auto space-y-8">
         
         {/* 헤더 & 저장 버튼 */}
-        <header className="flex justify-between items-end mb-12 border-b border-slate-200 pb-6 sticky top-0 bg-slate-50/90 backdrop-blur-md z-20 pt-4">
+        <header className="flex justify-between items-end mb-12 border-b border-slate-200 pb-6 sticky top-16 bg-slate-50/90 backdrop-blur-md z-20 pt-4">
           <div>
             <Link href="/admin/hub" className="text-xs font-black text-slate-400 hover:text-[#32a4a1] uppercase tracking-widest mb-2 block transition-colors">← Back to Hub</Link>
             <h1 className="text-4xl font-black uppercase tracking-tighter text-slate-800 flex items-center gap-3">

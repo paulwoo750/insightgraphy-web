@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { DEFAULT_SCHEDULE, mergeContent } from '@/lib/siteContent'
+import { currentSemesterIdFilter, fetchCurrentSemester } from '@/lib/semester'
 
 const contentSections = [
   {
@@ -55,6 +56,7 @@ export default function ScheduleManager() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 
+  const [semester, setSemester] = useState(null)
   const [schedules, setSchedules] = useState([])
   const [deletedIds, setDeletedIds] = useState([])
   const [scheduleContent, setScheduleContent] = useState(DEFAULT_SCHEDULE)
@@ -62,8 +64,11 @@ export default function ScheduleManager() {
   const [selectedDateStr, setSelectedDateStr] = useState(null)
 
   async function fetchSchedules() {
+    // 일정은 학기별 행이다. 지난 학기 일정은 아카이브의 타임라인 스냅샷으로 열람한다.
+    const current = await fetchCurrentSemester()
+    setSemester(current)
     const [scheduleResult, contentResult] = await Promise.all([
-      supabase.from('pr_schedules').select('*').order('full_date', { ascending: true }),
+      supabase.from('pr_schedules').select('*').or(currentSemesterIdFilter(current)).order('full_date', { ascending: true }),
       supabase.from('pr_config').select('value').eq('key', 'schedule_content').maybeSingle(),
     ])
     
@@ -153,6 +158,7 @@ export default function ScheduleManager() {
     try {
       const validSchedules = schedules.map(s => ({
         ...(s.id ? { id: s.id } : {}),
+        semester_id: s.semester_id || semester?.id || null,
         full_date: s.full_date,
         date_display: s.date_display,
         type: s.type || 'regular',
@@ -220,7 +226,7 @@ export default function ScheduleManager() {
       <div className="max-w-7xl mx-auto space-y-12">
         
         {/* 상단 헤더 & 컨트롤 바 */}
-        <header className="flex justify-between items-end mb-8 border-b border-slate-200 pb-6 sticky top-0 bg-slate-50/90 backdrop-blur-md z-20 pt-4">
+        <header className="flex justify-between items-end mb-8 border-b border-slate-200 pb-6 sticky top-16 bg-slate-50/90 backdrop-blur-md z-20 pt-4">
           <div>
             <Link href="/admin/hub" className="text-xs font-black text-slate-400 hover:text-[#32a4a1] uppercase tracking-widest mb-2 block transition-colors">← Back to Hub</Link>
             <h1 className="text-4xl font-black uppercase tracking-tighter text-slate-800 flex items-center gap-3">

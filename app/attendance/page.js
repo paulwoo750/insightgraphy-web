@@ -2,8 +2,8 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
 import InternalNav from '@/app/components/InternalNav'
+import { currentSemesterIdFilter, fetchCurrentSemester } from '@/lib/semester'
 
 export default function AttendancePage() {
   const router = useRouter()
@@ -27,33 +27,14 @@ export default function AttendancePage() {
   const [weekdayConfig, setWeekdayConfig] = useState(null) // null이면 이번 주 평일세션 없음
   const [myGroup, setMyGroup] = useState(null)
 
-  useEffect(() => {
-    const init = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) {
-        router.push('/login')
-        return
-      }
-      setUser(session.user)
-      await fetchAttendanceData(session.user)
-    }
-    init()
-  }, [router])
-
-  useEffect(() => {
-    if (!timeConfig.start || hasAttended) return;
-
-    const timer = setInterval(() => {
-      checkTimeStatus(timeConfig)
-    }, 1000)
-    return () => clearInterval(timer)
-  }, [timeConfig, hasAttended])
-
-  const fetchAttendanceData = async (currentUser) => {
+  async function fetchAttendanceData(currentUser) {
     setLoading(true)
 
+    // 출석 시간은 학기별 마감 행이다. 지난 학기의 같은 주차 시간이 섞이지 않게 거른다.
+    const current = await fetchCurrentSemester()
     const { data: dlData } = await supabase.from('pr_deadlines')
       .select('*')
+      .or(currentSemesterIdFilter(current))
       .in('category', ['attendance_start', 'session_start', 'attendance_end'])
     
     let targetWeek = 1;
@@ -146,7 +127,7 @@ export default function AttendancePage() {
         // 🌟 방학학기: 평일세션 일정이 있는 주차를 별도로 탐색해 주차를 보정
         //    (기존에는 정규 출석 마감만 보고 주차를 정해서 평일세션이 안 잡히는 문제가 있었음)
         if (sType === 'vacation') {
-          const nowT = Date.now()
+          const nowT = new Date().getTime()
           const todayStr = new Date().toLocaleDateString('sv-SE') // YYYY-MM-DD (로컬)
           // 시간 미설정(날짜만 입력된) 조도 후보에 포함 — 회원이 "시간 설정 대기 중"을 볼 수 있어야 함
           const cands = Object.keys(ws).map(Number).sort((a, b) => a - b)
@@ -227,7 +208,7 @@ export default function AttendancePage() {
     applyMode(mode, regularConfig, weekdayConfig, currentWeek, user?.user_metadata?.name, currentSemester)
   }
 
-  const checkTimeStatus = (tConfig) => {
+  function checkTimeStatus(tConfig) {
     if (!tConfig.start || !tConfig.end) {
       setTimeStatus('no_setting')
       return
@@ -250,6 +231,28 @@ export default function AttendancePage() {
       }
     }
   }
+
+  useEffect(() => {
+    const init = async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) {
+        router.push('/login')
+        return
+      }
+      setUser(session.user)
+      await fetchAttendanceData(session.user)
+    }
+    init()
+  }, [router])
+
+  useEffect(() => {
+    if (!timeConfig.start || hasAttended) return;
+
+    const timer = setInterval(() => {
+      checkTimeStatus(timeConfig)
+    }, 1000)
+    return () => clearInterval(timer)
+  }, [timeConfig, hasAttended])
 
   const getDistanceFromLatLonInM = (lat1, lon1, lat2, lon2) => {
     const R = 6371e3 
@@ -318,7 +321,7 @@ export default function AttendancePage() {
         }
         setIsLocating(false)
       },
-      (err) => {
+      () => {
         setIsLocating(false)
         alert("위치 정보를 가져오는 데 실패했습니다. 설정에서 '위치 정보(GPS) 접근 권한'을 허용해 주세요! 🙏")
       },

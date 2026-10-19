@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { DEFAULT_LANDING, mergeContent } from '@/lib/siteContent'
+import { currentSemesterIdFilter, fetchCurrentSemester } from '@/lib/semester'
 
 function TabButton({ id, label, activeTab, onSelect }) {
   return (
@@ -32,7 +33,9 @@ export default function LandingManager() {
     const pick = (k) => { try { return JSON.parse(cfgRows?.find(r => r.key === k)?.value || 'null') } catch { return null } }
     setLand(mergeContent(DEFAULT_LANDING, pick('landing_content')))
 
-    const { data: schData } = await supabase.from('pr_schedules').select('*').eq('is_public', true).order('full_date', { ascending: true })
+    // 대문 노출 후보는 현재 학기 공개 일정이다 (지난 학기 선택은 다음 저장 때 빠진다)
+    const current = await fetchCurrentSemester()
+    const { data: schData } = await supabase.from('pr_schedules').select('*').or(currentSemesterIdFilter(current)).eq('is_public', true).order('full_date', { ascending: true })
     if (schData) setAllSchedules(schData)
 
     const { data: showData } = await supabase.from('pr_showcase').select('*').order('created_at', { ascending: false })

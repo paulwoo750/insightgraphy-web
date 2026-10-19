@@ -38,7 +38,7 @@ export default function AbsencePage() {
     setTotalWeeks(current.totalWeeks)
 
     // 🌟 평일세션 불참 사유서 마감(weekday_absence)도 주차별로 로드
-    const { data: wdDl } = await supabase.from('pr_deadlines').select('*').eq('category', 'weekday_absence')
+    const { data: wdDl } = await supabase.from('pr_deadlines').select('*').or(currentSemesterIdFilter(current)).eq('category', 'weekday_absence')
     const wdMap = {}
     if (wdDl) wdDl.forEach(d => { if (d.deadline_time) wdMap[d.week] = d.deadline_time })
     setWeekdayDlMap(wdMap)
@@ -46,6 +46,7 @@ export default function AbsencePage() {
     // 🌟 2. 스마트 마감일 자동 탐색 (현재 시간과 가장 가까운 주차 찾기)
     const { data: dlData } = await supabase.from('pr_deadlines')
       .select('*')
+      .or(currentSemesterIdFilter(current))
       .eq('category', 'absence')
       .order('deadline_time', { ascending: true })
 

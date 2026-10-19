@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import InternalNav from '@/app/components/InternalNav'
-import { fetchCurrentSemester, formatDateTime, groupDeadlines, groupSubmissionsByTeam, memberGroup, nearestDeadlineWeek, submissionTopic } from '@/lib/semester'
+import { currentSemesterIdFilter, fetchCurrentSemester, formatDateTime, groupDeadlines, groupSubmissionsByTeam, memberGroup, nearestDeadlineWeek, submissionTopic } from '@/lib/semester'
 import { deleteSubmittedFile } from '@/lib/archive'
 
 export default function ProposalRoom() {
@@ -51,7 +51,7 @@ export default function ProposalRoom() {
     setTotalWeeks(semester.totalWeeks)
     setWeeklySetup(semester.weeklySetup)
 
-    const { data: dlData } = await supabase.from('pr_deadlines').select('*').in('category', ['proposal', 'proposal_comment'])
+    const { data: dlData } = await supabase.from('pr_deadlines').select('*').or(currentSemesterIdFilter(semester)).in('category', ['proposal', 'proposal_comment'])
     const initialWeek = nearestDeadlineWeek(dlData, 'proposal')
     setDeadlines(groupDeadlines(dlData))
     setSelectedWeek(initialWeek)
