@@ -1,24 +1,16 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { CLUB_RULES } from '@/lib/clubRules'
 
 export default function RulesDocAdmin() {
-  const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [rowId, setRowId] = useState(null)
   const [chapters, setChapters] = useState([])
 
-  useEffect(() => {
-    if (!sessionStorage.getItem('isIGAdmin')) { router.push('/admin'); return }
-    fetchRules()
-  }, [])
-
-  const fetchRules = async () => {
-    setLoading(true)
+  async function fetchRules() {
     const { data } = await supabase.from('club_rules').select('*').order('updated_at', { ascending: false }).limit(1)
     if (data && data.length > 0) {
       setRowId(data[0].id ?? null)
@@ -33,6 +25,10 @@ export default function RulesDocAdmin() {
     }
     setLoading(false)
   }
+
+  useEffect(() => {
+    void Promise.resolve().then(fetchRules)
+  }, [])
 
   const loadBundle = () => {
     if (chapters.length > 0 && !confirm('현재 편집 중인 내용을 번들 회칙(26.07.04)으로 덮어쓸까요?')) return

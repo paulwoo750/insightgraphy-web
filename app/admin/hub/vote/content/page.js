@@ -1,11 +1,32 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 
+function migrateLegacyData(legacyObj) {
+  if (!legacyObj || Array.isArray(legacyObj)) return legacyObj || []
+
+  const iItems = []
+  const gItems = []
+  const dItems = []
+  const cItems = []
+  Object.keys(legacyObj).forEach((key) => {
+    const item = { id: key, label: legacyObj[key].label, criteria: legacyObj[key].criteria }
+    if (key.startsWith('i')) iItems.push(item)
+    else if (key.startsWith('g')) gItems.push(item)
+    else if (key.startsWith('d')) dItems.push(item)
+    else cItems.push(item)
+  })
+
+  const categories = []
+  if (iItems.length > 0) categories.push({ id: `cat_i_${Date.now()}`, title: '인사이트', icon: '💡', color: 'blue', items: iItems })
+  if (gItems.length > 0) categories.push({ id: `cat_g_${Date.now()}`, title: '그래픽', icon: '🎨', color: 'purple', items: gItems })
+  if (dItems.length > 0) categories.push({ id: `cat_d_${Date.now()}`, title: '딜리버리', icon: '🎤', color: 'pink', items: dItems })
+  if (cItems.length > 0) categories.push({ id: `cat_c_${Date.now()}`, title: '상호보완성', icon: '🔗', color: 'emerald', items: cItems })
+  return categories
+}
+
 export default function VoteContentManager() {
-  const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   
@@ -24,35 +45,7 @@ export default function VoteContentManager() {
     { label: '주황', value: 'amber' }
   ]
 
-  useEffect(() => {
-    if (!sessionStorage.getItem('isIGAdmin')) {
-      router.push('/admin')
-      return
-    }
-    fetchData()
-  }, [])
-
-  // 🌟 과거 데이터를 새로운 '동적 배열 구조'로 바꿔주는 마법 함수
-  const migrateLegacyData = (legacyObj) => {
-    if (!legacyObj || Array.isArray(legacyObj)) return legacyObj || [];
-    const iItems = []; const gItems = []; const dItems = []; const cItems = [];
-    Object.keys(legacyObj).forEach(k => {
-      const item = { id: k, label: legacyObj[k].label, criteria: legacyObj[k].criteria };
-      if (k.startsWith('i')) iItems.push(item);
-      else if (k.startsWith('g')) gItems.push(item);
-      else if (k.startsWith('d')) dItems.push(item);
-      else cItems.push(item);
-    });
-    const categories = [];
-    if (iItems.length > 0) categories.push({ id: `cat_i_${Date.now()}`, title: "인사이트", icon: "💡", color: "blue", items: iItems });
-    if (gItems.length > 0) categories.push({ id: `cat_g_${Date.now()}`, title: "그래픽", icon: "🎨", color: "purple", items: gItems });
-    if (dItems.length > 0) categories.push({ id: `cat_d_${Date.now()}`, title: "딜리버리", icon: "🎤", color: "pink", items: dItems });
-    if (cItems.length > 0) categories.push({ id: `cat_c_${Date.now()}`, title: "상호보완성", icon: "🔗", color: "emerald", items: cItems });
-    return categories;
-  }
-
-  const fetchData = async () => {
-    setLoading(true)
+  async function fetchData() {
     const { data } = await supabase.from('pr_vote_criteria').select('*')
     
     if (data && data.length > 0) {
@@ -75,6 +68,10 @@ export default function VoteContentManager() {
     }
     setLoading(false)
   }
+
+  useEffect(() => {
+    void Promise.resolve().then(fetchData)
+  }, [])
 
   // 🌟 데이터 안전 업데이트 도우미 (점수칸 2개씩 생기는 버그 해결!)
   const updateActiveData = (updater) => {

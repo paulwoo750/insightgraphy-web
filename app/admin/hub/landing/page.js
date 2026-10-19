@@ -1,19 +1,24 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
-import { DEFAULT_LANDING, DEFAULT_SCHEDULE, mergeContent } from '@/lib/siteContent'
+import { DEFAULT_LANDING, mergeContent } from '@/lib/siteContent'
+
+function TabButton({ id, label, activeTab, onSelect }) {
+  return (
+    <button onClick={() => onSelect(id)} className={`px-5 py-2.5 text-xs font-bold transition-colors border-b-[3px] ${activeTab === id ? 'border-teal-800 text-teal-800' : 'border-transparent text-slate-400 hover:text-slate-700'}`}>
+      {label}
+    </button>
+  )
+}
 
 export default function LandingManager() {
-  const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [tab, setTab] = useState('landing') // landing | schedule | select
+  const [tab, setTab] = useState('landing') // landing | select
 
   // 공개 페이지 문구
   const [land, setLand] = useState(DEFAULT_LANDING)
-  const [sch, setSch] = useState(DEFAULT_SCHEDULE)
 
   // 대문에 노출할 항목 선택
   const [allSchedules, setAllSchedules] = useState([])
@@ -21,18 +26,11 @@ export default function LandingManager() {
   const [selectedSchIds, setSelectedSchIds] = useState([])
   const [selectedShowIds, setSelectedShowIds] = useState([])
 
-  useEffect(() => {
-    if (!sessionStorage.getItem('isIGAdmin')) { router.push('/admin'); return }
-    fetchLandingData()
-  }, [])
+  async function fetchLandingData() {
 
-  const fetchLandingData = async () => {
-    setLoading(true)
-
-    const { data: cfgRows } = await supabase.from('pr_config').select('key, value').in('key', ['landing_content', 'schedule_content'])
+    const { data: cfgRows } = await supabase.from('pr_config').select('key, value').eq('key', 'landing_content')
     const pick = (k) => { try { return JSON.parse(cfgRows?.find(r => r.key === k)?.value || 'null') } catch { return null } }
     setLand(mergeContent(DEFAULT_LANDING, pick('landing_content')))
-    setSch(mergeContent(DEFAULT_SCHEDULE, pick('schedule_content')))
 
     const { data: schData } = await supabase.from('pr_schedules').select('*').eq('is_public', true).order('full_date', { ascending: true })
     if (schData) setAllSchedules(schData)
@@ -49,9 +47,12 @@ export default function LandingManager() {
     setLoading(false)
   }
 
+  useEffect(() => {
+    void Promise.resolve().then(fetchLandingData)
+  }, [])
+
   // 중첩 객체 업데이트 헬퍼
   const upLand = (section, field, value) => setLand(p => ({ ...p, [section]: { ...p[section], [field]: value } }))
-  const upSch = (section, field, value) => setSch(p => ({ ...p, [section]: { ...p[section], [field]: value } }))
   const upActItem = (idx, field, value) => setLand(p => ({
     ...p, activities: { ...p.activities, items: p.activities.items.map((it, i) => i === idx ? { ...it, [field]: value } : it) }
   }))
@@ -68,8 +69,7 @@ export default function LandingManager() {
   const handleSaveAll = async () => {
     setSaving(true)
     const { error: e1 } = await supabase.from('pr_config').upsert([
-      { key: 'landing_content', value: JSON.stringify(land) },
-      { key: 'schedule_content', value: JSON.stringify(sch) }
+      { key: 'landing_content', value: JSON.stringify(land) }
     ])
     const { error: e2 } = await supabase.from('pr_landing_config').upsert({
       id: 'main', selected_schedules: selectedSchIds, selected_showcases: selectedShowIds
@@ -80,13 +80,8 @@ export default function LandingManager() {
   }
 
   const resetLanding = () => { if (confirm('랜딩 문구를 기본값으로 되돌릴까요? (저장 전까지는 반영되지 않습니다)')) setLand(DEFAULT_LANDING) }
-  const resetSchedule = () => { if (confirm('타임라인 문구를 기본값으로 되돌릴까요? (저장 전까지는 반영되지 않습니다)')) setSch(DEFAULT_SCHEDULE) }
 
   if (loading) return <div className="min-h-screen bg-white flex justify-center items-center font-bold text-slate-400">데이터 로딩 중... 🔄</div>
-
-  const TabBtn = ({ id, label }) => (
-    <button onClick={() => setTab(id)} className={`px-5 py-2.5 text-xs font-bold transition-colors border-b-[3px] ${tab === id ? 'border-teal-800 text-teal-800' : 'border-transparent text-slate-400 hover:text-slate-700'}`}>{label}</button>
-  )
 
   return (
     <div className="min-h-screen bg-white text-slate-900 font-sans p-6 md:p-12 pb-32">
@@ -96,7 +91,7 @@ export default function LandingManager() {
           <div>
             <Link href="/admin/hub" className="text-xs font-black text-slate-400 hover:text-teal-800 uppercase tracking-widest mb-3 block transition-colors">← Back to Hub</Link>
             <h1 className="text-3xl md:text-4xl font-extrabold text-teal-800 tracking-tight">공개 페이지 문구 관리</h1>
-            <p className="text-sm font-medium text-slate-500 mt-2">대문(랜딩)과 타임라인 페이지의 모든 문구를 직접 수정합니다.</p>
+            <p className="text-sm font-medium text-slate-500 mt-2">대문 문구와 대문에 노출할 일정·쇼케이스를 관리합니다.</p>
           </div>
           <div className="flex gap-2 shrink-0">
             <a href="/" target="_blank" rel="noopener noreferrer" className="px-4 py-2.5 border border-slate-300 text-slate-600 text-xs font-bold hover:border-teal-700 hover:text-teal-800 transition-colors">대문 미리보기 ↗</a>
@@ -105,9 +100,9 @@ export default function LandingManager() {
         </header>
 
         <div className="flex gap-1 border-b border-slate-200 mb-8 overflow-x-auto no-scrollbar">
-          <TabBtn id="landing" label="🏠 대문 문구" />
-          <TabBtn id="schedule" label="📅 타임라인 문구" />
-          <TabBtn id="select" label="✅ 대문 노출 항목" />
+          <TabButton id="landing" label="🏠 대문 문구" activeTab={tab} onSelect={setTab} />
+          <TabButton id="select" label="✅ 대문 노출 항목" activeTab={tab} onSelect={setTab} />
+          <Link href="/admin/hub/schedule" className="ml-auto shrink-0 px-5 py-2.5 text-xs font-bold text-teal-700 hover:text-teal-900">전체 일정·타임라인 관리 →</Link>
         </div>
 
         {/* ================= 대문 문구 ================= */}
@@ -165,50 +160,6 @@ export default function LandingManager() {
             <Section title="5. 푸터">
               <Field label="저작권 문구" value={land.footer.text} onChange={v => upLand('footer', 'text', v)} />
             </Section>
-          </div>
-        )}
-
-        {/* ================= 타임라인 문구 ================= */}
-        {tab === 'schedule' && (
-          <div className="space-y-10">
-            <div className="border-l-[3px] border-teal-800 bg-teal-50/50 px-4 py-3">
-              <p className="text-xs font-bold text-teal-900 break-keep">일정 자체(날짜·세션명)는 <Link href="/admin/hub/schedule" className="underline">일정표 관리</Link>에서 수정합니다. 여기서는 페이지의 <b>문구와 학기명</b>을 수정합니다.</p>
-            </div>
-
-            <Section title="1. 상단 헤더" onReset={resetSchedule} resetLabel="타임라인 전체 초기화">
-              <Field label="작은 문구 (예: InsightGraphy 2026)" value={sch.header.eyebrow} onChange={v => upSch('header', 'eyebrow', v)} />
-              <Field label="큰 제목" value={sch.header.title} onChange={v => upSch('header', 'title', v)} />
-            </Section>
-
-            <Section title="2. 일정표 (학기명 · 인용구 · 표 머리말)">
-              <Field label="⭐ 학기명 배지 (예: 2026년 1학기 세션 일정)" value={sch.table.semesterBadge} onChange={v => upSch('table', 'semesterBadge', v)} highlight />
-              <Field label="인용 문구" value={sch.table.quote} onChange={v => upSch('table', 'quote', v)} />
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <Field label="1열 머리말" value={sch.table.colType} onChange={v => upSch('table', 'colType', v)} />
-                <Field label="2열 머리말" value={sch.table.colDate} onChange={v => upSch('table', 'colDate', v)} />
-                <Field label="3열 머리말" value={sch.table.colTitle} onChange={v => upSch('table', 'colTitle', v)} />
-                <Field label="4열 머리말" value={sch.table.colNote} onChange={v => upSch('table', 'colNote', v)} />
-              </div>
-              <Field label="휴회 표시 문구" value={sch.table.breakLabel} onChange={v => upSch('table', 'breakLabel', v)} />
-            </Section>
-
-            <Section title="3. 여정 타임라인 (Journey Line)">
-              <Field label="제목" value={sch.journey.title} onChange={v => upSch('journey', 'title', v)} />
-              <Field label="설명" value={sch.journey.desc} onChange={v => upSch('journey', 'desc', v)} />
-              <Field label="세부 설명이 없을 때 기본 문구" value={sch.journey.defaultDesc} onChange={v => upSch('journey', 'defaultDesc', v)} />
-            </Section>
-
-            <Section title="4. 월별 달력">
-              <Field label="제목" value={sch.calendar.title} onChange={v => upSch('calendar', 'title', v)} />
-              <Field label="이달의 일정 제목 (뒤에 '9월'이 자동으로 붙습니다)" value={sch.calendar.eventsTitle} onChange={v => upSch('calendar', 'eventsTitle', v)} />
-              <Field label="일정이 없을 때 문구" value={sch.calendar.empty} onChange={v => upSch('calendar', 'empty', v)} />
-            </Section>
-
-            <Section title="5. 푸터">
-              <Field label="저작권 문구" value={sch.footer.text} onChange={v => upSch('footer', 'text', v)} />
-            </Section>
-
-            <a href="/schedule" target="_blank" rel="noopener noreferrer" className="inline-block px-5 py-2.5 border border-slate-300 text-slate-600 text-xs font-bold hover:border-teal-700 hover:text-teal-800 transition-colors">타임라인 미리보기 ↗</a>
           </div>
         )}
 

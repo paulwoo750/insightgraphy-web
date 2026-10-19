@@ -1,11 +1,9 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 
 export default function AdminJoinPage() {
-  const router = useRouter()
   const [loading, setLoading] = useState(true)
   
   // 상태 관리
@@ -15,10 +13,6 @@ export default function AdminJoinPage() {
   const [uploading, setUploading] = useState(false)
 
   useEffect(() => {
-    if (!sessionStorage.getItem('isIGAdmin')) {
-      router.push('/admin')
-      return
-    }
     fetchJoinData()
   }, [])
 

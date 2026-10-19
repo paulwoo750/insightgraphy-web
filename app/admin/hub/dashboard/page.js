@@ -1,11 +1,9 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 
 export default function DashboardManager() {
-  const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 
@@ -40,37 +38,38 @@ export default function DashboardManager() {
   const weeks = Array.from({ length: totalWeeks + 1 }, (_, i) => i)
 
   useEffect(() => {
-    if (!sessionStorage.getItem('isIGAdmin')) {
-      router.push('/admin')
-      return
-    }
     fetchDashboardData()
   }, [])
 
   const fetchDashboardData = async () => {
     setLoading(true)
     
-    // 멤버 리스트 불러오기
-    let currentActiveGens = []
-    const { data: genData } = await supabase.from('pr_members_config').select('active_generations').eq('id', 'main').single()
-    if (genData && genData.active_generations) {
-      currentActiveGens = genData.active_generations
+    // 현재 학기 참여 명단을 기준으로 불러온다. legacy_pr_member_id는
+    // 기존 weekly_setup 키와의 호환을 위해 화면 안에서만 id로 사용한다.
+    const { data: activeSemester } = await supabase.from('semesters').select('id').eq('status', 'active').maybeSingle()
+    let memberIds = []
+    if (activeSemester) {
+      const { data: membershipData } = await supabase
+        .from('semester_memberships')
+        .select('member_id')
+        .eq('semester_id', activeSemester.id)
+        .eq('participation_status', 'active')
+      memberIds = (membershipData || []).map((membership) => membership.member_id)
     }
 
-    const { data: memData } = await supabase.from('pr_members').select('*').order('name', { ascending: true })
-    if (memData) {
-      const validMembers = memData.filter(m => {
-        if (!m.is_active) return false; 
-        if (currentActiveGens.length > 0 && m.generation) {
-          const genNum = String(m.generation).replace(/[^0-9]/g, '');
-          return currentActiveGens.includes(genNum); 
-        }
-        return true;
-      });
-      setActiveMembers(validMembers)
-    } else {
-      setActiveMembers([])
-    }
+    let memberQuery = supabase
+      .from('members')
+      .select('id, legacy_pr_member_id, name, generation, university, department, status')
+      .eq('status', 'active')
+      .order('name', { ascending: true })
+    if (activeSemester) memberQuery = memberIds.length > 0 ? memberQuery.in('id', memberIds) : memberQuery.in('id', ['00000000-0000-0000-0000-000000000000'])
+    const { data: memData } = await memberQuery
+    setActiveMembers((memData || []).map((member) => ({
+      ...member,
+      canonical_id: member.id,
+      id: member.legacy_pr_member_id || member.id,
+      is_active: member.status === 'active',
+    })))
 
     // 설정값 불러오기
     const { data: configData } = await supabase.from('pr_config').select('*')
@@ -184,11 +183,9 @@ export default function DashboardManager() {
     setSaving(true)
 
     await supabase.from('pr_config').upsert([
-      { key: 'current_semester', value: semester },
-      { key: 'total_weeks', value: String(totalWeeks) },
       { key: 'week_topics', value: JSON.stringify(weekTopics) },
       { key: 'weekly_setup', value: JSON.stringify(weeklySetup) },
-      { key: 'favorite_locations', value: JSON.stringify(favoriteLocs) } 
+      { key: 'favorite_locations', value: JSON.stringify(favoriteLocs) }
     ])
 
     const deadlineUpserts = []
@@ -232,19 +229,6 @@ export default function DashboardManager() {
     alert('파일 이름이 수정되었습니다! ✨')
     setEditFile(null)
     fetchDashboardData()
-  }
-
-  const handleArchiveTransfer = async () => {
-    const confirmMsg = `정말 [${semester}] 학기의 모든 대시보드 자료를 '과거 자료실'로 이관하시겠습니까?\n이 작업은 되돌리기 어렵습니다!`
-    if (!confirm(confirmMsg)) return
-
-    setSaving(true)
-    const { error } = await supabase.from('files_metadata').update({ is_archive: true, category: '과거 자료실' }).eq('semester', semester).eq('is_archive', false)
-    if (!error) {
-      alert('성공적으로 모든 자료가 아카이브로 넘어갔습니다! 📦')
-      fetchDashboardData()
-    } else alert('오류 발생: ' + error.message)
-    setSaving(false)
   }
 
   if (loading) return <div className="min-h-screen flex justify-center items-center font-bold text-slate-400">데이터를 불러오는 중입니다... 🔄</div>
@@ -296,10 +280,10 @@ export default function DashboardManager() {
             <h1 className="text-4xl font-black uppercase tracking-tighter text-slate-800 flex items-center gap-3">
               <span className="text-4xl">📂</span> Dashboard Manager
             </h1>
-            <p className="text-xs font-bold text-slate-500 mt-2">학기 설정 및 주차별 출석, 주제, 마감 시간, 투표 조 편성을 통제하세요.</p>
+            <p className="text-xs font-bold text-slate-500 mt-2">현재 학기의 세션 장소, 시간, 마감과 조 편성을 관리합니다.</p>
           </div>
           <button onClick={handleSaveAll} disabled={saving} className="bg-teal-600 text-white px-10 py-3.5 rounded-none font-black uppercase tracking-widest hover:bg-teal-700 transition-all shadow-sm active:scale-95 whitespace-nowrap">
-            {saving ? 'Saving...' : 'Save All Settings 💾'}
+            {saving ? 'Saving...' : 'Save Session Settings 💾'}
           </button>
         </header>
 
@@ -310,18 +294,18 @@ export default function DashboardManager() {
               <div className="flex gap-6 w-full md:flex-1">
                 <div className="space-y-2 flex-1">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Current Semester</label>
-                  <input type="text" value={semester} onChange={e => setSemester(e.target.value)} className="w-full bg-slate-50 p-4 rounded-none font-black text-xl text-teal-600 outline-none border border-transparent focus:border-teal-200" placeholder="예: 2026-1" />
+                  <div className="w-full border border-slate-200 bg-slate-50 p-4 text-xl font-black text-teal-700">{semester}</div>
                 </div>
                 <div className="space-y-2 flex-1">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Total Weeks</label>
-                  <input type="number" value={totalWeeks} onChange={e => setTotalWeeks(Number(e.target.value))} className="w-full bg-slate-50 p-4 rounded-none font-black text-xl text-teal-600 outline-none border border-transparent focus:border-teal-200" />
+                  <div className="w-full border border-slate-200 bg-slate-50 p-4 text-xl font-black text-teal-700">{totalWeeks}주</div>
                 </div>
               </div>
               <div className="w-full md:w-auto text-right shrink-0 flex flex-col items-end">
-                <Link href="/admin/hub/reset" className="w-full md:w-auto bg-slate-900 text-white px-8 py-4 rounded-none font-black text-sm hover:bg-teal-800 transition-colors shadow-sm whitespace-nowrap inline-block text-center">
-                  🔄 학기 리셋 페이지로 →
+                <Link href="/admin/hub/semesters" className="w-full md:w-auto bg-slate-900 text-white px-8 py-4 rounded-none font-black text-sm hover:bg-teal-800 transition-colors shadow-sm whitespace-nowrap inline-block text-center">
+                  학기 및 주차 설정으로 →
                 </Link>
-                <p className="text-[10px] text-slate-400 mt-3 font-bold whitespace-nowrap">학기 마감·이관·새 학기 설정은 리셋 페이지에서 한 번에.</p>
+                <p className="text-[10px] text-slate-400 mt-3 font-bold whitespace-nowrap">학기명과 전체 주차는 한 곳에서만 변경합니다.</p>
               </div>
             </section>
 
@@ -355,13 +339,19 @@ export default function DashboardManager() {
                       <span className="bg-teal-600 text-white w-8 h-8 rounded-none flex items-center justify-center text-xs shadow-sm">{setupWeek}</span>
                       Week {setupWeek} 주제
                     </div>
-                    <input
-                      type="text"
-                      value={weekTopics[setupWeek] || ''}
-                      onChange={(e) => setWeekTopics({...weekTopics, [setupWeek]: e.target.value})}
-                      placeholder={setupWeek === 0 ? "OT 등 특별 주제를 입력하세요" : "이 주차의 주제를 입력하세요 (예: 웹3.0과 블록체인)"}
-                      className="flex-1 bg-white p-3 rounded-none text-sm font-bold text-slate-700 outline-none border border-slate-200 focus:border-teal-400 transition-colors shadow-sm"
-                    />
+                    {setupWeek === 0 ? (
+                      <input
+                        type="text"
+                        value={weekTopics[setupWeek] || ''}
+                        onChange={(e) => setWeekTopics({...weekTopics, [setupWeek]: e.target.value})}
+                        placeholder="OT 등 0주차 특별 주제를 입력하세요"
+                        className="flex-1 bg-white p-3 rounded-none text-sm font-bold text-slate-700 outline-none border border-slate-200 focus:border-teal-400 transition-colors shadow-sm"
+                      />
+                    ) : (
+                      <div className="flex-1 border border-slate-200 bg-white p-3 text-sm font-bold text-slate-700">
+                        {weekTopics[setupWeek] || '등록된 주제가 없습니다.'}
+                      </div>
+                    )}
                   </div>
                 </div>
 

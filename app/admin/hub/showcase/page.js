@@ -1,11 +1,9 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 
 export default function AdminShowcasePage() {
-  const router = useRouter()
   const [works, setWorks] = useState([])
   const [loading, setLoading] = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -18,11 +16,6 @@ export default function AdminShowcasePage() {
   const [pdfFile, setPdfFile] = useState(null)
 
   useEffect(() => {
-    // 보안 체크
-    if (!sessionStorage.getItem('isIGAdmin')) {
-      router.push('/admin')
-      return
-    }
     fetchWorks()
   }, [])
 

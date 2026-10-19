@@ -1,4 +1,3 @@
-import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -13,6 +12,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata = {
+  metadataBase: new URL('https://insightgraphy.org'),
   title: 'InsightGraphy | SKY 연합 프레젠테이션 학회 인사이트그래피', // 브라우저 탭에 표시될 이름
   description: '모든 생각은 가치있기에 공유되어야 마땅하다', // 검색 시 나타날 설명
   icons: {
@@ -41,7 +41,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="ko">
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >

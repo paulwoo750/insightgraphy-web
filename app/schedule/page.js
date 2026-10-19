@@ -12,7 +12,7 @@ function PublicNav() {
         <div className="flex justify-between items-center h-[64px] md:h-[80px]">
           <Link href="/" className="flex items-center gap-3 group shrink-0">
             <div className="relative w-8 h-8 md:w-9 md:h-9">
-              <Image src="/logo.png" alt="IG Logo" fill className="object-contain" />
+              <Image src="/logo.png" alt="IG Logo" fill sizes="(min-width: 768px) 36px, 32px" className="object-contain" />
             </div>
             <span className="text-lg md:text-xl font-black uppercase tracking-tighter group-hover:text-[#a8d0cd] transition-colors">
               InsightGraphy
@@ -56,22 +56,22 @@ export default function SchedulePage() {
   const [c, setC] = useState(DEFAULT_SCHEDULE)
 
   useEffect(() => {
-    fetchSchedules()
-  }, [])
+    async function fetchSchedules() {
+      setLoading(true)
+      setC(await loadSiteContent(supabase, 'schedule_content', DEFAULT_SCHEDULE))
+      // 외부 공개용 일정만 타임라인과 달력에 표시한다.
+      const { data, error } = await supabase
+        .from('pr_schedules')
+        .select('*')
+        .eq('is_public', true)
+        .order('full_date', { ascending: true })
 
-  const fetchSchedules = async () => {
-    setLoading(true)
-    setC(await loadSiteContent(supabase, 'schedule_content', DEFAULT_SCHEDULE))
-    // 🌟 핵심: is_public이 true(외부 공개용)인 일정만 가져옴!
-    const { data, error } = await supabase
-      .from('pr_schedules')
-      .select('*')
-      .eq('is_public', true)
-      .order('full_date', { ascending: true })
-    
-    if (!error && data) setFullSchedule(data)
-    setLoading(false)
-  }
+      if (!error && data) setFullSchedule(data)
+      setLoading(false)
+    }
+
+    void Promise.resolve().then(fetchSchedules)
+  }, [])
 
   // 캘린더 변수 계산
   const nextMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1))
@@ -281,7 +281,7 @@ export default function SchedulePage() {
       {/* 푸터 */}
       <footer className="py-12 border-t border-slate-200 text-center bg-white text-slate-800">
         <div className="relative w-10 h-10 mx-auto mb-6 opacity-80">
-          <Image src="/logo.png" alt="InsightGraphy Logo" fill className="object-contain grayscale hover:grayscale-0 transition-all" />
+          <Image src="/logo.png" alt="InsightGraphy Logo" fill sizes="40px" className="object-contain grayscale hover:grayscale-0 transition-all" />
         </div>
         <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.5em]">{c.footer.text}</p>
       </footer>

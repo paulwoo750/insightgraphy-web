@@ -1,12 +1,10 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd'
 
 export default function VoteSetup() {
-  const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 
@@ -25,7 +23,6 @@ export default function VoteSetup() {
   const [evalVersion, setEvalVersion] = useState('v1') 
   
   // 🌟 위계 설정 상태 (대시보드에서 받아온 읽기 전용 상태)
-  const [clusterCount, setClusterCount] = useState(1) 
   const [evalMode, setEvalMode] = useState('individual') 
   
   // 드래그 앤 드롭용 상태
@@ -96,8 +93,6 @@ export default function VoteSetup() {
     const tGroups = setup.teamGroups || {}
     const gClusters = setup.groupClusters || setup.groupToCluster || {}
     
-    const cCount = Number(setup.clusterCount) || 1
-    setClusterCount(cCount)
     setTopic(topics[targetWeek] || '')
 
     const { data: pData } = await supabase.from('presentations').select('*').eq('week', targetWeek).eq('semester', currentSem).order('order_index', { ascending: true })

@@ -9,7 +9,7 @@ export default function ArchiveAdmin() {
   const [currentSemester, setCurrentSemester] = useState('2026-1')
 
   // 1. 회칙 데이터 상태 (장별 배열 구조)
-  const [rules, setRules] = useState([{ id: Date.now(), chapter: '제 1장 총칙', content: '' }])
+  const [rules, setRules] = useState([{ id: 'initial-rule', chapter: '제 1장 총칙', content: '' }])
 
   // 2. 자료 상태
   const [archiveFiles, setArchiveFiles] = useState([]) // 교육, 특별 (archive_files)
@@ -20,12 +20,7 @@ export default function ArchiveAdmin() {
   const [editTarget, setEditTarget] = useState(null) // { table: 'archive_files' | 'files_metadata', id: '', title: '' }
   const [newTitle, setNewTitle] = useState('')
 
-  useEffect(() => {
-    fetchData()
-  }, [])
-
-  const fetchData = async () => {
-    setLoading(true)
+  async function fetchData() {
     
     // 1. 현재 학기 로드
     const { data: configData } = await supabase.from('pr_config').select('value').eq('key', 'current_semester').single()
@@ -39,7 +34,7 @@ export default function ArchiveAdmin() {
         const parsed = JSON.parse(rulesData[0].content)
         if (Array.isArray(parsed)) setRules(parsed)
         else setRules([{ id: Date.now(), chapter: '제 1장', content: rulesData[0].content }])
-      } catch(e) {
+      } catch {
         setRules([{ id: Date.now(), chapter: '제 1장', content: rulesData[0].content }])
       }
     }
@@ -58,6 +53,10 @@ export default function ArchiveAdmin() {
 
     setLoading(false)
   }
+
+  useEffect(() => {
+    void Promise.resolve().then(fetchData)
+  }, [])
 
   // --- 회칙 관리 로직 ---
   const addRuleChapter = () => {

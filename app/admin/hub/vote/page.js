@@ -1,24 +1,7 @@
 'use client'
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 
 export default function VoteManagerHub() {
-  const router = useRouter()
-  const [isAuthorized, setIsAuthorized] = useState(false)
-
-  useEffect(() => {
-    // 보안 패스 확인
-    if (!sessionStorage.getItem('isIGAdmin')) {
-      alert('비정상적인 접근입니다.')
-      router.push('/admin')
-    } else {
-      setIsAuthorized(true)
-    }
-  }, [router])
-
-  if (!isAuthorized) return null
-
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans p-6 md:p-12 pb-32">
       <div className="max-w-5xl mx-auto space-y-12">

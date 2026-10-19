@@ -1,36 +1,87 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
+import { DEFAULT_SCHEDULE, mergeContent } from '@/lib/siteContent'
+
+const contentSections = [
+  {
+    key: 'header',
+    title: '페이지 헤더',
+    fields: [
+      { key: 'eyebrow', label: '상단 작은 문구' },
+      { key: 'title', label: '페이지 제목' },
+    ],
+  },
+  {
+    key: 'table',
+    title: '전체 일정표',
+    fields: [
+      { key: 'semesterBadge', label: '학기 배지' },
+      { key: 'quote', label: '인용 문구', wide: true },
+      { key: 'colType', label: '유형 열 이름' },
+      { key: 'colDate', label: '날짜 열 이름' },
+      { key: 'colTitle', label: '내용 열 이름' },
+      { key: 'colNote', label: '비고 열 이름' },
+      { key: 'breakLabel', label: '휴회 표시 문구' },
+    ],
+  },
+  {
+    key: 'journey',
+    title: '가로 타임라인',
+    fields: [
+      { key: 'title', label: '섹션 제목' },
+      { key: 'desc', label: '섹션 설명', wide: true },
+      { key: 'defaultDesc', label: '일정 기본 설명', wide: true },
+    ],
+  },
+  {
+    key: 'calendar',
+    title: '월별 달력',
+    fields: [
+      { key: 'title', label: '달력 제목' },
+      { key: 'eventsTitle', label: '월별 목록 제목' },
+      { key: 'empty', label: '일정 없음 문구', wide: true },
+    ],
+  },
+  {
+    key: 'footer',
+    title: '푸터',
+    fields: [{ key: 'text', label: '하단 문구', wide: true }],
+  },
+]
 
 export default function ScheduleManager() {
-  const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 
   const [schedules, setSchedules] = useState([])
+  const [deletedIds, setDeletedIds] = useState([])
+  const [scheduleContent, setScheduleContent] = useState(DEFAULT_SCHEDULE)
   const [currentDate, setCurrentDate] = useState(new Date(2026, 2, 1))
   const [selectedDateStr, setSelectedDateStr] = useState(null)
 
-  useEffect(() => {
-    if (!sessionStorage.getItem('isIGAdmin')) {
-      router.push('/admin')
-      return
-    }
-    fetchSchedules()
-  }, [])
-
-  const fetchSchedules = async () => {
-    setLoading(true)
-    const { data, error } = await supabase
-      .from('pr_schedules')
-      .select('*')
-      .order('full_date', { ascending: true })
+  async function fetchSchedules() {
+    const [scheduleResult, contentResult] = await Promise.all([
+      supabase.from('pr_schedules').select('*').order('full_date', { ascending: true }),
+      supabase.from('pr_config').select('value').eq('key', 'schedule_content').maybeSingle(),
+    ])
     
-    if (!error && data) setSchedules(data)
+    if (!scheduleResult.error && scheduleResult.data) setSchedules(scheduleResult.data)
+    if (contentResult.data?.value) {
+      try {
+        setScheduleContent(mergeContent(DEFAULT_SCHEDULE, JSON.parse(contentResult.data.value)))
+      } catch {
+        setScheduleContent(DEFAULT_SCHEDULE)
+      }
+    }
+    setDeletedIds([])
     setLoading(false)
   }
+
+  useEffect(() => {
+    void Promise.resolve().then(fetchSchedules)
+  }, [])
 
   const formatDateDisplay = (dateStr) => {
     if (!dateStr) return ''
@@ -69,6 +120,8 @@ export default function ScheduleManager() {
   // --- 일정 삭제 ---
   const removeSchedule = (index) => {
     if(confirm('이 일정을 삭제할까요?')) {
+      const targetId = schedules[index]?.id
+      if (targetId) setDeletedIds((current) => [...new Set([...current, targetId])])
       setSchedules(schedules.filter((_, i) => i !== index))
     }
   }
@@ -90,11 +143,16 @@ export default function ScheduleManager() {
   }
 
   const handleSaveAll = async () => {
+    const missingDateCount = schedules.filter((schedule) => !schedule.full_date).length
+    if (missingDateCount > 0) {
+      alert(`날짜가 비어 있는 일정이 ${missingDateCount}개 있습니다. 날짜를 입력하거나 해당 일정을 삭제한 뒤 저장하세요.`)
+      return
+    }
+
     setSaving(true)
-    await supabase.from('pr_schedules').delete().neq('id', '00000000-0000-0000-0000-000000000000')
-    
-    if (schedules.length > 0) {
-      const validSchedules = schedules.filter(s => s.full_date).map(s => ({
+    try {
+      const validSchedules = schedules.map(s => ({
+        ...(s.id ? { id: s.id } : {}),
         full_date: s.full_date,
         date_display: s.date_display,
         type: s.type || 'regular',
@@ -107,12 +165,42 @@ export default function ScheduleManager() {
         start_time: s.start_time || '',
         end_time: s.end_time || ''
       }))
-      const { error } = await supabase.from('pr_schedules').insert(validSchedules)
-      if (error) alert('저장 실패: ' + error.message)
-      else alert('일정이 성공적으로 저장되었습니다! 📅')
+
+      const existingSchedules = validSchedules.filter((schedule) => schedule.id)
+      const newSchedules = validSchedules.filter((schedule) => !schedule.id)
+      if (existingSchedules.length > 0) {
+        const { error } = await supabase.from('pr_schedules').upsert(existingSchedules)
+        if (error) throw error
+      }
+      if (newSchedules.length > 0) {
+        const { error } = await supabase.from('pr_schedules').insert(newSchedules)
+        if (error) throw error
+      }
+      if (deletedIds.length > 0) {
+        const { error } = await supabase.from('pr_schedules').delete().in('id', deletedIds)
+        if (error) throw error
+      }
+
+      const { error: contentError } = await supabase.from('pr_config').upsert({
+        key: 'schedule_content',
+        value: JSON.stringify(scheduleContent),
+      })
+      if (contentError) throw contentError
+
+      await fetchSchedules()
+      alert('일정과 외부 타임라인 문구를 저장했습니다. 📅')
+    } catch (error) {
+      alert('저장 실패: ' + error.message)
+    } finally {
+      setSaving(false)
     }
-    fetchSchedules()
-    setSaving(false)
+  }
+
+  const updateScheduleContent = (section, field, value) => {
+    setScheduleContent((current) => ({
+      ...current,
+      [section]: { ...current[section], [field]: value },
+    }))
   }
 
   const nextMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1))
@@ -138,12 +226,40 @@ export default function ScheduleManager() {
             <h1 className="text-4xl font-black uppercase tracking-tighter text-slate-800 flex items-center gap-3">
               <span className="text-4xl">📅</span> Schedule Manager
             </h1>
-            <p className="text-xs font-bold text-slate-500 mt-2">일정 유형과 시간을 직관적으로 편집하세요.</p>
+            <p className="text-xs font-bold text-slate-500 mt-2">일정 데이터와 외부 타임라인에 표시되는 모든 문구를 함께 관리합니다.</p>
           </div>
-          <button onClick={handleSaveAll} disabled={saving} className="bg-[#32a4a1] text-white px-8 py-3 rounded-none font-black uppercase tracking-widest hover:bg-[#238986] transition-all shadow-sm hover:scale-105">
-            {saving ? 'Saving...' : 'Save All 💾'}
-          </button>
+          <div className="flex items-center gap-2">
+            <Link href="/schedule" target="_blank" className="border border-slate-300 bg-white px-4 py-3 text-xs font-black text-slate-600 hover:bg-slate-100">외부 화면 보기 ↗</Link>
+            <button onClick={handleSaveAll} disabled={saving} className="bg-[#32a4a1] text-white px-8 py-3 rounded-none font-black uppercase tracking-widest hover:bg-[#238986] transition-all shadow-sm disabled:opacity-50">
+              {saving ? 'Saving...' : 'Save All 💾'}
+            </button>
+          </div>
         </header>
+
+        <section className="overflow-hidden border border-slate-200 bg-white shadow-sm">
+          <div className="flex flex-col gap-3 border-b border-slate-200 px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-lg font-black text-slate-900">외부 타임라인 문구</h2>
+              <p className="mt-1 text-xs font-bold text-slate-500">외부 사이트 `/schedule`의 헤더, 일정표, 여정, 달력, 푸터 문구입니다.</p>
+            </div>
+            <button type="button" onClick={() => setScheduleContent(DEFAULT_SCHEDULE)} className="min-h-9 border border-slate-200 bg-white px-3 text-xs font-black text-slate-600 hover:bg-slate-50">기본 문구로 되돌리기</button>
+          </div>
+          <div className="grid gap-px bg-slate-200 lg:grid-cols-2">
+            {contentSections.map((section) => (
+              <div key={section.key} className="bg-white p-5">
+                <h3 className="mb-4 text-xs font-black uppercase tracking-widest text-teal-700">{section.title}</h3>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {section.fields.map((field) => (
+                    <label key={`${section.key}-${field.key}`} className={field.wide ? 'sm:col-span-2' : ''}>
+                      <span className="mb-1.5 block text-[11px] font-bold text-slate-500">{field.label}</span>
+                      <input value={scheduleContent[section.key]?.[field.key] || ''} onChange={(event) => updateScheduleContent(section.key, field.key, event.target.value)} className="h-10 w-full border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-800 outline-none focus:border-teal-600 focus:bg-white" />
+                    </label>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
 
         {/* 안내 범례 */}
         <div className="flex gap-4 px-4">

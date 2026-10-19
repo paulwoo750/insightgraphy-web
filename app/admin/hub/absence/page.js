@@ -10,8 +10,8 @@ export default function AbsenceAdmin() {
   // 🌟 시스템 설정 상태
   const [currentSemester, setCurrentSemester] = useState('2026-1')
   const [totalWeeks, setTotalWeeks] = useState(12)
-  const [currentWeek, setCurrentWeek] = useState(1) 
   const [absenceLateFine, setAbsenceLateFine] = useState(20000) 
+  const [processingId, setProcessingId] = useState(null)
 
   // 🌟 마감 기한 및 폴더(탭) 상태
   const [absenceDeadlines, setAbsenceDeadlines] = useState([])
@@ -36,12 +36,7 @@ export default function AbsenceAdmin() {
 
   const weeks = Array.from({ length: totalWeeks + 1 }, (_, i) => i)
 
-  useEffect(() => {
-    fetchData()
-  }, [])
-
-  const fetchData = async () => {
-    setLoading(true)
+  async function fetchData() {
 
     // 1. 설정값 불러오기
     const { data: configData } = await supabase.from('pr_config').select('*')
@@ -49,12 +44,10 @@ export default function AbsenceAdmin() {
     if (configData) {
       const sem = configData.find(c => c.key === 'current_semester')?.value
       const totalWks = configData.find(c => c.key === 'total_weeks')?.value
-      const curWk = configData.find(c => c.key === 'current_week')?.value
       const penConfig = configData.find(c => c.key === 'penalty_rules')?.value
 
       if (sem) setCurrentSemester(sem)
       if (totalWks) { wks = Number(totalWks); setTotalWeeks(wks); }
-      if (curWk) setCurrentWeek(Number(curWk))
       setSemesterType(configData.find(c => c.key === 'semester_type')?.value || 'regular')
       if (penConfig) {
         const parsed = JSON.parse(penConfig)
@@ -89,6 +82,10 @@ export default function AbsenceAdmin() {
 
     setLoading(false)
   }
+
+  useEffect(() => {
+    void Promise.resolve().then(fetchData)
+  }, [])
 
   // ==========================================
   // 🕒 마감 기한 설정 로직
@@ -138,53 +135,38 @@ export default function AbsenceAdmin() {
   // ==========================================
   // 📝 사유서 결재 로직 (부분인정 내용 포함)
   // ==========================================
-  const handleAbsenceApproval = async (id, userName, statusType, absWeek) => {
-    let finalStatus = ''
-    let comment = ''
-    let fineAmount = 0
+  const handleAbsenceApproval = async (id, statusType) => {
+    const hasTask = partialTasks[id] || false
+    const taskDetail = partialInputs[id] || ''
+    const rejectReason = rejectReasons[id] || ''
 
-    if (statusType === 'full') {
-      finalStatus = '완전인정'
-      comment = '사유 타당. 벌금 면제'
-    } else if (statusType === 'partial') {
-      const hasTask = partialTasks[id] || false
-      const taskDetail = partialInputs[id] || ''
-      
-      // 🌟 대체 과제가 체크되어 있다면 상세 내용을 꼭 적도록 강제!
-      if (hasTask && !taskDetail.trim()) {
-        return alert("대체 과제가 체크되어 있습니다. 과제 내용과 제출 기한을 텍스트 칸에 상세히 입력해주세요! ✍️")
-      }
-
-      finalStatus = `부분인정 (대체과제: ${hasTask ? 'O' : 'X'})`
-      comment = hasTask ? `[대체 과제 부여]\n${taskDetail}` : '부분 인정 처리 (별도 대체 과제 없음)' 
-      
-    } else if (statusType === 'reject') {
-      const reason = rejectReasons[id] || ''
-      if (!reason.trim()) return alert('반려 사유를 필수로 입력해주세요!')
-      finalStatus = '불허'
-      comment = reason
-      fineAmount = absenceLateFine 
+    if (statusType === 'partial' && hasTask && !taskDetail.trim()) {
+      return alert('대체 과제 내용과 제출 기한을 입력해주세요.')
+    }
+    if (statusType === 'reject' && !rejectReason.trim()) {
+      return alert('불허 사유를 입력해주세요.')
     }
 
-    await supabase.from('absence_forms').update({ status: finalStatus, admin_comment: comment }).eq('id', id)
+    setProcessingId(id)
+    const { error } = await supabase.rpc('admin_resolve_absence', {
+      p_absence_id: String(id),
+      p_decision: statusType,
+      p_comment: statusType === 'reject' ? rejectReason : '',
+      p_has_makeup: hasTask,
+      p_makeup_detail: taskDetail,
+      p_fine_amount: statusType === 'reject' ? absenceLateFine : 0,
+    })
 
-    if (fineAmount > 0) {
-      const { error } = await supabase.from('pr_fines').insert([{
-        user_name: userName, 
-        week: absWeek || currentWeek, 
-        category: '사유서 불허 페널티',
-        amount: fineAmount,
-        reason: comment,
-        is_paid: false,
-        semester: currentSemester
-      }])
-      
-      if (error) return alert("벌금 DB 등록 에러: " + error.message)
+    if (error) {
+      alert(`사유서 연동 처리 실패: ${error.message}\nSupabase STEP 8 실행 여부를 확인하세요.`)
+      setProcessingId(null)
+      return
     }
 
     setRejectReasons(prev => ({...prev, [id]: ''}))
-    setPartialInputs(prev => ({...prev, [id]: ''})) 
-    fetchData()
+    setPartialInputs(prev => ({...prev, [id]: ''}))
+    await fetchData()
+    setProcessingId(null)
   }
 
   // 폴더별 + 세션 유형별 필터링
@@ -198,7 +180,8 @@ export default function AbsenceAdmin() {
   // 🌟 해당 사유서의 출석 기록 (연동 상태 표시용)
   const attFor = (abs) => attendances.find(a =>
     a.user_name === abs.user_name && a.week === abs.week &&
-    (a.session_type || 'regular') === (abs.session_type || 'regular')
+    (a.session_type || 'regular') === (abs.session_type || 'regular') &&
+    (!currentSemester || !a.semester || a.semester === currentSemester)
   );
   // 마감 기한 대비 지각 제출 여부
   const isLateSubmit = (abs) => {
@@ -374,8 +357,8 @@ export default function AbsenceAdmin() {
                   <div className="flex flex-col gap-2 min-w-[300px] shrink-0 bg-white p-4 rounded-none border border-slate-100 h-fit">
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 text-center border-b border-slate-100 pb-2">결재 처리</p>
                     
-                    <button onClick={() => handleAbsenceApproval(abs.id, abs.user_name, 'full', abs.week)} className="bg-emerald-500 text-white py-2.5 rounded-none font-black text-xs hover:bg-emerald-600 transition-colors shadow-sm">
-                      완전 인정 (벌금 면제)
+                    <button onClick={() => handleAbsenceApproval(abs.id, 'full')} disabled={processingId === abs.id} className="bg-emerald-500 text-white py-2.5 rounded-none font-black text-xs hover:bg-emerald-600 transition-colors shadow-sm disabled:opacity-50">
+                      {processingId === abs.id ? '연동 처리 중...' : '완전 인정 (출석 인정 · 벌금 면제)'}
                     </button>
                     
                     {/* 🌟 부분 인정 패널 업그레이드 */}
@@ -401,7 +384,7 @@ export default function AbsenceAdmin() {
                         onChange={(e) => setPartialInputs(prev => ({...prev, [abs.id]: e.target.value}))}
                         className={`w-full border border-slate-200 rounded-none p-3 text-xs font-bold outline-none focus:border-teal-400 transition-colors resize-none h-20 ${!partialTasks[abs.id] ? 'bg-slate-100 text-slate-400 opacity-50' : 'bg-white'}`}
                       />
-                      <button onClick={() => handleAbsenceApproval(abs.id, abs.user_name, 'partial', abs.week)} className="bg-teal-500 text-white py-2.5 rounded-none font-black text-xs hover:bg-teal-600 transition-colors shadow-sm mt-1">
+                      <button onClick={() => handleAbsenceApproval(abs.id, 'partial')} disabled={processingId === abs.id} className="bg-teal-500 text-white py-2.5 rounded-none font-black text-xs hover:bg-teal-600 transition-colors shadow-sm mt-1 disabled:opacity-50">
                         부분 인정 처리하기
                       </button>
                     </div>
@@ -414,7 +397,7 @@ export default function AbsenceAdmin() {
                         onChange={e => setRejectReasons(prev => ({...prev, [abs.id]: e.target.value}))} 
                         className="w-full border border-slate-200 rounded-none p-2.5 text-xs font-bold outline-none focus:border-red-400 bg-slate-50 transition-colors" 
                       />
-                      <button onClick={() => handleAbsenceApproval(abs.id, abs.user_name, 'reject', abs.week)} className="w-full bg-red-500 text-white py-2.5 rounded-none font-black text-xs hover:bg-red-600 transition-colors shadow-sm">
+                      <button onClick={() => handleAbsenceApproval(abs.id, 'reject')} disabled={processingId === abs.id} className="w-full bg-red-500 text-white py-2.5 rounded-none font-black text-xs hover:bg-red-600 transition-colors shadow-sm disabled:opacity-50">
                         불허 (벌금 ₩{absenceLateFine.toLocaleString()} 부과)
                       </button>
                     </div>

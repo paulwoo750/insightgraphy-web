@@ -10,6 +10,7 @@ export default function Signup() {
   const [password, setPassword] = useState('')
   const [name, setName] = useState('')
   const [studentId, setStudentId] = useState('')
+  const [requestedMemberStatus, setRequestedMemberStatus] = useState('active')
   const [secretCode, setSecretCode] = useState('')
   const [loading, setLoading] = useState(false)
   const router = useRouter()
@@ -33,6 +34,7 @@ export default function Signup() {
         data: {
           name: name,
           student_id: studentId,
+          requested_member_status: requestedMemberStatus,
         },
         // 🌟 핵심 파트: 이메일 인증 후 돌아올 주소를 /welcome 페이지로 지정!
         emailRedirectTo: `${window.location.origin}/welcome`,
@@ -93,6 +95,20 @@ export default function Signup() {
             <p className="text-[10px] font-black text-teal-700 uppercase tracking-widest border-b border-teal-800 pb-2">Member Info</p>
             <input type="text" placeholder="성함 (실명)" value={name} onChange={(e) => setName(e.target.value)} className={lineInput} required />
             <input type="text" placeholder="기수 (예: 28기)" value={studentId} onChange={(e) => setStudentId(e.target.value)} className={lineInput} required />
+            <fieldset>
+              <legend className="mb-2 text-xs font-bold text-slate-600">학회원 구분</legend>
+              <div className="grid grid-cols-2 border border-slate-200 bg-slate-50 p-1">
+                <label className={`cursor-pointer px-3 py-2.5 text-center text-xs font-bold transition-colors ${requestedMemberStatus === 'active' ? 'bg-white text-teal-800 shadow-sm' : 'text-slate-500'}`}>
+                  <input type="radio" name="member-status" value="active" checked={requestedMemberStatus === 'active'} onChange={(e) => setRequestedMemberStatus(e.target.value)} className="sr-only" />
+                  활동 학회원
+                </label>
+                <label className={`cursor-pointer px-3 py-2.5 text-center text-xs font-bold transition-colors ${requestedMemberStatus === 'alumni' ? 'bg-white text-blue-800 shadow-sm' : 'text-slate-500'}`}>
+                  <input type="radio" name="member-status" value="alumni" checked={requestedMemberStatus === 'alumni'} onChange={(e) => setRequestedMemberStatus(e.target.value)} className="sr-only" />
+                  졸업 학회원
+                </label>
+              </div>
+              <p className="mt-2 text-[11px] leading-5 text-slate-400">가입 후 운영진 승인 시 선택한 명단에 반영됩니다.</p>
+            </fieldset>
           </div>
 
           <div className="flex flex-col gap-6">

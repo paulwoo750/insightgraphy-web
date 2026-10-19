@@ -1,202 +1,186 @@
 'use client'
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
+import {
+  AlertTriangle,
+  Archive,
+  ArrowRight,
+  CalendarCheck2,
+  CalendarDays,
+  CheckCircle2,
+  ClipboardCheck,
+  FolderKanban,
+  Settings2,
+  UsersRound,
+} from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { useAdminContext } from '@/app/admin/_components/AdminShell'
+import { AdminPage, EmptyState, PageHeader, Panel, StatusBadge } from '@/app/admin/_components/AdminUI'
+
+const moduleLinks = [
+  { href: '/admin/hub/semesters', label: '학기 및 주차', description: '현재 학기, 주차 주제와 진행 상태', icon: CalendarDays, source: 'semesters' },
+  { href: '/admin/hub/members', label: '학회원', description: '인물 정보와 학기별 참여 및 직책', icon: UsersRound, source: 'members' },
+  { href: '/admin/hub/dashboard', label: '세션 및 제출', description: '세션 구성, 제출 파일과 마감', icon: FolderKanban, source: 'sessions' },
+  { href: '/admin/hub/archive', label: '아카이브', description: '공용 자료와 과거 학기 자료', icon: Archive, source: 'files_metadata' },
+  { href: '/admin/hub/absence', label: '사유서', description: '사유서 검토와 승인 처리', icon: ClipboardCheck, source: 'absence_forms' },
+  { href: '/admin/hub/attendance', label: '출결 대시보드', description: '개인별 출결, 위험 기준과 벌금 현황', icon: CalendarCheck2, source: 'pr_attendance' },
+]
+
+function localDate(value) {
+  if (!value) return '-'
+  return new Intl.DateTimeFormat('ko-KR', { month: 'short', day: 'numeric', weekday: 'short' }).format(new Date(`${value}T00:00:00`))
+}
 
 export default function AdminHubPage() {
-  const router = useRouter()
-  const [isAuthorized, setIsAuthorized] = useState(false)
-  const [userName, setUserName] = useState('')
+  const { semester } = useAdminContext() || {}
+  const [loading, setLoading] = useState(true)
+  const [summary, setSummary] = useState({ members: 0, participants: 0, upcomingEvents: [], issues: 0 })
 
   useEffect(() => {
-    // 1. 브라우저 세션에 VIP 패스가 있는지 확인
-    const adminToken = sessionStorage.getItem('isIGAdmin')
-    if (!adminToken) {
-      alert('비정상적인 접근입니다. 보안 코드를 먼저 입력해주세요.')
-      router.push('/admin')
-      return
+    let active = true
+
+    async function fetchSummary() {
+      setLoading(true)
+      const today = new Date().toISOString().slice(0, 10)
+      const [membersResult, membershipResult, eventResult, issueResult] = await Promise.all([
+        supabase.from('members').select('id', { count: 'exact', head: true }).eq('status', 'active'),
+        semester?.id
+          ? supabase.from('semester_memberships').select('id', { count: 'exact', head: true }).eq('semester_id', semester.id).eq('participation_status', 'active')
+          : Promise.resolve({ count: 0 }),
+        supabase.from('calendar_events').select('id, title, event_date, event_type').gte('event_date', today).order('event_date').limit(5),
+        supabase.from('data_migration_issues').select('id', { count: 'exact', head: true }).is('resolved_at', null),
+      ])
+
+      if (!active) return
+      setSummary({
+        members: membersResult.count || 0,
+        participants: membershipResult.count || 0,
+        upcomingEvents: eventResult.data || [],
+        issues: issueResult.count || 0,
+      })
+      setLoading(false)
     }
 
-    // 2. 로그인 사용자 이름 가져오기
-    const fetchUser = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (session) setUserName(session.user.user_metadata.name)
+    fetchSummary()
+    return () => {
+      active = false
     }
-    
-    setIsAuthorized(true)
-    fetchUser()
-  }, [])
+  }, [semester?.id])
 
-  const handleExitAdmin = () => {
-    sessionStorage.removeItem('isIGAdmin') // VIP 패스 파기
-    router.push('/home')
-  }
-
-  if (!isAuthorized) return null
+  const tasks = useMemo(() => {
+    const items = []
+    if (!semester) items.push({ tone: 'red', title: '활성 학기를 지정해야 합니다.', href: '/admin/hub/semesters', action: '학기 설정' })
+    if (semester && !semester.current_week_no) items.push({ tone: 'amber', title: '현재 주차가 지정되지 않았습니다.', href: '/admin/hub/semesters', action: '주차 지정' })
+    if (semester && summary.participants === 0) items.push({ tone: 'amber', title: '현재 학기에 참여 학회원이 없습니다.', href: '/admin/hub/members', action: '명단 편성' })
+    if (summary.issues > 0) items.push({ tone: 'red', title: `확인되지 않은 마이그레이션 항목이 ${summary.issues}건 있습니다.`, href: '/admin/hub/semesters', action: '상태 확인' })
+    return items
+  }, [semester, summary.issues, summary.participants])
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans p-6 md:p-12 pb-32">
-      <div className="max-w-6xl mx-auto">
-        
-        {/* 상단 헤더 */}
-        <header className="flex flex-col md:flex-row justify-between items-start md:items-end mb-16 gap-6 border-b border-slate-200 pb-8">
-          <div>
-            <div className="flex items-center gap-3 mb-2">
-              <span className="bg-slate-900 text-white px-3 py-1 rounded-none text-[10px] font-black uppercase tracking-widest">
-                Command Center
-              </span>
-              <span className="text-xs font-bold text-slate-400">
-                Logged in as <span className="text-[#32a4a1]">{userName}</span>
-              </span>
-            </div>
-            <h1 className="text-4xl md:text-5xl font-black uppercase tracking-tighter text-slate-800">
-              Admin Hub
-            </h1>
-          </div>
-          
-          <button 
-            onClick={handleExitAdmin}
-            className="flex items-center gap-2 bg-white border border-slate-200 text-slate-500 hover:bg-slate-900 hover:text-white px-6 py-3 rounded-none font-black text-xs uppercase tracking-widest transition-all shadow-sm active:scale-95"
-          >
-            ← Exit Admin
-          </button>
-        </header>
+    <AdminPage>
+      <PageHeader
+        eyebrow="Operations Overview"
+        title="운영 현황"
+        description="학기, 학회원, 일정과 데이터 연결 상태를 한 화면에서 확인합니다. 각 정보는 표시된 기준 테이블에서 한 번만 관리합니다."
+        actions={
+          <Link href="/admin/hub/semesters" className="inline-flex min-h-10 items-center gap-2 rounded-md bg-teal-700 px-4 text-sm font-bold text-white hover:bg-teal-800">
+            <Settings2 className="h-4 w-4" aria-hidden="true" />
+            운영 설정
+          </Link>
+        }
+      />
 
-        {/* =========================================
-            1. 홍보 및 외부 채널 관리 (Public)
-        ========================================= */}
-        <section className="mb-20">
-          <div className="flex items-center gap-4 mb-8">
-            <div className="w-12 h-12 bg-[#32a4a1]/10 text-[#32a4a1] rounded-none flex items-center justify-center text-2xl">📢</div>
-            <div>
-              <h2 className="text-2xl font-black uppercase text-slate-800">홍보 채널 관리</h2>
-              <p className="text-xs font-bold text-slate-400 mt-1">로그인 없이 접근 가능한 외부 공개 웹페이지들을 수정합니다.</p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <AdminCard href="/admin/hub/landing" icon="🏠" title="Landing Page" desc="대문 메인 문구 및 핵심 활동 구성 관리" />
-            <AdminCard href="/admin/hub/about" icon="📖" title="About" desc="학회 소개글, 연혁 및 핵심 가치 관리" />
-            <AdminCard href="/admin/hub/activities" icon="🎯" title="Activities" desc="정규, 교육 등 세션별 설명 텍스트 관리" />
-            <AdminCard href="/admin/hub/showcase" icon="🖼️" title="Showcase" desc="우수 PPT 작품 갤러리 업로드 및 수정" />
-            <AdminCard href="/admin/hub/members" icon="👥" title="Members" desc="기수별 학회원 명단 및 프로필 정보 관리" />
-            <AdminCard href="/admin/hub/join" icon="📝" title="Join Us" desc="리크루팅 일정 및 신입 기수 지원 안내 관리" />
-          </div>
-        </section>
-
-        {/* =========================================
-            2. 내부 시스템 관리 (Internal)
-        ========================================= */}
-        <section className="mb-20">
-          <div className="flex items-center gap-4 mb-8">
-            <div className="w-12 h-12 bg-teal-100 text-teal-600 rounded-none flex items-center justify-center text-2xl">🏢</div>
-            <div>
-              <h2 className="text-2xl font-black uppercase text-slate-800">내부 시스템 관리</h2>
-              <p className="text-xs font-bold text-slate-400 mt-1">학회원 전용 데이터 및 핵심 운영 시스템을 제어합니다.</p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            <AdminCard href="/admin/hub/schedule" icon="📅" title="Schedule Master" desc="전체 주차별 일정 및 내부 캘린더 관리" color="blue" />
-            <AdminCard href="/admin/hub/dashboard" icon="📂" title="Weekly Drive" desc="주차별 세션 자료실 및 개인 과제 제출함 관리" color="blue" />
-            <AdminCard href="/admin/hub/archive" icon="🏛️" title="IG Archive" desc="디자인 소스 등 학회 공용 자산 업로드 관리" color="blue" />
-            <AdminCard href="/admin/hub/vote" icon="🗳️" title="Vote & Score" desc="실시간 발표 채점 오픈 및 조 편성 세팅" color="blue" />
-          </div>
-        </section>
-
-        {/* =========================================
-            🌟 3. 운영진 학회 관리 (Executive) 🌟
-        ========================================= */}
-        <section className="mb-12">
-          <div className="flex items-center gap-4 mb-8">
-            <div className="w-12 h-12 bg-teal-100 text-teal-600 rounded-none flex items-center justify-center text-2xl">⚖️</div>
-            <div>
-              <h2 className="text-2xl font-black uppercase text-slate-800">운영진 학회 관리</h2>
-              <p className="text-xs font-bold text-slate-400 mt-1">학회 회칙, 출결 및 벌금 등 운영진 전용 관리 시스템입니다.</p>
-            </div>
-          </div>
-
-          {/* 🌟 카드 3개 배치: Rules, Fines, Absence */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <AdminCard 
-              href="/admin/hub/rules" 
-              icon="📜" 
-              title="Society Rules" 
-              desc="지각·결석 벌금 및 학회원 제명 등 세부 회칙 규정 관리" 
-              color="purple" 
-            />
-            
-            {/* 🌟 새로 추가된 사유서 관리 카드 */}
-            <AdminCard 
-              href="/admin/hub/absence" 
-              icon="📝" 
-              title="Absence Form" 
-              desc="주차별 사유서 마감 기한 설정 및 제출된 사유서 결재 관리" 
-              color="purple" 
-            />
-
-            <AdminCard
-              href="/admin/hub/fine"
-              icon="📊"
-              title="Attendance & Fines"
-              desc="학회원 세션 참석률 트래킹 및 회칙 기반 벌금 자동 계산·관리"
-              color="purple"
-            />
-
-            {/* 🌟 학기 리셋 (초기화 버튼 일원화) */}
-            <AdminCard
-              href="/admin/hub/reset"
-              icon="🔄"
-              title="Semester Reset"
-              desc="학기 마감·과거 자료실 이관 및 새 학기(이름·주차) 초기화를 한 곳에서"
-              color="purple"
-            />
-
-            {/* 🌟 회칙 문서 편집 */}
-            <AdminCard
-              href="/admin/hub/rules-doc"
-              icon="📜"
-              title="회칙 편집"
-              desc="학회 회칙 조항(장·조)을 편집하여 아카이브 회칙 열람실에 반영"
-              color="purple"
-            />
-          </div>
-        </section>
-
+      <div className="mb-5 grid grid-cols-2 gap-3 xl:grid-cols-4">
+        <Metric label="활성 학회원" value={loading ? '-' : `${summary.members}명`} note="members.status = active" />
+        <Metric label="이번 학기 참여" value={loading ? '-' : `${summary.participants}명`} note={semester?.code || '활성 학기 없음'} tone="teal" />
+        <Metric label="예정 일정" value={loading ? '-' : `${summary.upcomingEvents.length}건`} note="가까운 일정 5건 기준" tone="blue" />
+        <Metric label="데이터 확인 필요" value={loading ? '-' : `${summary.issues}건`} note="미해결 연결 항목" tone={summary.issues ? 'red' : 'green'} />
       </div>
-    </div>
+
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,.65fr)]">
+        <div className="space-y-5">
+          <Panel title="운영 작업" description="설정 누락이나 확인이 필요한 항목입니다.">
+            {tasks.length === 0 ? (
+              <div className="flex items-center gap-3 px-5 py-5">
+                <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600" aria-hidden="true" />
+                <div>
+                  <p className="text-sm font-bold text-slate-800">현재 확인이 필요한 운영 설정이 없습니다.</p>
+                  <p className="mt-0.5 text-xs text-slate-500">새 제출물과 일정은 각 관리 화면에서 계속 확인할 수 있습니다.</p>
+                </div>
+              </div>
+            ) : (
+              <div className="divide-y divide-slate-100">
+                {tasks.map((task) => (
+                  <Link key={task.title} href={task.href} className="flex min-h-16 items-center gap-3 px-5 py-3 hover:bg-slate-50">
+                    <AlertTriangle className={`h-5 w-5 shrink-0 ${task.tone === 'red' ? 'text-red-600' : 'text-amber-600'}`} aria-hidden="true" />
+                    <p className="min-w-0 flex-1 text-sm font-semibold text-slate-800">{task.title}</p>
+                    <span className="shrink-0 text-xs font-bold text-teal-700">{task.action}</span>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </Panel>
+
+          <Panel title="관리 영역" description="정보의 소유 화면과 기준 데이터가 분리되지 않도록 구성했습니다.">
+            <div className="divide-y divide-slate-100">
+              {moduleLinks.map((module) => {
+                const Icon = module.icon
+                return (
+                  <Link key={module.href} href={module.href} className="grid min-h-[72px] grid-cols-[36px_minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 hover:bg-slate-50 sm:px-5">
+                    <div className="grid h-9 w-9 place-items-center border border-slate-200 bg-slate-50 text-slate-600">
+                      <Icon className="h-[18px] w-[18px]" aria-hidden="true" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-bold text-slate-900">{module.label}</p>
+                      <p className="mt-0.5 truncate text-xs text-slate-500">{module.description}</p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <code className="hidden rounded bg-slate-100 px-2 py-1 text-[10px] text-slate-500 sm:block">{module.source}</code>
+                      <ArrowRight className="h-4 w-4 text-slate-400" aria-hidden="true" />
+                    </div>
+                  </Link>
+                )
+              })}
+            </div>
+          </Panel>
+        </div>
+
+        <Panel title="다가오는 일정" description="오늘 이후 가까운 일정입니다." className="self-start">
+          {summary.upcomingEvents.length === 0 && !loading ? (
+            <EmptyState title="등록된 예정 일정이 없습니다." description="전체 일정 화면에서 새 일정을 등록할 수 있습니다." />
+          ) : (
+            <div className="divide-y divide-slate-100">
+              {summary.upcomingEvents.map((event) => (
+                <Link key={event.id} href="/admin/hub/schedule" className="flex items-center gap-3 px-4 py-4 hover:bg-slate-50">
+                  <div className="w-16 shrink-0 text-xs font-bold text-slate-500">{localDate(event.event_date)}</div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-bold text-slate-800">{event.title}</p>
+                    <div className="mt-1"><StatusBadge tone="gray">{event.event_type}</StatusBadge></div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
+        </Panel>
+      </div>
+    </AdminPage>
   )
 }
 
-// 재사용 가능한 관리자 카드 컴포넌트
-function AdminCard({ href, icon, title, desc, color = "teal" }) {
-  let hoverColor = "hover:border-[#32a4a1] hover:shadow-[#32a4a1]/10";
-  let titleColor = "group-hover:text-[#32a4a1]";
-  let badgeColor = "text-[#32a4a1]";
-
-  if (color === "blue") {
-    hoverColor = "hover:border-teal-500 hover:shadow-teal-500/10";
-    titleColor = "group-hover:text-teal-600";
-    badgeColor = "text-teal-500";
-  } else if (color === "purple") {
-    hoverColor = "hover:border-teal-500 hover:shadow-teal-500/10";
-    titleColor = "group-hover:text-teal-600";
-    badgeColor = "text-teal-500";
+function Metric({ label, value, note, tone = 'gray' }) {
+  const border = {
+    gray: 'border-t-slate-300',
+    teal: 'border-t-teal-600',
+    blue: 'border-t-blue-600',
+    green: 'border-t-emerald-600',
+    red: 'border-t-red-600',
   }
-
   return (
-    <Link href={href} className={`bg-white p-8 rounded-none shadow-sm border-2 border-transparent ${hoverColor} hover:shadow-sm transition-all group flex flex-col justify-between min-h-[220px]`}>
-      <div>
-        <div className="text-4xl mb-5 group-hover:scale-110 transition-transform origin-left">{icon}</div>
-        <h3 className={`text-lg font-black uppercase tracking-tight mb-2 text-slate-800 ${titleColor} transition-colors`}>{title}</h3>
-        <p className="text-xs text-slate-500 font-medium break-keep leading-relaxed">{desc}</p>
-      </div>
-      <div className="text-right mt-6 opacity-0 group-hover:opacity-100 transition-opacity">
-        <span className={`text-[10px] font-black uppercase tracking-widest ${badgeColor} bg-slate-50 px-3 py-1.5 rounded-none`}>
-          Configure ⚙️
-        </span>
-      </div>
-    </Link>
+    <div className={`min-h-[112px] rounded-md border border-slate-200 border-t-[3px] bg-white p-4 ${border[tone] || border.gray}`}>
+      <p className="text-xs font-semibold text-slate-500">{label}</p>
+      <p className="mt-2 text-2xl font-bold text-slate-950">{value}</p>
+      <p className="mt-1 truncate text-[10px] text-slate-400">{note}</p>
+    </div>
   )
 }

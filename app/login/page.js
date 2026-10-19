@@ -14,7 +14,7 @@ export default function Login() {
     e.preventDefault()
     setLoading(true)
 
-    const { data, error } = await supabase.auth.signInWithPassword({
+    const { error } = await supabase.auth.signInWithPassword({
       email,
       password,
     })
@@ -23,8 +23,9 @@ export default function Login() {
       alert("로그인 실패: " + error.message)
     } else {
       alert("반가워요! 로그인 성공 🎊")
-      // ★ 이 부분을 /dashboard에서 /home으로 변경함!
-      router.push('/home')
+      const requestedPath = new URLSearchParams(window.location.search).get('next')
+      const safePath = requestedPath?.startsWith('/') && !requestedPath.startsWith('//') ? requestedPath : '/home'
+      router.push(safePath)
     }
     setLoading(false)
   }

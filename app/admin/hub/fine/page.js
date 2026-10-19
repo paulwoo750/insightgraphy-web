@@ -10,7 +10,6 @@ export default function FineAdmin() {
   
   const [members, setMembers] = useState([])
   const [fines, setFines] = useState([])
-  const [penalties, setPenalties] = useState({})
   const [currentSemester, setCurrentSemester] = useState('')
   
   const [manualFine, setManualFine] = useState({
@@ -28,7 +27,22 @@ export default function FineAdmin() {
     setIsScanning(true)
 
     try {
-      const { data: memData } = await supabase.from('pr_members').select('*').eq('is_active', true).order('name')
+      const { data: activeSemester } = await supabase.from('semesters').select('id').eq('status', 'active').maybeSingle()
+      if (activeSemester?.id) {
+        await supabase.rpc('admin_sync_missing_attendance', { p_semester_id: activeSemester.id })
+      }
+      let memberIds = []
+      if (activeSemester) {
+        const { data: membershipData } = await supabase
+          .from('semester_memberships')
+          .select('member_id')
+          .eq('semester_id', activeSemester.id)
+          .eq('participation_status', 'active')
+        memberIds = (membershipData || []).map((membership) => membership.member_id)
+      }
+      let memberQuery = supabase.from('members').select('*').eq('status', 'active').order('name')
+      if (activeSemester) memberQuery = memberIds.length > 0 ? memberQuery.in('id', memberIds) : memberQuery.in('id', ['00000000-0000-0000-0000-000000000000'])
+      const { data: memData } = await memberQuery
       const activeMembers = memData || []
       setMembers(activeMembers)
 
@@ -49,7 +63,6 @@ export default function FineAdmin() {
         if (sType) semesterType = sType
         semester = configData.find(c => c.key === 'current_semester')?.value || ''
         setCurrentSemester(semester)
-        setPenalties(currentPenalties)
       }
 
       const { data: dlData } = await supabase.from('pr_deadlines').select('*')
@@ -313,6 +326,9 @@ export default function FineAdmin() {
             } else if (absenceExempt(myAbs)) {
               attFine = 0
               attReason = ''
+            } else if (myAtt.status?.includes('무단') || myAtt.status === '결석') {
+              attFine = maxFine
+              attReason = '오프라인 세션 무단 결석 (출석 미기록)'
             } else if (sessionStartDl && sessionStartDl.deadline_time && new Date(myAtt.created_at).getTime() > new Date(sessionStartDl.deadline_time).getTime()) {
               const diffMin = Math.floor((new Date(myAtt.created_at).getTime() - new Date(sessionStartDl.deadline_time).getTime()) / 60000)
               
@@ -388,6 +404,9 @@ export default function FineAdmin() {
               } else if (!myWdAtt) {
                 aFine = wdMaxFine
                 aReason = myWdAbs ? `평일세션 결석 (사유서 ${myWdAbs.status})` : '평일세션 무단 결석 (미인증)'
+              } else if (myWdAtt.status?.includes('무단') || myWdAtt.status === '결석') {
+                aFine = wdMaxFine
+                aReason = '평일세션 무단 결석 (출석 미기록)'
               } else if (team.sessionStart) {
                 const startT = new Date(`${dateStr}T${team.sessionStart}`).getTime()
                 const diffMin = Math.floor((new Date(myWdAtt.created_at).getTime() - startT) / 60000)
@@ -560,7 +579,7 @@ export default function FineAdmin() {
                   </tr>
                 </thead>
                 <tbody className="text-sm font-medium">
-                  {combinedData.map((user, idx) => (
+                  {combinedData.map((user) => (
                     <tr key={user.name} className={`border-b border-slate-200 transition-colors ${user.total > 0 ? 'bg-red-50/20 hover:bg-red-50' : 'bg-white hover:bg-slate-50'}`}>
                       
                       <td className="p-4 border-r border-slate-200 text-center align-top pt-6">

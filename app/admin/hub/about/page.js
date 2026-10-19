@@ -1,11 +1,9 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 
 export default function AboutManager() {
-  const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 
@@ -38,13 +36,7 @@ export default function AboutManager() {
   // Q&A 모달창 상태 관리
   const [editingAlumniIdx, setEditingAlumniIdx] = useState(null)
 
-  useEffect(() => {
-    if (!sessionStorage.getItem('isIGAdmin')) router.push('/admin')
-    else fetchAboutData()
-  }, [])
-
-  const fetchAboutData = async () => {
-    setLoading(true)
+  async function fetchAboutData() {
     
     // 기본 콘텐츠 불러오기
     const { data: content } = await supabase.from('pr_about_content').select('*').eq('id', 'main').single()
@@ -61,6 +53,10 @@ export default function AboutManager() {
 
     setLoading(false)
   }
+
+  useEffect(() => {
+    void Promise.resolve().then(fetchAboutData)
+  }, [])
 
   // --- 알럼나이 카드 핸들러 ---
   const addAlumnus = () => setAlumni([...alumni, { generation: '', name: '', university: '', dept: '', short_quote: '', qna_json: [], order_num: alumni.length + 1 }])

@@ -12,7 +12,7 @@ function PublicNav() {
         <div className="flex justify-between items-center h-[64px] md:h-[80px]">
           <Link href="/" className="flex items-center gap-3 group shrink-0">
             <div className="relative w-8 h-8 md:w-9 md:h-9">
-              <Image src="/logo.png" alt="IG Logo" fill className="object-contain" />
+              <Image src="/logo.png" alt="IG Logo" fill sizes="36px" className="object-contain" />
             </div>
             <span className="text-lg md:text-xl font-black uppercase tracking-tighter group-hover:text-[#a8d0cd] transition-colors">
               InsightGraphy
@@ -57,27 +57,52 @@ export default function MembersPage() {
   const [executives, setExecutives] = useState([])
   const [regularMembers, setRegularMembers] = useState([])
 
-  useEffect(() => {
-    fetchMemberData()
-  }, [])
-
-  const fetchMemberData = async () => {
-    setLoading(true)
-
+  async function fetchMemberData() {
     // 1. 단체사진 가져오기
     const { data: configData } = await supabase.from('pr_config').select('value').eq('key', 'members_group_photo').single()
     if (configData && configData.value) setGroupPhoto(configData.value)
 
-    // 2. 활동 기수(is_active: true) 명단 가져오기
-    const { data: memberData } = await supabase.from('pr_members').select('*').eq('is_active', true).order('created_at', { ascending: true })
+    // 2. 현재 학기의 공개 참여 명단을 기준으로 가져오기
+    const { data: activeSemester } = await supabase.from('semesters').select('id').eq('status', 'active').maybeSingle()
+    let memberData = []
+    if (activeSemester) {
+      const { data: membershipData, error: membershipError } = await supabase
+        .from('semester_memberships')
+        .select('member_id, role')
+        .eq('semester_id', activeSemester.id)
+        .eq('participation_status', 'active')
+
+      if (!membershipError && membershipData?.length) {
+        const roleByMember = Object.fromEntries(membershipData.map((membership) => [membership.member_id, membership.role]))
+        const { data } = await supabase
+          .from('members')
+          .select('id, name, generation, university, department, role, created_at')
+          .in('id', membershipData.map((membership) => membership.member_id))
+          .eq('status', 'active')
+          .eq('is_public', true)
+          .order('created_at', { ascending: true })
+        memberData = (data || []).map((member) => ({ ...member, role: roleByMember[member.id] || 'member' }))
+      }
+    }
+
+    // 정책 적용 전에도 공개 페이지가 비지 않도록 canonical members로만 축소 조회한다.
+    if (memberData.length === 0) {
+      const { data } = await supabase
+        .from('members')
+        .select('id, name, generation, university, department, role, created_at')
+        .eq('status', 'active')
+        .eq('is_public', true)
+        .order('created_at', { ascending: true })
+      memberData = data || []
+    }
     
     if (memberData) {
       // 임원진 순서 정렬을 위한 가중치
       const roleOrder = { "학회장": 1, "부학회장": 2, "총무": 3, "기획부장": 4, "교육부장": 5, "홍보부장": 6 }
       
       // '일반'이 아닌 사람은 임원진으로, '일반'인 사람은 일반 회원으로 분리
-      const execs = memberData.filter(m => m.role !== '일반').sort((a, b) => roleOrder[a.role] - roleOrder[b.role])
-      const regulars = memberData.filter(m => m.role === '일반').sort((a, b) => a.name.localeCompare(b.name))
+      const execs = memberData.filter(m => m.role && m.role !== '일반' && m.role !== 'member').sort((a, b) => (roleOrder[a.role] || 99) - (roleOrder[b.role] || 99))
+      const regulars = memberData.filter(m => !m.role || m.role === '일반' || m.role === 'member').sort((a, b) => a.name.localeCompare(b.name))
 
       setExecutives(execs)
       setRegularMembers(regulars)
@@ -85,6 +110,11 @@ export default function MembersPage() {
     
     setLoading(false)
   }
+
+  useEffect(() => {
+    const timer = window.setTimeout(fetchMemberData, 0)
+    return () => window.clearTimeout(timer)
+  }, [])
 
   return (
     <div className="min-h-screen bg-white text-[#1a1a1a] font-sans pt-32 pb-24 selection:bg-[#32a4a1] selection:text-white">

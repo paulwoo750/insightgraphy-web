@@ -1,16 +1,10 @@
 'use client'
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 
 export default function IntegratedActivitiesManager() {
-  const router = useRouter()
   const [activeTab, setActiveTab] = useState('regular')
-
-  useEffect(() => {
-    if (!sessionStorage.getItem('isIGAdmin')) router.push('/admin')
-  }, [])
 
   const tabs = [
     { id: 'regular', name: '정규 세션', icon: '🗣️' },
@@ -85,12 +79,7 @@ function RegularManager() {
   // 푸터(인스타그램) 상태 추가
   const [footerData, setFooterData] = useState({ text: '', link: '' })
 
-  useEffect(() => {
-    fetchRegularData()
-  }, [])
-
-  const fetchRegularData = async () => {
-    setLoading(true)
+  async function fetchRegularData() {
     const { data: content } = await supabase.from('pr_activities_content').select('*').eq('id', 'regular').single()
     if (content) {
       setHeaderData({ title: content.header_title || '', desc: content.header_desc || '' })
@@ -112,6 +101,10 @@ function RegularManager() {
     
     setLoading(false)
   }
+
+  useEffect(() => {
+    void Promise.resolve().then(fetchRegularData)
+  }, [])
 
   const handleListChange = (type, index, value) => {
     const newList = [...feedbackData[type]]
@@ -171,7 +164,7 @@ function RegularManager() {
       <div className="bg-white p-8 rounded-none shadow-sm border border-slate-100">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-xl font-black text-slate-800">1. 세션 소개 (Header)</h2>
-          <button onClick={() => handleSaveContent('header')} className="bg-[#1a1a1a] text-white px-5 py-2 rounded-none text-xs font-black">Save</button>
+          <button onClick={() => handleSaveContent('header')} disabled={saving} className="bg-[#1a1a1a] text-white px-5 py-2 rounded-none text-xs font-black disabled:opacity-50">{saving ? 'Saving...' : 'Save'}</button>
         </div>
         <div className="space-y-4 text-center p-8 bg-slate-50 rounded-none">
           <div className="inline-block bg-[#32a4a1]/10 text-[#32a4a1] px-4 py-1 rounded-none text-[10px] font-black uppercase tracking-widest mb-2">Activity 01</div>
@@ -184,7 +177,7 @@ function RegularManager() {
       <div className="bg-white p-8 rounded-none shadow-sm border border-slate-100">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-xl font-black text-slate-800">2. IGer의 일주일 (Routine)</h2>
-          <button onClick={handleSaveRoutines} className="bg-teal-600 text-white px-5 py-2 rounded-none text-xs font-black">Save</button>
+          <button onClick={handleSaveRoutines} disabled={saving} className="bg-teal-600 text-white px-5 py-2 rounded-none text-xs font-black disabled:opacity-50">{saving ? 'Saving...' : 'Save'}</button>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 bg-slate-50 p-6 rounded-none">
           {routines.map((routine, idx) => (
@@ -204,7 +197,7 @@ function RegularManager() {
       <div className="bg-white p-8 rounded-none shadow-sm border border-slate-100 border-l-4 border-l-[#32a4a1]">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-xl font-black text-slate-800">3. 기획서 & 피드백 규정 (Rules)</h2>
-          <button onClick={() => handleSaveContent('rules')} className="bg-[#32a4a1] text-white px-5 py-2 rounded-none text-xs font-black">Save</button>
+          <button onClick={() => handleSaveContent('rules')} disabled={saving} className="bg-[#32a4a1] text-white px-5 py-2 rounded-none text-xs font-black disabled:opacity-50">{saving ? 'Saving...' : 'Save'}</button>
         </div>
         {/* 기존 입력칸 유지 */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -229,7 +222,7 @@ function RegularManager() {
       <div className="bg-[#1a1a1a] text-white p-8 rounded-none shadow-sm">
         <div className="flex justify-between items-center mb-8 border-b border-white/10 pb-6">
           <h2 className="text-xl font-black text-[#a8d0cd]">4. 3-Way Feedback System</h2>
-          <button onClick={() => handleSaveContent('feedback')} className="bg-white text-black px-5 py-2 rounded-none text-xs font-black hover:bg-[#a8d0cd]">Save</button>
+          <button onClick={() => handleSaveContent('feedback')} disabled={saving} className="bg-white text-black px-5 py-2 rounded-none text-xs font-black hover:bg-[#a8d0cd] disabled:opacity-50">{saving ? 'Saving...' : 'Save'}</button>
         </div>
         
         <div className="space-y-12">
@@ -319,7 +312,7 @@ function RegularManager() {
       <div className="bg-white p-8 rounded-none shadow-sm border border-slate-100">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-xl font-black text-slate-800">5. 하단 안내 & 링크 (Footer)</h2>
-          <button onClick={() => handleSaveContent('footer')} className="bg-[#1a1a1a] text-white px-5 py-2 rounded-none text-xs font-black">Save</button>
+          <button onClick={() => handleSaveContent('footer')} disabled={saving} className="bg-[#1a1a1a] text-white px-5 py-2 rounded-none text-xs font-black disabled:opacity-50">{saving ? 'Saving...' : 'Save'}</button>
         </div>
         <div className="space-y-4 bg-slate-50 p-6 rounded-none">
           <div>
@@ -337,10 +330,15 @@ function RegularManager() {
   )
 }
 
-// 나머지 뼈대들
 // ==========================================
 // 📚 2. 교육 세션 관리자 컴포넌트 (실제 작동 코드)
 // ==========================================
+const DEFAULT_EDUCATION_CURRICULUM = {
+  insight_basic: { title: '', items: [] }, insight_advanced: { title: '', items: [] },
+  graphic_basic: { title: '', items: [] }, graphic_advanced: { title: '', items: [] },
+  delivery_basic: { title: '', items: [] }, delivery_advanced: { title: '', items: [] }
+}
+
 function EducationManager() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -349,12 +347,7 @@ function EducationManager() {
   const [headerData, setHeaderData] = useState({ title: '', desc: '' })
   
   // 2. 커리큘럼 데이터 (Basic / Advanced)
-  const defaultCurriculum = {
-    insight_basic: { title: '', items: [] }, insight_advanced: { title: '', items: [] },
-    graphic_basic: { title: '', items: [] }, graphic_advanced: { title: '', items: [] },
-    delivery_basic: { title: '', items: [] }, delivery_advanced: { title: '', items: [] }
-  }
-  const [curriculum, setCurriculum] = useState(defaultCurriculum)
+  const [curriculum, setCurriculum] = useState(DEFAULT_EDUCATION_CURRICULUM)
 
   // 3. 특강 강사 데이터
   const [speakers, setSpeakers] = useState([])
@@ -362,12 +355,7 @@ function EducationManager() {
   // 4. 시스템 안내 데이터
   const [systemData, setSystemData] = useState({ mentoring_desc: '', alumni_desc: '' })
 
-  useEffect(() => {
-    fetchEducationData()
-  }, [])
-
-  const fetchEducationData = async () => {
-    setLoading(true)
+  async function fetchEducationData() {
     
     // 1) 헤더 및 시스템 안내 (pr_activities_content)
     const { data: content } = await supabase.from('pr_activities_content').select('*').eq('id', 'education').single()
@@ -379,7 +367,7 @@ function EducationManager() {
     // 2) 커리큘럼 (pr_activities_edu_curriculum)
     const { data: curData } = await supabase.from('pr_activities_edu_curriculum').select('*')
     if (curData && curData.length > 0) {
-      let curObj = { ...defaultCurriculum }
+      const curObj = { ...DEFAULT_EDUCATION_CURRICULUM }
       curData.forEach(item => {
         const key = `${item.category}_${item.course_type}`
         curObj[key] = { title: item.title, items: item.items }
@@ -395,6 +383,10 @@ function EducationManager() {
 
     setLoading(false)
   }
+
+  useEffect(() => {
+    void Promise.resolve().then(fetchEducationData)
+  }, [])
 
   // --- 커리큘럼 핸들러 ---
   const handleCurriculumChange = (category, type, field, value) => {
@@ -585,12 +577,7 @@ function UnionManager() {
   // 3. 갤러리 데이터 (Activity Sketch)
   const [galleryUrls, setGalleryUrls] = useState([])
 
-  useEffect(() => {
-    fetchUnionData()
-  }, [])
-
-  const fetchUnionData = async () => {
-    setLoading(true)
+  async function fetchUnionData() {
     
     // 헤더 & 갤러리 불러오기
     const { data: content } = await supabase.from('pr_activities_content').select('*').eq('id', 'union').single()
@@ -612,6 +599,10 @@ function UnionManager() {
     setLoading(false)
   }
 
+  useEffect(() => {
+    void Promise.resolve().then(fetchUnionData)
+  }, [])
+
   // --- 프로젝트 핸들러 ---
   const addProject = () => setProjects([{ semester: '', title: '', description: '', sub_items: [], image_url: '', theme: 'light', order_num: projects.length + 1 }, ...projects])
   const removeProject = (index) => { if (confirm('이 프로젝트를 삭제할까요?')) setProjects(projects.filter((_, i) => i !== index)) }
@@ -627,7 +618,7 @@ function UnionManager() {
       itemObj[field] = value
       newProjects[projIndex].sub_items[itemIndex] = JSON.stringify(itemObj)
       setProjects(newProjects)
-    } catch(e) {}
+    } catch {}
   }
   const addSubItem = (projIndex) => { const newProjects = [...projects]; newProjects[projIndex].sub_items.push('{"t":"","d":""}'); setProjects(newProjects); }
   const removeSubItem = (projIndex, itemIndex) => { const newProjects = [...projects]; newProjects[projIndex].sub_items = newProjects[projIndex].sub_items.filter((_, i) => i !== itemIndex); setProjects(newProjects); }
@@ -738,7 +729,7 @@ function UnionManager() {
                   <div className="space-y-2">
                     {proj.sub_items.map((itemStr, iIdx) => {
                       let itemObj = {t:'', d:''};
-                      try { itemObj = typeof itemStr === 'string' ? JSON.parse(itemStr) : itemStr } catch(e){}
+                      try { itemObj = typeof itemStr === 'string' ? JSON.parse(itemStr) : itemStr } catch {}
                       return (
                         <div key={iIdx} className="flex items-start gap-2 bg-white/5 p-2 rounded-none">
                           <span className="text-[#32a4a1] font-black mt-2">0{iIdx+1}</span>
@@ -833,12 +824,7 @@ function CorporateManager() {
   // 4. 포스트 액티비티 (연계 활동)
   const [postActivities, setPostActivities] = useState([])
 
-  useEffect(() => {
-    fetchCorporateData()
-  }, [])
-
-  const fetchCorporateData = async () => {
-    setLoading(true)
+  async function fetchCorporateData() {
     
     // 1) 헤더 및 연계 활동 불러오기 (pr_activities_content 재활용)
     const { data: content } = await supabase.from('pr_activities_content').select('*').eq('id', 'corporate').single()
@@ -868,6 +854,10 @@ function CorporateManager() {
     
     setLoading(false)
   }
+
+  useEffect(() => {
+    void Promise.resolve().then(fetchCorporateData)
+  }, [])
 
   // --- 파트너 로고 업로드 핸들러 ---
   const handlePartnerUpload = async (e) => {

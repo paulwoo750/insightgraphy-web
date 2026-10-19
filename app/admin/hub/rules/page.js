@@ -35,12 +35,7 @@ export default function RulesAdmin() {
     fbFake: 6000
   })
 
-  useEffect(() => {
-    fetchData()
-  }, [])
-
-  const fetchData = async () => {
-    setLoading(true)
+  async function fetchData() {
 
     const { data: configData } = await supabase.from('pr_config').select('*')
     
@@ -78,6 +73,10 @@ export default function RulesAdmin() {
 
     setLoading(false)
   }
+
+  useEffect(() => {
+    void Promise.resolve().then(fetchData)
+  }, [])
 
   const handlePenaltyChange = (key, value) => {
     const numericValue = value.replace(/[^0-9]/g, '')

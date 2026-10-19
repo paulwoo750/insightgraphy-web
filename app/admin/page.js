@@ -1,80 +1,63 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
+import { ShieldAlert, ShieldCheck } from 'lucide-react'
+import { getAdminAccess } from '@/lib/adminAuth'
 
 export default function AdminAuthPage() {
   const router = useRouter()
-  const [user, setUser] = useState(null)
+  const [state, setState] = useState({ status: 'checking', email: '' })
 
-  const [passcode, setPasscode] = useState('')
-  const [errorMsg, setErrorMsg] = useState('')
-
-  // 1차 방호벽: 기본 로그인 세션 확인
   useEffect(() => {
+    let active = true
+
     const checkUser = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) {
-        router.push('/login')
-      } else {
-        setUser(session.user)
+      const result = await getAdminAccess()
+      if (!active) return
+
+      if (result.status === 'signed_out') {
+        router.replace('/login?next=%2Fadmin%2Fhub')
+        return
       }
+
+      if (result.status === 'authorized') {
+        router.replace('/admin/hub')
+        return
+      }
+
+      setState({ status: 'forbidden', email: result.session?.user?.email || '' })
     }
     checkUser()
-  }, [])
-
-  // 2차 방호벽: 비밀 코드 검증 후 Hub로 이동
-  const handleVerify = (e) => {
-    e.preventDefault()
-    if (passcode === 'IGAdmin') {
-      // 인증 성공 시 브라우저 세션에 관리자 권한 임시 저장
-      sessionStorage.setItem('isIGAdmin', 'true')
-      router.push('/admin/hub')
-    } else {
-      setErrorMsg('보안 코드가 일치하지 않습니다. 다시 시도해주세요.')
-      setPasscode('')
+    return () => {
+      active = false
     }
+  }, [router])
+
+  if (state.status === 'checking') {
+    return (
+      <div className="grid min-h-screen place-items-center bg-slate-50 px-6 text-center">
+        <div>
+          <ShieldCheck className="mx-auto h-8 w-8 text-teal-700" aria-hidden="true" />
+          <p className="mt-3 text-sm font-semibold text-slate-600">관리자 권한을 확인하고 있습니다.</p>
+        </div>
+      </div>
+    )
   }
 
-  if (!user) return <div className="min-h-screen bg-white flex items-center justify-center font-bold text-slate-400">보안 연결 중... 🔒</div>
-
   return (
-    <div className="min-h-screen bg-white text-slate-900 font-sans flex items-center justify-center px-6">
-      <div className="w-full max-w-sm">
-
-        {/* 브랜드 */}
-        <div className="mb-12">
-          <Link href="/home" className="text-2xl font-black text-teal-800 tracking-tighter">InsightGraphy</Link>
-          <div className="w-10 h-[3px] bg-teal-800 mt-3"></div>
-          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-8">Admin Access</p>
-          <h1 className="text-xl font-extrabold text-slate-900 mt-2">관리자 인증</h1>
-          <p className="text-sm font-medium text-slate-400 mt-1">관리자 전용 구역입니다. 보안 코드를 입력해주세요.</p>
-        </div>
-
-        <form onSubmit={handleVerify} className="flex flex-col gap-7">
-          <div>
-            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Secret Code</label>
-            <input
-              type="password"
-              value={passcode}
-              onChange={(e) => setPasscode(e.target.value)}
-              placeholder="보안 코드 입력"
-              className="w-full border-b border-slate-300 py-2.5 text-sm font-bold tracking-widest outline-none focus:border-teal-700 bg-transparent transition-colors placeholder:font-medium placeholder:tracking-normal placeholder:text-slate-300"
-              autoFocus
-            />
-            {errorMsg && <p className="text-red-500 text-xs font-bold mt-3">{errorMsg}</p>}
-          </div>
-          <button
-            type="submit"
-            className="mt-3 py-3.5 bg-teal-800 text-white font-bold text-sm tracking-wide hover:bg-teal-900 transition-colors active:scale-[0.99]"
-          >
-            인증하고 입장하기
-          </button>
-        </form>
-
-        <div className="mt-10 pt-6 border-t border-slate-200 text-sm text-slate-400 font-medium">
-          <Link href="/home" className="text-teal-800 font-bold hover:underline underline-offset-4">← 일반 홈으로 돌아가기</Link>
+    <div className="grid min-h-screen place-items-center bg-slate-50 px-6 py-12 text-slate-900">
+      <div className="w-full max-w-md rounded-md border border-slate-200 bg-white p-7 sm:p-9">
+        <ShieldAlert className="h-8 w-8 text-amber-600" aria-hidden="true" />
+        <p className="mt-5 text-[11px] font-bold uppercase text-slate-400">Admin Access</p>
+        <h1 className="mt-1 text-xl font-bold">관리자 권한이 등록되지 않았습니다</h1>
+        <p className="mt-3 text-sm leading-6 text-slate-600">
+          현재 로그인 계정 <strong className="text-slate-900">{state.email}</strong>은 활성 관리자 목록에 없습니다.
+          Supabase의 <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs">admin_users</code>에 이 계정을 등록한 뒤 다시 접속해주세요.
+        </p>
+        <div className="mt-7 flex flex-wrap gap-2 border-t border-slate-200 pt-5">
+          <Link href="/login" className="inline-flex min-h-10 items-center rounded-md bg-teal-700 px-4 text-sm font-bold text-white hover:bg-teal-800">다른 계정으로 로그인</Link>
+          <Link href="/home" className="inline-flex min-h-10 items-center rounded-md border border-slate-200 px-4 text-sm font-bold text-slate-600 hover:bg-slate-50">홈으로 이동</Link>
         </div>
       </div>
     </div>
