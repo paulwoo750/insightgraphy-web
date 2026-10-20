@@ -657,6 +657,13 @@ grant execute on function public.admin_record_link_report() to authenticated;
 grant execute on function public.admin_link_record(bigint, uuid, text, text) to authenticated;
 grant execute on function public.admin_close_record_issue(bigint, text, text) to authenticated;
 grant execute on function public.admin_queue_unlinked_records() to authenticated;
+-- Supabase는 새 함수에 anon 실행 권한을 따로 준다. 공개 키로는 부를 수 없게 한다 (STEP 19 other_paths 점검)
+revoke execute on function public.admin_record_link_report() from anon;
+revoke execute on function public.admin_link_record(bigint, uuid, text, text) from anon;
+revoke execute on function public.admin_close_record_issue(bigint, text, text) from anon;
+revoke execute on function public.admin_queue_unlinked_records() from anon;
+revoke execute on function public.admin_account_kind(uuid) from anon, authenticated;
+revoke execute on function public.admin_check_role_change(uuid, text, boolean, text, boolean) from anon, authenticated;
 
 -- 개발자 계정 지정: 아래 이메일을 개발자 로그인 이메일로 바꾼다 (바꾸지 않으면 건너뛴다)
 do $$
