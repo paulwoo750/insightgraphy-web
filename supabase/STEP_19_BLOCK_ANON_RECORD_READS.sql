@@ -419,7 +419,7 @@ other_paths as (
         and p.prorettype <> 'trigger'::regtype
         and has_function_privilege('anon', p.oid, 'EXECUTE')
         and p.prosrc ~ '(pr_attendance|pr_fines|absence_forms|scores|file_comments)'
-        and p.prosrc !~ 'is_admin'
+        and p.prosrc !~ '(is_admin|is_developer)'
     ) as anon_functions
 )
 select item, anon_before, anon_after, member_before, member_after, rls_enabled, ok, note

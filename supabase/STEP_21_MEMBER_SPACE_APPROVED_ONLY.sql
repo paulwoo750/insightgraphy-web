@@ -767,7 +767,7 @@ other_paths as (
         and p.proname not in ('is_admin', 'is_approved_member')
         and (has_function_privilege('anon', p.oid, 'EXECUTE') or has_function_privilege('authenticated', p.oid, 'EXECUTE'))
         and p.prosrc ~ ('\m(' || (select string_agg(table_name, '|') from ig_backup_step21.targets()) || ')\M')
-        and p.prosrc !~ '(is_admin|is_approved_member)'
+        and p.prosrc !~ '(is_admin|is_developer|is_approved_member)'
     ) as open_functions,
     (
       select string_agg(distinct v.oid::regclass::text, ', ')

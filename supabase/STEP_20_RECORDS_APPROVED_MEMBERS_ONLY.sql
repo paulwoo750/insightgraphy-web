@@ -507,7 +507,7 @@ other_paths as (
         and p.prorettype <> 'trigger'::regtype
         and has_function_privilege('authenticated', p.oid, 'EXECUTE')
         and p.prosrc ~ '(pr_attendance|pr_fines|absence_forms|scores|file_comments)'
-        and p.prosrc !~ '(is_admin|is_approved_member)'
+        and p.prosrc !~ '(is_admin|is_developer|is_approved_member)'
     ) as open_functions,
     (
       select string_agg(distinct v.oid::regclass::text, ', ')
