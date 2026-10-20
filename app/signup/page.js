@@ -19,14 +19,9 @@ export default function Signup() {
     e.preventDefault()
     setLoading(true)
 
-    // 1. 학회원 전용 비밀 코드 확인
-    if (secretCode !== "IG2012") {
-      alert("비밀 코드가 틀렸습니다! 운영진에게 문의하세요. 🤫")
-      setLoading(false)
-      return
-    }
-
-    // 2. Supabase 회원가입 실행 (계정 생성)
+    // 1. Supabase 회원가입 실행 (계정 생성)
+    // 학회 코드는 브라우저가 아니라 DB가 확인한다 (Supabase STEP 23). 틀리면 계정이 만들어지지 않고,
+    // 확인이 끝난 코드는 계정 정보에 남지 않는다.
     const { data, error: signupError } = await supabase.auth.signUp({
       email,
       password,
@@ -35,6 +30,7 @@ export default function Signup() {
           name: name,
           student_id: studentId,
           requested_member_status: requestedMemberStatus,
+          signup_code: secretCode.trim(),
         },
         // 🌟 핵심 파트: 이메일 인증 후 돌아올 주소를 /welcome 페이지로 지정!
         emailRedirectTo: `${window.location.origin}/welcome`,
@@ -42,12 +38,24 @@ export default function Signup() {
     })
 
     if (signupError) {
-      alert("가입 실패: " + signupError.message)
+      // DB 트리거가 가입을 거절하면 Supabase Auth는 이 문구만 돌려준다 (가입 코드 불일치가 대부분)
+      if (signupError.message?.includes('Database error saving new user')) {
+        alert("학회 코드가 맞지 않아 가입하지 못했어. 운영진에게 받은 코드를 다시 확인해줘! 🤫")
+      } else {
+        alert("가입 실패: " + signupError.message)
+      }
       setLoading(false)
       return
     }
 
-    // 3. profiles 테이블에 정보 자동 기록 (명단 등록)
+    // 이미 가입된 이메일이면 Supabase는 오류 대신 빈 계정 정보를 돌려준다
+    if (!data.user || data.user.identities?.length === 0) {
+      alert("이미 가입된 이메일이야. 로그인하거나 비밀번호 찾기를 이용해줘.")
+      setLoading(false)
+      return
+    }
+
+    // 2. profiles 테이블에 정보 기록 (가입 신청 접수: 운영진 승인 대기)
     const { error: profileError } = await supabase
       .from('profiles')
       .insert([
@@ -63,7 +71,7 @@ export default function Signup() {
       alert("가입은 됐지만 명단 등록에 실패했어. 운영진에게 알려줘!")
     } else {
       // 가입 성공 후 알림 및 로그인 페이지로 이동
-      alert("인사이트그라피의 식구가 된 걸 환영해! 🎉 이메일함에서 인증 버튼을 누른 뒤 다시 로그인해줘.")
+      alert("가입 신청이 접수됐어! 🎉 이메일함에서 인증 버튼을 누르고, 운영진 승인이 끝나면 학회원 공간을 쓸 수 있어. 이미 명단에 있는 학회원이면 운영진이 예전 기록과 연결해줄 거야.")
       router.push('/login')
     }
 
@@ -107,13 +115,13 @@ export default function Signup() {
                   졸업 학회원
                 </label>
               </div>
-              <p className="mt-2 text-[11px] leading-5 text-slate-400">가입 후 운영진 승인 시 선택한 명단에 반영됩니다.</p>
+              <p className="mt-2 text-[11px] leading-5 text-slate-400">가입 후 운영진 승인 시 선택한 명단에 반영됩니다. 이미 명단에 있는 학회원은 운영진이 확인한 뒤 기존 기록과 연결합니다.</p>
             </fieldset>
           </div>
 
           <div className="flex flex-col gap-6">
             <p className="text-[10px] font-black text-red-500 uppercase tracking-widest border-b border-red-400 pb-2">Security Code</p>
-            <input type="text" placeholder="학회원 전용 비밀 코드" value={secretCode} onChange={(e) => setSecretCode(e.target.value)} className="w-full border-b border-red-300 py-2.5 text-sm font-bold text-red-600 outline-none focus:border-red-500 bg-transparent transition-colors placeholder:font-medium placeholder:text-red-200" required />
+            <input type="text" placeholder="운영진에게 받은 학회 코드" value={secretCode} onChange={(e) => setSecretCode(e.target.value)} className="w-full border-b border-red-300 py-2.5 text-sm font-bold text-red-600 outline-none focus:border-red-500 bg-transparent transition-colors placeholder:font-medium placeholder:text-red-200" required />
           </div>
 
           <button

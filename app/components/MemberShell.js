@@ -5,43 +5,56 @@
 // - 자료실 메뉴는 마지막으로 본 주차·세션을 이어서 연다.
 // - 화면 안내(투어)는 계정·릴리스별로 한 번 자동으로 열리고, 도움말 버튼으로 다시 본다.
 // - 드롭다운 메뉴에 묶인 화면(자료실·아카이브·투표·결과)은 위쪽 섹션 탭으로 바로 오간다.
+// - 승인 전 계정(학회원 행이 pending이거나 없고 관리자도 아님)에게는 메뉴·투어 대신 승인 대기 안내를 보여 준다.
 import { createContext, Suspense, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import {
-  BookOpen, ChartLine, ChevronDown, CircleHelp, Clapperboard, FileStack, FileText, FolderOpen, Globe2, History, Home, Library, LogOut, Mail,
-  MapPin, Menu, MessageSquareText, Presentation, Scale, Settings2, Sparkles, Sprout, Trophy, UserRound, Vote, X,
+  BookOpen, ChartLine, ChevronDown, CircleHelp, Clapperboard, FileStack, FileText, FolderOpen, Globe2, History, Home, Hourglass, Library, LogOut, Mail,
+  MapPin, Menu, MessageSquareText, Presentation, RefreshCw, Scale, Settings2, Sparkles, Sprout, Trophy, UserRound, UserX, Vote, X,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useSiteUrls } from '@/lib/siteUrls'
 import { MEMBER_TOUR, TOUR_AUTO_START } from '@/lib/tours'
 import { memberThemeFor, toneOf } from '@/lib/theme'
 import { HeroDecoration } from '@/app/components/Decor'
-import { ToastProvider } from '@/app/components/ui'
+import { Button, StatusBadge, ToastProvider, useAsyncAction, useToast } from '@/app/components/ui'
 import GuidedTour, { useTourState } from '@/app/components/GuidedTour'
 
 const MemberContext = createContext(null)
 const WEEK_CONTEXT_KEY = 'ig-member-week-context'
 const IDENTITY_TTL = 60 * 1000
+// 개인 기록(출결·벌금·사유서·점수·댓글)을 읽고 쓸 수 있는 학회원 상태 (STEP 20의 is_approved_member와 같은 기준)
+const APPROVED_STATUSES = new Set(['active', 'leave', 'inactive', 'alumni'])
+const REQUEST_LABELS = { active: '활동 회원', alumni: '졸업 회원' }
 let identityCache = null
 
 // 로그인 계정 → 학회원 행 → 관리자 여부를 한 번에 읽는다 (화면 이동 때 깜빡이지 않게 잠시 기억)
+// 조회가 실패하면 승인 여부를 모르는 것이므로 lookupError로 표시하고 기억하지 않는다.
 async function loadIdentity() {
   if (identityCache && Date.now() - identityCache.at < IDENTITY_TTL) return identityCache.value
   const { data } = await supabase.auth.getSession()
   const session = data?.session || null
   if (!session) {
     identityCache = null
-    return { session: null, member: null, admin: null }
+    return { session: null, member: null, admin: null, lookupError: false }
   }
   const [memberResult, adminResult] = await Promise.all([
-    supabase.from('members').select('id, name, generation, university, department, status, auth_user_id').eq('auth_user_id', session.user.id).maybeSingle(),
+    supabase.from('members').select('id, name, generation, university, department, status, requested_status, auth_user_id').eq('auth_user_id', session.user.id).maybeSingle(),
     supabase.from('admin_users').select('role, is_active').eq('user_id', session.user.id).maybeSingle(),
   ])
-  const value = { session, member: memberResult.data || null, admin: adminResult.data?.is_active ? adminResult.data : null }
-  identityCache = { at: Date.now(), value }
+  const lookupError = Boolean(memberResult.error || adminResult.error)
+  const value = { session, member: memberResult.data || null, admin: adminResult.data?.is_active ? adminResult.data : null, lookupError }
+  identityCache = lookupError ? null : { at: Date.now(), value }
   return value
+}
+
+// 승인 전 계정인가: 로그인했고, 관리자가 아니고, 승인된 학회원 행에 연결되지 않았다.
+// 조회 실패는 승인 전으로 단정하지 않는다 (승인 학회원이 일시 오류로 막히지 않게).
+function isAwaitingApproval(identity) {
+  if (identity.status !== 'ready' || !identity.session || identity.lookupError || identity.admin) return false
+  return !APPROVED_STATUSES.has(identity.member?.status)
 }
 
 export function useMember() {
@@ -122,7 +135,8 @@ export default function MemberShell({ children }) {
   const [weekContext, setWeekContext] = useState(null)
   const navRef = useRef(null)
   const userId = identity.session?.user?.id || null
-  const tour = useTourState(MEMBER_TOUR, userId, { autoStart: TOUR_AUTO_START, ready: identity.status === 'ready' })
+  const awaitingApproval = isAwaitingApproval(identity)
+  const tour = useTourState(MEMBER_TOUR, userId, { autoStart: TOUR_AUTO_START, ready: identity.status === 'ready' && !awaitingApproval })
 
   useEffect(() => {
     let active = true
@@ -171,6 +185,15 @@ export default function MemberShell({ children }) {
     setMobileOpen(false)
   }, [])
 
+  // 운영진이 승인했는지 다시 읽는다. 승인됐으면 본문이 바로 열린다.
+  async function recheckIdentity() {
+    identityCache = null
+    const value = await loadIdentity()
+    const next = { status: 'ready', ...value }
+    setIdentity(next)
+    return !isAwaitingApproval(next)
+  }
+
   async function signOut() {
     identityCache = null
     await supabase.auth.signOut()
@@ -207,7 +230,7 @@ export default function MemberShell({ children }) {
                 <span className="text-base font-black tracking-tight text-teal-800">InsightGraphy</span>
               </Link>
 
-              <nav data-tour="member-nav" aria-label="학회원 메뉴" className="ml-2 hidden min-w-0 flex-1 items-center gap-0.5 xl:flex">
+              {!awaitingApproval && <nav data-tour="member-nav" aria-label="학회원 메뉴" className="ml-2 hidden min-w-0 flex-1 items-center gap-0.5 xl:flex">
                 {NAV.map((group) => {
                   const active = group.match(pathname)
                   const groupTone = toneOf(group.tone)
@@ -246,36 +269,41 @@ export default function MemberShell({ children }) {
                     </div>
                   )
                 })}
-              </nav>
+              </nav>}
 
               <div className="ml-auto flex items-center gap-2">
                 <a data-tour="member-external" href={site.publicUrl('/')} target={externalTarget} rel={externalTarget ? 'noopener noreferrer' : undefined} className="inline-flex h-9 items-center gap-1.5 whitespace-nowrap rounded-md border border-sky-200 bg-sky-50 px-3 text-sm font-bold text-sky-800 hover:bg-sky-100">
                   <Globe2 className="h-4 w-4" aria-hidden="true" />
                   <span className="hidden sm:inline">외부 홈페이지</span>
                 </a>
-                <button type="button" data-tour="member-help" onClick={tour.start} className="inline-flex h-9 items-center gap-1.5 rounded-md border border-teal-200 bg-teal-50 px-2.5 text-sm font-bold text-teal-800 hover:bg-teal-100" aria-label="화면에서 도움말 보기" title="화면에서 도움말 보기">
-                  <CircleHelp className="h-4 w-4" aria-hidden="true" />
-                  <span className="hidden 2xl:inline">도움말</span>
-                </button>
+                {!awaitingApproval && (
+                  <button type="button" data-tour="member-help" onClick={tour.start} className="inline-flex h-9 items-center gap-1.5 rounded-md border border-teal-200 bg-teal-50 px-2.5 text-sm font-bold text-teal-800 hover:bg-teal-100" aria-label="화면에서 도움말 보기" title="화면에서 도움말 보기">
+                    <CircleHelp className="h-4 w-4" aria-hidden="true" />
+                    <span className="hidden 2xl:inline">도움말</span>
+                  </button>
+                )}
                 {identity.admin && (
                   <Link href="/admin/hub" className="hidden h-9 items-center gap-1.5 rounded-md border border-violet-200 bg-violet-50 px-3 text-sm font-bold text-violet-800 hover:bg-violet-100 xl:inline-flex">
                     <Settings2 className="h-4 w-4" aria-hidden="true" />관리자
                   </Link>
                 )}
-                <div className="hidden items-center gap-2 border-l border-slate-200 pl-3 xl:flex">
+                {/* 승인 전 계정은 모바일 메뉴가 없으므로 이름·로그아웃을 sm부터 보인다 (휴대폰 폭에서는 안내 패널의 로그아웃을 쓴다) */}
+                <div className={`${awaitingApproval ? 'hidden sm:flex' : 'hidden xl:flex'} items-center gap-2 border-l border-slate-200 pl-3`}>
                   <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-gradient-to-br from-teal-500 to-violet-500 text-xs font-bold text-white" aria-hidden="true">{String(displayName).slice(0, 1)}</span>
                   <span className="max-w-[110px] truncate text-sm font-bold text-slate-800">{displayName}</span>
                   <button type="button" onClick={signOut} className="inline-flex h-9 items-center gap-1.5 whitespace-nowrap rounded-md px-2.5 text-sm font-bold text-slate-500 hover:bg-slate-100 hover:text-slate-900">
                     <LogOut className="h-4 w-4" aria-hidden="true" />로그아웃
                   </button>
                 </div>
-                <button type="button" onClick={() => setMobileOpen((open) => !open)} aria-expanded={mobileOpen} aria-label={mobileOpen ? '메뉴 닫기' : '메뉴 열기'} className="inline-grid h-9 w-9 place-items-center rounded-md border border-slate-300 bg-white text-slate-700 xl:hidden">
-                  {mobileOpen ? <X className="h-5 w-5" aria-hidden="true" /> : <Menu className="h-5 w-5" aria-hidden="true" />}
-                </button>
+                {!awaitingApproval && (
+                  <button type="button" onClick={() => setMobileOpen((open) => !open)} aria-expanded={mobileOpen} aria-label={mobileOpen ? '메뉴 닫기' : '메뉴 열기'} className="inline-grid h-9 w-9 place-items-center rounded-md border border-slate-300 bg-white text-slate-700 xl:hidden">
+                    {mobileOpen ? <X className="h-5 w-5" aria-hidden="true" /> : <Menu className="h-5 w-5" aria-hidden="true" />}
+                  </button>
+                )}
               </div>
             </div>
 
-            {mobileOpen && (
+            {mobileOpen && !awaitingApproval && (
               <nav data-tour="member-nav" aria-label="학회원 메뉴" className="max-h-[calc(100vh-68px)] overflow-y-auto border-t border-slate-200 bg-white px-4 pb-6 pt-2 sm:px-6 xl:hidden">
                 {NAV.map((group) => {
                   const groupTone = toneOf(group.tone)
@@ -311,13 +339,26 @@ export default function MemberShell({ children }) {
             )}
           </header>
 
-          <Suspense fallback={null}>
-            <SectionTabs pathname={pathname} />
-          </Suspense>
+          {!awaitingApproval && (
+            <Suspense fallback={null}>
+              <SectionTabs pathname={pathname} />
+            </Suspense>
+          )}
 
-          <main className="min-w-0">{children}</main>
+          <main className="min-w-0">
+            {awaitingApproval ? (
+              <ApprovalPendingPanel
+                member={identity.member}
+                email={identity.session?.user?.email || ''}
+                externalHref={site.publicUrl('/')}
+                externalTarget={externalTarget}
+                onSignOut={signOut}
+                onRecheck={recheckIdentity}
+              />
+            ) : children}
+          </main>
         </div>
-        {tour.open && <GuidedTour key={tour.key} tour={MEMBER_TOUR} role="member" userId={userId} startIndex={tour.startIndex} onClose={tour.close} pageLabels={PAGE_LABELS} />}
+        {tour.open && !awaitingApproval && <GuidedTour key={tour.key} tour={MEMBER_TOUR} role="member" userId={userId} startIndex={tour.startIndex} onClose={tour.close} pageLabels={PAGE_LABELS} />}
       </ToastProvider>
     </MemberContext.Provider>
   )
@@ -355,6 +396,59 @@ function SectionTabs({ pathname }) {
         })}
       </nav>
     </div>
+  )
+}
+
+// 승인 전 계정 안내. 개인 기록은 승인된 학회원·관리자만 읽고 쓰므로(STEP 20) 본문 대신 보여 준다.
+// 학회원 행이 pending이면 승인 대기, 행이 아예 없으면 명단 미연결로 구분한다.
+function ApprovalPendingPanel({ member, email, externalHref, externalTarget, onSignOut, onRecheck }) {
+  const toast = useToast()
+  const [run, rechecking] = useAsyncAction()
+  const unlinked = !member
+  const Icon = unlinked ? UserX : Hourglass
+  const requested = REQUEST_LABELS[member?.requested_status]
+
+  function recheck() {
+    run(async () => {
+      const approved = await onRecheck()
+      if (!approved) toast.info(unlinked ? '아직 학회원 명단과 연결되지 않았습니다.' : '아직 승인되지 않았습니다.')
+    })
+  }
+
+  return (
+    <MemberPage className="grid place-items-center">
+      <section className="relative w-full max-w-md overflow-hidden rounded-2xl border border-teal-100 bg-gradient-to-br from-teal-50 via-white to-violet-50 p-7 shadow-sm sm:p-9">
+        <span className={`grid h-12 w-12 place-items-center rounded-2xl ${unlinked ? 'bg-amber-100 text-amber-700' : 'bg-teal-100 text-teal-700'}`}><Icon className="h-6 w-6" aria-hidden="true" /></span>
+        <p className="mt-5 text-xs font-bold text-teal-700">학회원 승인</p>
+        <h1 className="mt-1 text-xl font-bold text-slate-950">{unlinked ? '학회원 명단과 연결되지 않은 계정입니다.' : '가입 승인 대기 중입니다. ⏳'}</h1>
+        <p className="mt-3 break-keep text-sm leading-6 text-slate-600">{unlinked ? '운영진에게 문의해 주세요. 기존 학회원은 운영진이 명단에 연결해 드립니다.' : '운영진이 승인하면 이용할 수 있습니다. 기존 학회원이라면 운영진이 명단에 연결해 드립니다.'}</p>
+        <dl className="mt-5 divide-y divide-slate-100 border-y border-slate-200 text-sm">
+          {email && (
+            <div className="flex items-center justify-between gap-3 py-2.5">
+              <dt className="shrink-0 font-bold text-slate-500">로그인 계정</dt>
+              <dd className="min-w-0 truncate font-semibold text-slate-900">{email}</dd>
+            </div>
+          )}
+          {member && (
+            <div className="flex items-center justify-between gap-3 py-2.5">
+              <dt className="shrink-0 font-bold text-slate-500">신청자</dt>
+              <dd className="min-w-0 truncate font-semibold text-slate-900">{[member.name, member.generation].filter(Boolean).join(' · ')}</dd>
+            </div>
+          )}
+          {requested && (
+            <div className="flex items-center justify-between gap-3 py-2.5">
+              <dt className="shrink-0 font-bold text-slate-500">요청 구분</dt>
+              <dd><StatusBadge tone={member.requested_status === 'alumni' ? 'violet' : 'teal'}>{requested}</StatusBadge></dd>
+            </div>
+          )}
+        </dl>
+        <div className="mt-6 flex flex-wrap gap-2">
+          <Button variant="primary" icon={RefreshCw} loading={rechecking} onClick={recheck}>다시 확인</Button>
+          <Button icon={LogOut} onClick={onSignOut}>로그아웃</Button>
+          <Button icon={Globe2} href={externalHref} target={externalTarget}>외부 홈페이지</Button>
+        </div>
+      </section>
+    </MemberPage>
   )
 }
 

@@ -1,11 +1,13 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import {
   ArrowLeftRight,
   Camera,
   Check,
   GraduationCap,
+  Link2,
+  Mail,
   Pencil,
   Plus,
   Search,
@@ -62,6 +64,16 @@ function statusLabel(status) {
   return memberStatuses.find((item) => item.value === status)?.label || status
 }
 
+// 가입 승인 대기: 로그인 이메일과 계정 없는 같은 이름 기존 학회원 후보 (Supabase STEP 22)
+async function fetchSignupRequests() {
+  const { data, error } = await supabase.rpc('admin_signup_requests')
+  if (error) return { requests: {}, unavailable: true }
+  return {
+    requests: Object.fromEntries((data || []).map((item) => [item.request_member_id, item])),
+    unavailable: false,
+  }
+}
+
 export default function AdminMembersPage() {
   const { semester: activeSemester, admin } = useAdminContext() || {}
   const { canWrite } = useAdminRole()
@@ -84,6 +96,20 @@ export default function AdminMembersPage() {
   const [groupPhotoUrl, setGroupPhotoUrl] = useState('')
   const [photoFile, setPhotoFile] = useState(null)
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
+  const [signupRequests, setSignupRequests] = useState({})
+  const [requestsUnavailable, setRequestsUnavailable] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    fetchSignupRequests().then(({ requests, unavailable }) => {
+      if (!active) return
+      setSignupRequests(requests)
+      setRequestsUnavailable(unavailable)
+    })
+    return () => {
+      active = false
+    }
+  }, [])
 
   useEffect(() => {
     let active = true
@@ -152,6 +178,12 @@ export default function AdminMembersPage() {
   const alumniCount = members.filter((member) => member.status === 'alumni').length
   const pendingCount = members.filter((member) => member.status === 'pending').length
   const canDeleteMembers = ['developer', 'super_admin', 'admin', 'operator'].includes(admin?.role)
+  const canLinkAccounts = canWrite && canDeleteMembers
+  // 직접 고르는 연결 대상: 로그인 계정이 없는 기존 학회원 (승인 대기 행 제외)
+  const unlinkedRoster = useMemo(
+    () => members.filter((member) => !member.auth_user_id && member.status !== 'pending'),
+    [members]
+  )
 
   const filteredMembers = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase('ko-KR')
@@ -230,7 +262,13 @@ export default function AdminMembersPage() {
   async function bulkMoveMembers(targetStatus) {
     if (selectedMemberIds.length === 0) return
     const targetLabel = targetStatus === 'alumni' ? '졸업 학회원' : '활동 학회원'
-    if (!confirm(`선택한 ${selectedMemberIds.length}명을 ${targetLabel}으로 이동할까요?`)) return
+    const likelyExisting = members.filter((member) => selectedMemberIds.includes(member.id)
+      && member.status === 'pending'
+      && signupRequests[member.id]?.candidates?.some((candidate) => candidate.linkable && candidate.match === 'name_generation'))
+    const duplicateNote = likelyExisting.length > 0
+      ? `\n\n주의: ${likelyExisting.map((member) => member.name).join(', ')}은(는) 이름·기수가 같은 기존 학회원이 있습니다. 같은 사람이면 이동하지 말고 아래 '기존 학회원에 연결'을 쓰세요. 이동하면 명단이 중복되고 예전 기록과 이어지지 않습니다.`
+      : ''
+    if (!confirm(`선택한 ${selectedMemberIds.length}명을 ${targetLabel}으로 이동할까요?${duplicateNote}`)) return
 
     setSaving(true)
     setMessage('')
@@ -257,6 +295,43 @@ export default function AdminMembersPage() {
     setSelectedMemberIds([])
     setDirectoryTab(targetStatus)
     setMessage(`${data || selectedMemberIds.length}명을 ${targetLabel}으로 이동했습니다.`)
+    setSaving(false)
+  }
+
+  // 가입 신청(승인 대기 행)의 로그인 계정을 기존 학회원 행으로 옮긴다. 신청 행은 기존 학회원 행에 합쳐진다
+  async function linkSignupToMember(member, target) {
+    const request = signupRequests[member.id]
+    const targetId = target.member_id || target.id
+    const pendingTarget = target.status === 'pending'
+    if (!confirm(`가입 신청 ${member.name}(${member.generation || '기수 미입력'}, ${request?.email || '이메일 확인 불가'})을\n기존 학회원 ${target.name}(${target.generation || '기수 미입력'} · ${statusLabel(target.status)})에 연결할까요?\n\n- 이 로그인 계정은 바로 ${pendingTarget ? '승인 대기 상태인' : '승인된'} 기존 학회원으로 들어옵니다.\n- 기존 학회원의 이름·기수·상태와 출결·제출 기록은 그대로입니다.\n- 가입 신청 행은 기존 학회원 행에 합쳐져 목록에서 사라집니다.\n\n이메일과 이름으로 본인인지 확인한 뒤 진행하세요.`)) return
+
+    setSaving(true)
+    setMessage('')
+    const { data, error } = await supabase.rpc('admin_link_signup_to_member', {
+      p_request_member_id: member.id,
+      p_target_member_id: targetId,
+    })
+
+    if (error) {
+      setMessage(`계정 연결 실패: ${error.message}`)
+      setSaving(false)
+      return
+    }
+
+    await refreshMembers()
+    const { requests, unavailable } = await fetchSignupRequests()
+    setSignupRequests(requests)
+    setRequestsUnavailable(unavailable)
+    // 신청 행의 학기 명단은 기존 학회원으로 옮겨지고, 둘 다 있던 학기는 기존 학회원 쪽이 남는다
+    setMemberships((current) => {
+      const next = { ...current }
+      const moved = next[member.id]
+      delete next[member.id]
+      if (moved && !next[targetId]) next[targetId] = { ...moved, member_id: targetId }
+      return next
+    })
+    setSelectedMemberIds((current) => current.filter((id) => id !== member.id))
+    setMessage(`${data?.name || target.name} 학회원에 로그인 계정을 연결했습니다.${pendingTarget ? ' 이 학회원은 아직 승인 대기이므로 승인도 진행하세요.' : ' 이 계정은 바로 학회원 공간을 쓸 수 있습니다.'}`)
     setSaving(false)
   }
 
@@ -486,6 +561,14 @@ export default function AdminMembersPage() {
             </label>
           </div>
 
+          {directoryTab === 'pending' && (
+            <div className={`border-b px-4 py-3 text-xs leading-5 ${requestsUnavailable ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-slate-200 bg-white text-slate-600'}`}>
+              {requestsUnavailable
+                ? '가입 계정의 이메일과 기존 학회원 연결 후보를 불러오지 못했습니다. Supabase STEP 22 실행 여부를 확인하세요. 실행 전에는 새 학회원 승인만 할 수 있습니다.'
+                : '이미 명단에 있는 학회원이 가입했다면 이메일과 이름으로 본인인지 확인한 뒤 기존 학회원에 연결하세요. 연결하면 예전 출결·제출 기록이 그대로 이어집니다. 새 학회원은 선택한 뒤 활동으로 이동 또는 졸업으로 이관으로 승인합니다.'}
+            </div>
+          )}
+
           {loading ? (
             <div className="px-5 py-12 text-center text-sm font-semibold text-slate-400">명단을 불러오는 중입니다.</div>
           ) : filteredMembers.length === 0 ? (
@@ -510,7 +593,8 @@ export default function AdminMembersPage() {
                   {filteredMembers.map((member) => {
                     const membership = memberships[member.id]
                     return (
-                      <tr key={member.id} className="hover:bg-slate-50/80">
+                      <Fragment key={member.id}>
+                      <tr className="hover:bg-slate-50/80">
                         <td className="px-4 py-3.5">
                           <input type="checkbox" checked={selectedMemberIds.includes(member.id)} onChange={() => toggleMember(member.id)} aria-label={`${member.name} 선택`} className="accent-teal-700" />
                         </td>
@@ -555,6 +639,16 @@ export default function AdminMembersPage() {
                           </button>
                         </td>
                       </tr>
+                      {member.status === 'pending' && !requestsUnavailable && (
+                        <SignupRequestRow
+                          member={member}
+                          request={signupRequests[member.id]}
+                          roster={unlinkedRoster}
+                          disabled={!canLinkAccounts || saving}
+                          onLink={(target) => linkSignupToMember(member, target)}
+                        />
+                      )}
+                      </Fragment>
                     )
                   })}
                 </tbody>
@@ -648,6 +742,80 @@ export default function AdminMembersPage() {
         .form-input:focus { border-color: #0f766e; box-shadow: 0 0 0 3px rgba(15, 118, 110, .1); }
       `}</style>
     </AdminPage>
+  )
+}
+
+// 가입 승인 대기 행 아래: 로그인 이메일, 기존 학회원 후보와 연결 버튼
+function SignupRequestRow({ member, request, roster, disabled, onLink }) {
+  if (!request) {
+    return (
+      <tr className="bg-slate-50/70">
+        <td />
+        <td colSpan={6} className="px-4 py-2.5 text-xs text-slate-500">로그인 계정이 연결되지 않은 승인 대기 행입니다.</td>
+      </tr>
+    )
+  }
+
+  const candidates = request.candidates || []
+  const recordCount = Object.values(request.records || {}).reduce((sum, count) => sum + Number(count || 0), 0)
+  const otherRoster = roster.filter((item) => !candidates.some((candidate) => candidate.member_id === item.id))
+
+  return (
+    <tr className="bg-slate-50/70">
+      <td />
+      <td colSpan={6} className="px-4 py-3">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-600">
+          <span className="inline-flex items-center gap-1.5 font-semibold text-slate-800">
+            <Mail className="h-3.5 w-3.5 text-slate-400" aria-hidden="true" />
+            {request.email || '이메일 없음'}
+          </span>
+          <span className={request.email_confirmed ? 'font-semibold text-teal-700' : 'font-semibold text-amber-700'}>
+            {request.email_confirmed ? '이메일 인증 완료' : '이메일 인증 전'}
+          </span>
+          {request.signed_up_at && <span>가입 {new Date(request.signed_up_at).toLocaleDateString('ko-KR')}</span>}
+          {recordCount > 0 && <span>이 신청으로 남은 기록 {recordCount}건 (연결하면 함께 옮겨짐)</span>}
+        </div>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          {candidates.map((candidate) => candidate.linkable ? (
+            <button
+              key={candidate.member_id}
+              type="button"
+              onClick={() => onLink(candidate)}
+              disabled={disabled}
+              className="inline-flex min-h-8 items-center gap-1.5 rounded-md border border-teal-200 bg-white px-3 text-xs font-bold text-teal-800 hover:bg-teal-50 disabled:opacity-40"
+            >
+              <Link2 className="h-3.5 w-3.5" aria-hidden="true" />
+              기존 학회원 {candidate.name}({candidate.generation || '기수 미입력'} · {statusLabel(candidate.status)})에 연결
+              <span className="font-semibold text-slate-400">{candidate.match === 'name_generation' ? '이름·기수 같음' : '이름만 같음'}</span>
+            </button>
+          ) : (
+            <span key={candidate.member_id} className="inline-flex min-h-8 items-center rounded-md border border-slate-200 bg-white px-3 text-xs text-slate-500">
+              {candidate.name}({candidate.generation || '기수 미입력'}) 연결 불가: {candidate.reason}
+            </span>
+          ))}
+          {otherRoster.length > 0 && (
+            <select
+              value=""
+              onChange={(event) => {
+                const target = otherRoster.find((item) => item.id === event.target.value)
+                if (target) onLink(target)
+              }}
+              disabled={disabled}
+              aria-label={`${member.name} 가입 신청을 연결할 다른 기존 학회원 선택`}
+              className="h-8 max-w-64 rounded-md border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-600 outline-none focus:border-teal-600 disabled:opacity-40"
+            >
+              <option value="">다른 기존 학회원에 연결…</option>
+              {otherRoster.map((item) => (
+                <option key={item.id} value={item.id}>{item.name} ({item.generation || '기수 미입력'} · {statusLabel(item.status)})</option>
+              ))}
+            </select>
+          )}
+        </div>
+        {candidates.length === 0 && (
+          <p className="mt-2 text-xs text-slate-500">이름이 같은 기존 학회원이 없습니다. 새 학회원이면 선택한 뒤 활동으로 이동 또는 졸업으로 이관으로 승인하세요.</p>
+        )}
+      </td>
+    </tr>
   )
 }
 
