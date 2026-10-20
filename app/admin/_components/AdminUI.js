@@ -42,11 +42,11 @@ export function PageHeader({ eyebrow, title, description, actions, meta, emoji }
   const pathname = usePathname() || ''
   const theme = toneOf(ADMIN_GROUP_TONES[eyebrow])
   return (
-    <header className={`relative mb-6 overflow-hidden rounded-2xl border bg-gradient-to-br px-5 py-5 sm:px-6 ${theme.border} ${theme.hero}`}>
+    <header className={`relative mb-6 overflow-hidden rounded-2xl bg-gradient-to-br px-5 py-5 sm:px-6 ${theme.hero}`}>
       <HeroDecoration theme={theme} />
       <div className="relative flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div className="flex min-w-0 gap-4">
-          <span className={`hidden h-12 w-12 shrink-0 place-items-center rounded-2xl border bg-white/90 text-2xl shadow-sm sm:grid ${theme.border}`} aria-hidden="true">{emoji || adminEmojiFor(pathname)}</span>
+          <span className={`hidden h-12 w-12 shrink-0 place-items-center rounded-2xl bg-white text-2xl shadow-sm sm:grid`} aria-hidden="true">{emoji || adminEmojiFor(pathname)}</span>
           <div className="min-w-0">
             {eyebrow && <p className={`mb-1 text-xs font-bold ${theme.accent}`}>{eyebrow}</p>}
             <h1 className="text-2xl font-extrabold tracking-tight text-slate-950 sm:text-[28px]">{title}</h1>

@@ -6,14 +6,8 @@ import { Save } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { displayTopic, fetchCurrentSemester, presentationWeekFor, sameJson, weekFromParam } from '@/lib/semester'
 import { MemberHeader, MemberPage, rememberWeekContext, useMember } from '@/app/components/MemberShell'
-import { Button, EmptyState, ErrorState, LoadingState, SaveStatus, StatusBadge, useAsyncAction, useToast, useUnsavedChanges } from '@/app/components/ui'
-
-const EMPTY_FEEDBACK = { originalMessage: '', insightPlus: '', insightMinus: '', graphicPlus: '', graphicMinus: '', deliveryPlus: '', deliveryMinus: '', memo: '' }
-const SECTIONS = [
-  { title: 'Insight', subtitle: '독창성, 적합성', plus: 'insightPlus', minus: 'insightMinus' },
-  { title: 'Graphic', subtitle: '가독성, 가시성', plus: 'graphicPlus', minus: 'graphicMinus' },
-  { title: 'Delivery', subtitle: '목소리, 흐름', plus: 'deliveryPlus', minus: 'deliveryMinus' },
-]
+import { Button, EmptyState, ErrorState, LoadingState, SaveStatus, useAsyncAction, useToast, useUnsavedChanges } from '@/app/components/ui'
+import { EMPTY_FEEDBACK, FeedbackFields, TargetRail, WeekRail } from '../_components/Editorial'
 
 const toFeedback = (qualitative) => ({ ...EMPTY_FEEDBACK, ...Object.fromEntries(Object.entries(qualitative || {}).map(([key, value]) => [key, value || ''])) })
 // 팀 표기는 team_id가 실제로 있을 때만 (개인 평가인데 데이터가 겹쳐 팀처럼 보이는 것 방지)
@@ -176,89 +170,59 @@ export default function FeedbackPage() {
 
   const weeks = Array.from({ length: Math.max(1, semester.totalWeeks) }, (_, index) => index + 1)
   const isSameGroup = current?.target_info?.group_id === myInfo.group_id
+  const railItems = evalTargets.map((item) => ({ id: item.id, item, label: targetName(item.target_info), done: item.scored, draft: Boolean(item.score_record_id), sameGroup: item.target_info.group_id === myInfo.group_id }))
 
   return (
     <MemberPage>
       <MemberHeader
         eyebrow="평가"
         title="정성 피드백 작성실"
-        description="같은 클러스터 발표에 대한 피드백을 미리 써 두는 곳입니다. 같은 조 발표는 항목별 피드백을, 다른 조 발표는 메모를 남깁니다."
+        description="같은 클러스터 발표에 대한 피드백을 미리 써 두는 곳입니다. 같은 조 발표는 항목별 피드백을, 다른 조 발표는 메모를 남깁니다. 써 둔 내용은 발표영상 화면에서 댓글로 불러올 수 있습니다."
         actions={<Button href="/vote/score">정량 평가로</Button>}
-      >
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          <StatusBadge tone="gray">{semester.name}</StatusBadge>
-          {myInfo.cluster_id && <StatusBadge tone="teal">클러스터 {myInfo.cluster_id} · {myInfo.group_id}조</StatusBadge>}
-        </div>
-      </MemberHeader>
+      />
 
-      <div className="rounded-lg border border-slate-200 bg-white p-3">
-        <div className="flex gap-2 overflow-x-auto pb-1" role="group" aria-label="주차 선택">
-          {weeks.map((value) => (
-            <button key={value} type="button" aria-pressed={value === week} onClick={() => changeWeek(value)} className={`min-h-9 shrink-0 rounded-md border px-3 text-sm font-bold ${value === week ? 'border-teal-700 bg-teal-700 text-white' : 'border-slate-200 text-slate-600 hover:border-teal-400'}`}>W{value}</button>
-          ))}
-        </div>
-        <p className="mt-2 px-1 text-sm text-slate-600">W{week} 주제 <span className="font-bold text-slate-900">{evalTargets[0]?.target_info?.topic || displayTopic(semester.weekTopics, week, 'regular') || '주제 미정'}</span></p>
-      </div>
+      <WeekRail weeks={weeks} week={week} onChange={changeWeek} topic={evalTargets[0]?.target_info?.topic || displayTopic(semester.weekTopics, week, 'regular') || '주제 미정'}>
+        <p className="mb-5 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11px] font-black uppercase tracking-widest">
+          <span className="text-slate-500">{semester.name}</span>
+          {myInfo.cluster_id && <><span className="h-3 w-px bg-rose-200" aria-hidden="true" /><span className="text-rose-600">클러스터 {myInfo.cluster_id} · {myInfo.group_id}조</span></>}
+        </p>
+      </WeekRail>
 
-      {weekState.status === 'loading' && <LoadingState className="mt-6" />}
-      {weekState.status === 'error' && <div className="mt-6"><ErrorState title="이 주차 발표를 불러오지 못했습니다." description={weekState.error} onRetry={() => setReloadKey((value) => value + 1)} /></div>}
+      {weekState.status === 'loading' && <LoadingState />}
+      {weekState.status === 'error' && <ErrorState title="이 주차 발표를 불러오지 못했습니다." description={weekState.error} onRetry={() => setReloadKey((value) => value + 1)} />}
       {weekState.status === 'ready' && evalTargets.length === 0 && (
-        <div className="mt-6"><EmptyState title="이 주차에 피드백할 발표가 없습니다." description="발표 순서가 등록되지 않았거나, 내 클러스터에 다른 발표가 없습니다." /></div>
+        <EmptyState title="이 주차에 피드백할 발표가 없습니다." description="발표 순서가 등록되지 않았거나, 내 클러스터에 다른 발표가 없습니다." />
       )}
 
       {weekState.status === 'ready' && evalTargets.length > 0 && (
-        <div className="mt-6 grid items-start gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
-          <aside className="rounded-lg border border-slate-200 bg-white p-3 lg:sticky lg:top-24">
-            <h2 className="flex items-center justify-between px-1 text-sm font-bold text-slate-900">피드백 대상<span className="text-xs font-semibold text-slate-500"><span className="text-amber-500" aria-hidden="true">★</span> 같은 조</span></h2>
-            <ul className="mt-2 space-y-1">
-              {evalTargets.map((item) => (
-                <li key={item.id}>
-                  <button type="button" aria-current={item.id === selectedTargetId ? 'true' : undefined} onClick={() => selectTarget(item)} className={`w-full rounded-md px-2 py-2 text-left text-sm ${item.id === selectedTargetId ? 'bg-teal-50 font-bold text-teal-800' : 'text-slate-700 hover:bg-slate-50'}`}>
-                    <span className="block break-keep">{targetName(item.target_info)}{item.target_info.group_id === myInfo.group_id && <span className="ml-1 text-amber-500" title="같은 조" aria-label="같은 조">★</span>}</span>
-                    <span className="mt-0.5 flex flex-wrap gap-1">
-                      {item.scored && <StatusBadge tone="green">채점 완료</StatusBadge>}
-                      {!item.scored && item.score_record_id && <StatusBadge tone="amber">임시 저장</StatusBadge>}
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </aside>
+        <div className="grid items-start gap-10 lg:grid-cols-[230px_minmax(0,1fr)] xl:gap-14">
+          <TargetRail title="Feedback To" items={railItems} selectedId={selectedTargetId} onSelect={({ item }) => selectTarget(item)} />
 
           {!current ? (
             <EmptyState title="왼쪽에서 피드백할 발표를 고르세요." />
           ) : (
-            <section className="min-w-0 rounded-lg border border-slate-200 bg-white p-4 sm:p-5">
-              <div className="flex flex-col gap-2 border-b border-slate-200 pb-3 sm:flex-row sm:items-end sm:justify-between">
+            <section className="min-w-0">
+              <div className="flex flex-col gap-3 border-b-[3px] border-rose-600 pb-5 sm:flex-row sm:items-end sm:justify-between">
                 <div className="min-w-0">
-                  <h2 className="break-keep text-xl font-extrabold text-teal-800">{targetName(current.target_info)}</h2>
-                  <p className="text-sm text-slate-500">주제 {current.target_info.topic || displayTopic(semester.weekTopics, week, 'regular') || '미정'} · {isSameGroup ? '같은 조 상세 피드백' : '다른 조 메모'}</p>
+                  <p className="text-[11px] font-black uppercase tracking-[0.25em] text-rose-500">{isSameGroup ? '★ 같은 조 · 상세 피드백' : '다른 조 · 메모'}</p>
+                  <h2 className="mt-1 break-keep text-3xl font-black tracking-tight text-slate-900">{targetName(current.target_info)}</h2>
+                  <p className="mt-1 text-sm text-slate-500">주제 {current.target_info.topic || displayTopic(semester.weekTopics, week, 'regular') || '미정'}</p>
                 </div>
                 <SaveStatus state={saving ? 'saving' : saveError ? 'error' : dirty ? 'dirty' : 'clean'} dirtyCount={1} />
               </div>
 
-              {isSameGroup ? (
-                <div className="mt-5 space-y-6">
+              <div className="mt-8">
+                {isSameGroup ? (
+                  <FeedbackFields wide value={editFeedback} onChange={(key, text) => setEditFeedback((prev) => ({ ...prev, [key]: text }))} messagePlaceholder="발표를 들으며 핵심 메시지를 기록해 보세요." />
+                ) : (
                   <label className="block">
-                    <span className="mb-1 block text-sm font-bold text-slate-700">핵심 메시지</span>
-                    <input value={editFeedback.originalMessage} onChange={(event) => setEditFeedback({ ...editFeedback, originalMessage: event.target.value })} className="w-full border-b-2 border-slate-300 bg-transparent py-2 text-base font-semibold outline-none focus:border-teal-700" placeholder="발표를 들으며 핵심 메시지를 기록해 보세요." />
+                    <span className="text-[11px] font-black uppercase tracking-[0.2em] text-rose-500">메모 <span className="ml-1 normal-case tracking-normal text-slate-400">입력칸을 벗어나면 자동 저장됩니다</span></span>
+                    <textarea value={editFeedback.memo} onChange={(event) => setEditFeedback((prev) => ({ ...prev, memo: event.target.value }))} onBlur={() => { if (dirty) save({ quiet: true }) }} className="mt-2 min-h-80 w-full resize-y border-y-2 border-rose-200 bg-transparent py-4 text-sm leading-7 text-slate-800 outline-none transition placeholder:text-slate-300 focus:border-rose-500" placeholder="이 발표에 대해 자유롭게 메모를 남기세요." />
                   </label>
-                  {SECTIONS.map((section) => (
-                    <fieldset key={section.title} className="space-y-2">
-                      <legend className="text-sm font-bold text-slate-800">{section.title} <span className="text-xs font-semibold text-slate-500">{section.subtitle}</span></legend>
-                      <textarea aria-label={`${section.title} 장점`} value={editFeedback[section.plus]} onChange={(event) => setEditFeedback({ ...editFeedback, [section.plus]: event.target.value })} className="min-h-16 w-full resize-y rounded-md border border-emerald-200 p-2.5 text-sm leading-6 outline-none focus:border-emerald-600" placeholder="(+) 장점 및 인상 깊었던 점" />
-                      <textarea aria-label={`${section.title} 개선점`} value={editFeedback[section.minus]} onChange={(event) => setEditFeedback({ ...editFeedback, [section.minus]: event.target.value })} className="min-h-16 w-full resize-y rounded-md border border-red-200 p-2.5 text-sm leading-6 outline-none focus:border-red-600" placeholder="(-) 아쉬운 점 및 개선 아이디어" />
-                    </fieldset>
-                  ))}
-                </div>
-              ) : (
-                <label className="mt-5 block">
-                  <span className="mb-1 block text-sm font-bold text-slate-700">메모 <span className="text-xs font-semibold text-slate-500">입력창을 벗어나면 자동 저장됩니다</span></span>
-                  <textarea value={editFeedback.memo} onChange={(event) => setEditFeedback({ ...editFeedback, memo: event.target.value })} onBlur={() => { if (dirty) save({ quiet: true }) }} className="min-h-80 w-full resize-y rounded-md border border-slate-200 p-3 text-sm leading-6 outline-none focus:border-teal-600" placeholder="이 발표에 대해 자유롭게 메모를 남기세요." />
-                </label>
-              )}
+                )}
+              </div>
 
-              <div className="mt-5 flex justify-end border-t border-slate-200 pt-4">
+              <div className="mt-10 flex justify-end">
                 <Button variant="primary" icon={Save} loading={saving} disabled={!dirty} onClick={() => save()}>임시 저장</Button>
               </div>
             </section>

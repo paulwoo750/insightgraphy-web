@@ -84,7 +84,7 @@ export default function MyPage() {
           </label>
         )}
       />
-      {records.nameFallback && <Notice tone="warning" className="mb-4" title="학회원 명단과 연결되지 않은 계정입니다">이름으로 찾은 기록을 보여 줍니다. 운영진에게 학회원 연결을 요청하세요.</Notice>}
+      {records.nameFallback && <Notice tone="info" className="mb-4" title="🎓 졸업생 계정">이름으로 찾은 기록을 보여 줍니다.</Notice>}
       {records.ambiguousName && <Notice tone="info" className="mb-4">이름이 같은 학회원이 있어, 학회원 연결이 안 된 예전 기록 일부는 표시하지 않습니다. 빠진 기록이 있으면 운영진에게 알려 주세요.</Notice>}
 
       {!view ? <EmptyState title="표시할 기록이 없습니다." /> : (

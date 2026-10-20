@@ -5,7 +5,9 @@ import { supabase } from '@/lib/supabase'
 import { currentSemesterIdFilter, displayTopic, fetchCurrentSemester, fetchSemesterMembers, formatDateTime, fromKstInput, groupDeadlines, memberGroup, submissionTopic, weekFromParam } from '@/lib/semester'
 import { MemberHeader, MemberPage, rememberWeekContext, useMember } from '@/app/components/MemberShell'
 import WeekOverviewCard from '@/app/components/WeekOverviewCard'
-import { Button, inputClass, useToast } from '@/app/components/ui'
+import { Send, Trash2, X } from 'lucide-react'
+import { Button, IconButton, LoadingState, Modal, inputClass, useToast } from '@/app/components/ui'
+import { Avatar, FeedbackFields, FeedbackView, hasFeedbackContent } from '@/app/vote/_components/Editorial'
 import { SubmissionList, WeekSelector } from '../_components/shared'
 
 // 주소(?week=&session=)를 지금 보는 주차·세션으로 맞추고, 다른 자료실 메뉴에도 이어지게 기억한다
@@ -46,12 +48,10 @@ export default function VideoRoom() {
   const [draftFeedback, setDraftFeedback] = useState(null)
 
   const [comments, setComments] = useState([])
-  const [newCommentData, setNewCommentData] = useState({
-    originalMessage: '',
-    insightPlus: '', insightMinus: '',
-    graphicPlus: '', graphicMinus: '',
-    deliveryPlus: '', deliveryMinus: ''
-  })
+  const [newCommentData, setNewCommentData] = useState(EMPTY_COMMENT)
+  // 댓글 작성칸: 처음엔 한 줄, 누르면 항목별 칸까지 펼친다
+  const [composerOpen, setComposerOpen] = useState(false)
+  const [posting, setPosting] = useState(false)
 
   const weeks = Array.from({ length: totalWeeks + 1 }, (_, i) => i)
 
@@ -223,18 +223,23 @@ export default function VideoRoom() {
   }
 
   const handleAddComment = async () => {
-    if (!newCommentData.originalMessage.trim()) return toast.error("Original Message는 꼭 입력해야 합니다.");
+    if (posting) return
+    if (!newCommentData.originalMessage.trim()) return toast.error("핵심 메시지는 꼭 입력해야 합니다.");
 
     const realName = user.user_metadata.name || '알 수 없는 유저';
+    setPosting(true)
     const { error } = await supabase.from('file_comments').insert([{
       file_id: viewingFile.id,
       user_id: user.id,
       user_name: realName,
+      member_id: identity.member?.id || null,
       details: newCommentData
     }]);
+    setPosting(false)
 
     if (!error) {
-      setNewCommentData({ originalMessage: '', insightPlus: '', insightMinus: '', graphicPlus: '', graphicMinus: '', deliveryPlus: '', deliveryMinus: '' });
+      setNewCommentData(EMPTY_COMMENT);
+      setComposerOpen(false);
       fetchComments(viewingFile.id);
       toast.success("피드백을 등록했습니다.");
     } else { toast.error("피드백을 등록하지 못했습니다: " + error.message); }
@@ -288,7 +293,7 @@ export default function VideoRoom() {
     syncWeekUrl(selectedWeek, mode)
   }
 
-  if (!user) return <div className="p-8 text-center font-bold text-slate-500">데이터 로딩 중...</div>
+  if (!user) return <MemberPage><LoadingState label="발표영상을 불러오는 중입니다." /></MemberPage>
 
   const selfFeedbacks = comments.filter(c => isVideoOwner(viewingFile, c.user_name));
   const peerFeedbacks = comments.filter(c => !isVideoOwner(viewingFile, c.user_name));
@@ -374,120 +379,95 @@ export default function VideoRoom() {
       </section>
 
       {editItem && (
-        <div className="fixed inset-0 bg-slate-900/60 flex items-center justify-center p-4 z-[110]">
-          <div className="bg-white p-8 w-full max-w-sm shadow-xl border border-slate-300 rounded-sm">
-            <h2 className="font-extrabold mb-6 text-lg text-slate-900 border-l-4 border-red-700 pl-2">파일명 수정</h2>
-            <input type="text" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} className="w-full border-b border-slate-300 py-2 mb-8 font-medium text-sm outline-none focus:border-red-700 bg-transparent" />
-            <div className="flex gap-2">
-              <button onClick={handleUpdateFile} className="flex-1 py-2.5 bg-red-700 text-white rounded-sm font-bold text-xs border border-red-800 hover:bg-red-800">저장</button>
-              <button onClick={() => setEditItem(null)} className="flex-1 py-2.5 bg-slate-100 text-slate-600 rounded-sm font-bold text-xs border border-slate-300 hover:bg-slate-200">취소</button>
-            </div>
-          </div>
-        </div>
+        <Modal
+          title="파일 이름 바꾸기"
+          onClose={() => setEditItem(null)}
+          size="sm"
+          footer={<><Button onClick={() => setEditItem(null)}>취소</Button><Button variant="primary" onClick={handleUpdateFile}>저장</Button></>}
+        >
+          <input aria-label="파일 이름" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} className={inputClass} />
+        </Modal>
       )}
 
       {viewingFile && (
-        <div className="fixed inset-0 bg-white/95 backdrop-blur-sm flex items-center justify-center p-4 z-[100]">
-          <div className="bg-white w-full max-w-[1500px] h-[90vh] flex flex-col lg:flex-row overflow-hidden relative shadow-2xl border border-slate-400 rounded-sm">
-            <button onClick={() => setViewingFile(null)} className="absolute top-4 right-4 z-50 px-3 py-1.5 bg-slate-100 text-slate-600 text-xs font-bold hover:bg-slate-900 hover:text-white transition-colors rounded-sm border border-slate-300">닫기 ✕</button>
-
-            <div className="flex-[1.5] bg-black flex flex-col border-r border-slate-300 overflow-hidden">
-              <div className={`w-full ${draftFeedback ? 'aspect-video shrink-0' : 'flex-1'} bg-black transition-all`}>
-                <iframe className="w-full h-full" src={`https://www.youtube.com/embed/${getYoutubeId(viewingFile.file_url)}?autoplay=1`} frameBorder="0" allowFullScreen></iframe>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/70 p-0 backdrop-blur-sm sm:p-4" role="dialog" aria-modal="true" aria-label={`${viewingFile.file_name} 피드백`}>
+          <button type="button" onClick={() => setViewingFile(null)} aria-label="닫기" className="fixed right-3 top-3 z-[110] grid h-10 w-10 place-items-center rounded-full bg-slate-900/80 text-white shadow-lg backdrop-blur lg:hidden"><X className="h-5 w-5" aria-hidden="true" /></button>
+          <div className="relative flex h-full w-full max-w-[1500px] flex-col overflow-y-auto bg-white shadow-2xl sm:h-[92vh] sm:rounded-2xl lg:flex-row lg:overflow-hidden">
+            <div className="flex shrink-0 flex-col bg-slate-950 lg:flex-[1.45] lg:overflow-y-auto">
+              <div className="aspect-video w-full shrink-0 bg-black">
+                <iframe className="h-full w-full" title={viewingFile.file_name} src={`https://www.youtube.com/embed/${getYoutubeId(viewingFile.file_url)}?autoplay=1`} allow="autoplay; encrypted-media; picture-in-picture" allowFullScreen />
               </div>
-
-              {draftFeedback && (
-                <div className="flex-1 overflow-y-auto p-8 bg-[#0f172a]">
-                  <h3 className="text-sm font-extrabold text-emerald-400 uppercase tracking-widest mb-6 pb-2 border-b border-slate-700">
-                    내 임시저장 노트
-                  </h3>
-                  <div className="space-y-6">
-                    <div>
-                      <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Original Message</p>
-                      <p className="text-sm font-medium text-slate-300 leading-relaxed border-l-2 border-slate-600 pl-3">{draftFeedback.originalMessage || '작성된 내용이 없습니다.'}</p>
+              <div className="px-5 py-5 sm:px-7">
+                <p className="text-[11px] font-black uppercase tracking-[0.25em] text-rose-400">W{viewingFile.week} · {viewingFile.uploader}</p>
+                <p className="mt-1 break-keep text-lg font-extrabold text-white">{viewingFile.file_name}</p>
+                {draftFeedback && hasFeedbackContent(draftFeedback) && (
+                  <div className="mt-6 border-t border-white/10 pt-5">
+                    <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-sm font-black text-amber-300">📒 내 임시 저장 노트</p>
+                      <button type="button" onClick={() => { setNewCommentData({ ...EMPTY_COMMENT, ...pickComment(draftFeedback) }); setComposerOpen(true) }} className="rounded-full bg-amber-300/15 px-3 py-1.5 text-xs font-bold text-amber-200 transition hover:bg-amber-300/25">작성칸에 불러오기 ↘</button>
                     </div>
-                    <DraftBox title="Insight" plus={draftFeedback.insightPlus} minus={draftFeedback.insightMinus} />
-                    <DraftBox title="Graphic" plus={draftFeedback.graphicPlus} minus={draftFeedback.graphicMinus} />
-                    <DraftBox title="Delivery" plus={draftFeedback.deliveryPlus} minus={draftFeedback.deliveryMinus} />
+                    <FeedbackView data={draftFeedback} dark />
                   </div>
-                </div>
-              )}
+                )}
+              </div>
             </div>
 
-            <div className="flex-1 flex flex-col bg-white">
-              <div className="p-6 border-b border-slate-200">
-                <h2 className="font-extrabold text-lg text-slate-900 border-l-4 border-red-700 pl-2">Feedback</h2>
-                <p className="text-xs text-slate-500 font-semibold mt-2 truncate">{viewingFile.file_name}</p>
-                <div className="flex flex-col sm:flex-row gap-2 mt-3">
-                  {getQualitativeDeadline(viewingFile.week) && (
-                    <span className="text-xs font-bold text-red-600 border border-red-200 bg-red-50 px-2 py-0.5 rounded-sm w-fit">
-                      조원 마감: {formatDateTime(getQualitativeDeadline(viewingFile.week))}
-                    </span>
-                  )}
-                  {deadlines[viewingFile.week]?.video_comment && (
-                    <span className="text-xs font-bold text-red-600 border border-red-200 bg-red-50 px-2 py-0.5 rounded-sm w-fit">
-                      본인 마감: {formatDateTime(deadlines[viewingFile.week].video_comment)}
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              <div className="flex-1 overflow-y-auto p-6 space-y-8">
-                <div>
-                  <h4 className="text-sm font-extrabold text-slate-800 border-b-2 border-slate-800 pb-2 mb-4">셀프 피드백 (본인/팀원)</h4>
-                  {selfFeedbacks.map((c) => {
-                    const isLate = deadlines[viewingFile.week]?.video_comment && new Date(c.created_at) > new Date(deadlines[viewingFile.week].video_comment);
-                    return <FeedbackCard key={c.id} commentId={c.id} name={c.user_name} data={c.details} date={c.created_at} isLate={isLate} currentUserId={user.id} onDelete={handleDeleteComment} />
-                  })}
-                  {selfFeedbacks.length === 0 && <p className="text-xs text-slate-400 font-medium pb-2">등록된 셀프 피드백이 없습니다.</p>}
-                </div>
-
-                <div>
-                  <h4 className="text-sm font-extrabold text-slate-800 border-b-2 border-slate-800 pb-2 mb-4">조원 상세 피드백</h4>
-                  {peerFeedbacks.map((c) => {
-                    const isLate = getQualitativeDeadline(viewingFile.week) && new Date(c.created_at) > new Date(getQualitativeDeadline(viewingFile.week));
-                    return (
-                      <FeedbackCard
-                        key={c.id}
-                        commentId={c.id}
-                        name={c.user_name}
-                        data={c.details}
-                        date={c.created_at}
-                        isLate={isLate}
-                        isPeerFeedback={true}
-                        isVideoOwner={isMeVideoOwner}
-                        onToggleRead={handleToggleRead}
-                        selfDeadline={deadlines[viewingFile.week]?.video_comment}
-                        currentUserId={user.id}
-                        onDelete={handleDeleteComment}
-                      />
-                    )
-                  })}
-                  {peerFeedbacks.length === 0 && <p className="text-xs text-slate-400 font-medium">등록된 조원 피드백이 없습니다.</p>}
-                </div>
-              </div>
-
-              <div className="p-6 border-t border-slate-300 bg-slate-50/50 max-h-[40vh] overflow-y-auto shrink-0">
-                <h4 className="text-sm font-extrabold text-slate-800 mb-4 border-l-4 border-red-700 pl-2">피드백 작성</h4>
-                <div className="space-y-5">
-                  <div>
-                    <label className="text-xs font-bold text-slate-500 mb-1 block uppercase tracking-wider">Original Message (필수)</label>
-                    <input
-                      type="text"
-                      value={newCommentData.originalMessage}
-                      onChange={(e)=>setNewCommentData({...newCommentData, originalMessage: e.target.value})}
-                      className="w-full border-b border-slate-300 py-1 text-sm font-medium outline-none focus:border-red-800 bg-transparent"
-                      placeholder="전체적인 핵심 메시지 및 느낀 점"
-                    />
+            <div className="flex min-h-0 flex-1 flex-col bg-white">
+              <div className="flex items-start justify-between gap-3 px-5 pb-4 pt-5 sm:px-6">
+                <div className="min-w-0">
+                  <h2 className="text-xl font-black tracking-tight text-slate-900">💬 피드백 <span className="ml-1 text-base text-rose-500">{comments.length}</span></h2>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {getQualitativeDeadline(viewingFile.week) && <span className="rounded-full bg-rose-50 px-2.5 py-1 text-[11px] font-bold text-rose-700">조원 마감 {formatDateTime(getQualitativeDeadline(viewingFile.week))}</span>}
+                    {getSelfDeadline(viewingFile.week) && <span className="rounded-full bg-violet-50 px-2.5 py-1 text-[11px] font-bold text-violet-700">셀프 마감 {formatDateTime(getSelfDeadline(viewingFile.week))}</span>}
                   </div>
-                  <FeedbackInputSection title="Insight" plus={newCommentData.insightPlus} minus={newCommentData.insightMinus} onChange={(k, v)=>setNewCommentData({...newCommentData, [k]: v})} />
-                  <FeedbackInputSection title="Graphic" plus={newCommentData.graphicPlus} minus={newCommentData.graphicMinus} onChange={(k, v)=>setNewCommentData({...newCommentData, [k]: v})} />
-                  <FeedbackInputSection title="Delivery" plus={newCommentData.deliveryPlus} minus={newCommentData.deliveryMinus} onChange={(k, v)=>setNewCommentData({...newCommentData, [k]: v})} />
-
-                  <button onClick={handleAddComment} className="w-full py-3 bg-slate-900 text-white font-bold text-sm hover:bg-red-800 transition-colors rounded-sm mt-4">댓글 등록</button>
                 </div>
+                <span className="hidden lg:block"><IconButton icon={X} label="닫기" onClick={() => setViewingFile(null)} /></span>
               </div>
 
+              <div className="flex-1 space-y-9 px-5 pb-6 sm:px-6 lg:overflow-y-auto">
+                <CommentGroup title="셀프 피드백" hint="발표자 본인·팀원" tone="text-violet-600" count={selfFeedbacks.length} empty="아직 셀프 피드백이 없습니다.">
+                  {selfFeedbacks.map((c) => (
+                    <FeedbackComment key={c.id} comment={c} isLate={isAfter(c.created_at, getSelfDeadline(viewingFile.week))} currentUserId={user.id} onDelete={handleDeleteComment} />
+                  ))}
+                </CommentGroup>
+                <CommentGroup title="조원 피드백" hint={isMeVideoOwner ? '읽었으면 확인을 눌러 주세요' : ''} tone="text-rose-600" count={peerFeedbacks.length} empty="아직 조원 피드백이 없습니다.">
+                  {peerFeedbacks.map((c) => (
+                    <FeedbackComment
+                      key={c.id}
+                      comment={c}
+                      isLate={isAfter(c.created_at, getQualitativeDeadline(viewingFile.week))}
+                      isPeerFeedback
+                      isVideoOwner={isMeVideoOwner}
+                      onToggleRead={handleToggleRead}
+                      selfDeadline={getSelfDeadline(viewingFile.week)}
+                      currentUserId={user.id}
+                      onDelete={handleDeleteComment}
+                    />
+                  ))}
+                </CommentGroup>
+              </div>
+
+              <form onSubmit={(event) => { event.preventDefault(); handleAddComment() }} className="shrink-0 bg-gradient-to-b from-rose-50/60 to-white px-5 pb-5 pt-4 shadow-[0_-12px_24px_-16px_rgba(15,23,42,0.25)] sm:px-6">
+                <div className="flex items-start gap-3">
+                  <Avatar name={loggedInUserName} />
+                  <div className="min-w-0 flex-1">
+                    <div className={composerOpen ? 'max-h-[42vh] overflow-y-auto pr-1' : ''}>
+                      {composerOpen ? (
+                        <FeedbackFields value={newCommentData} onChange={(key, text) => setNewCommentData((prev) => ({ ...prev, [key]: text }))} messageLabel={isMeVideoOwner ? '셀프 피드백' : '조원 피드백'} messagePlaceholder="전체적인 핵심 메시지와 느낀 점" required />
+                      ) : (
+                        <input aria-label="핵심 메시지" value={newCommentData.originalMessage} onChange={(e) => setNewCommentData((prev) => ({ ...prev, originalMessage: e.target.value }))} onFocus={() => setComposerOpen(true)} placeholder={isMeVideoOwner ? '내 발표를 돌아보며 셀프 피드백 남기기…' : '이 발표에 피드백 남기기…'} className="w-full border-b-[3px] border-rose-200 bg-transparent py-2 text-sm font-semibold text-slate-900 outline-none transition placeholder:font-medium placeholder:text-slate-400 focus:border-rose-600" />
+                      )}
+                    </div>
+                    {composerOpen && (
+                      <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
+                        {draftFeedback && hasFeedbackContent(draftFeedback) && <Button size="sm" variant="ghost" onClick={() => setNewCommentData({ ...EMPTY_COMMENT, ...pickComment(draftFeedback) })}>📒 임시 저장 노트 불러오기</Button>}
+                        <Button size="sm" variant="ghost" onClick={() => setComposerOpen(false)}>접기</Button>
+                        <Button size="sm" type="submit" variant="primary" icon={Send} loading={posting}>등록</Button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </form>
             </div>
           </div>
         </div>
@@ -496,105 +476,55 @@ export default function VideoRoom() {
   )
 }
 
-function DraftBox({ title, plus, minus }) {
-  if (!plus && !minus) return null;
+const EMPTY_COMMENT = { originalMessage: '', insightPlus: '', insightMinus: '', graphicPlus: '', graphicMinus: '', deliveryPlus: '', deliveryMinus: '' }
+// 임시 저장 노트(정성 피드백 작성실)에서 댓글 칸에 들어갈 값만 꺼낸다 (메모 제외)
+const pickComment = (draft) => Object.fromEntries(Object.keys(EMPTY_COMMENT).map((key) => [key, draft?.[key] || '']))
+const isAfter = (at, deadline) => Boolean(at && deadline && new Date(at) > new Date(deadline))
+
+function formatCommentDate(value) {
+  if (!value) return ''
+  const d = new Date(value)
+  return `${d.getMonth() + 1}.${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+
+function CommentGroup({ title, hint, tone, count, empty, children }) {
   return (
-    <div>
-      <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">{title}</p>
-      <div className="grid gap-2 border-l-2 border-slate-600 pl-3">
-        {plus && <p className="text-xs font-medium text-emerald-300 leading-relaxed"><span className="font-bold text-emerald-400 mr-1">+)</span> {plus}</p>}
-        {minus && <p className="text-xs font-medium text-red-300 leading-relaxed"><span className="font-bold text-red-400 mr-1">-)</span> {minus}</p>}
-      </div>
-    </div>
+    <section>
+      <h3 className="flex items-baseline gap-2">
+        <span className={`text-sm font-black ${tone}`}>{title}</span>
+        <span className="text-xs font-bold text-slate-400">{count}</span>
+        {hint && <span className="ml-auto text-[11px] font-semibold text-slate-400">{hint}</span>}
+      </h3>
+      {count === 0 ? <p className="mt-3 text-sm text-slate-400">{empty}</p> : <ul className="mt-4 space-y-7">{children}</ul>}
+    </section>
   )
 }
 
-function FeedbackInputSection({ title, plus, minus, onChange }) {
-  const kP = title.toLowerCase() + 'Plus';
-  const kM = title.toLowerCase() + 'Minus';
+function FeedbackComment({ comment, isLate, isPeerFeedback, isVideoOwner, onToggleRead, selfDeadline, currentUserId, onDelete }) {
+  const data = comment.details
+  if (!data) return null
+  const isRead = Boolean(data.is_read)
+  const isReadLate = isRead && isAfter(data.read_at, selfDeadline)
+  const mine = currentUserId && (comment.user_id === currentUserId || data.user_id === currentUserId)
   return (
-    <div className="space-y-2">
-      <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">{title}</p>
-      <div className="grid grid-cols-1 gap-2">
-        <textarea
-          value={plus}
-          onChange={(e)=>onChange(kP, e.target.value)}
-          placeholder="(+) 좋았던 점 및 배울 점"
-          className="w-full border-b-2 border-emerald-400 p-2 text-xs font-medium outline-none focus:border-emerald-600 min-h-[40px] resize-none bg-transparent"
-        />
-        <textarea
-          value={minus}
-          onChange={(e)=>onChange(kM, e.target.value)}
-          placeholder="(-) 아쉬운 점 및 개선 제안"
-          className="w-full border-b-2 border-red-400 p-2 text-xs font-medium outline-none focus:border-red-600 min-h-[40px] resize-none bg-transparent"
-        />
-      </div>
-    </div>
-  )
-}
-
-function FeedbackCard({ commentId, name, data, date, isLate, isPeerFeedback, isVideoOwner, onToggleRead, selfDeadline, currentUserId, onDelete }) {
-  if (!data) return null;
-  const d = date ? new Date(date) : null;
-  const dateStr = d ? `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}` : '';
-
-  const isRead = data.is_read || false;
-  const readAtStr = data.read_at ? new Date(data.read_at) : null;
-  const deadlineDate = selfDeadline ? new Date(selfDeadline) : null;
-  const isReadLate = isRead && readAtStr && deadlineDate && readAtStr > deadlineDate;
-
-  return (
-    <div className="border-b border-slate-200 pb-6 mb-6 last:border-0 group">
-      <div className="flex justify-between items-center mb-4">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-bold text-slate-800">{name}</span>
-          {isLate && <span className="text-xs font-bold bg-red-50 text-red-600 border border-red-200 px-1 py-0.5 rounded-sm">LATE</span>}
-          <span className="text-xs font-medium text-slate-400 ml-2">{dateStr}</span>
+    <li className="flex gap-3">
+      <Avatar name={comment.user_name} />
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span className="text-sm font-black text-slate-900">{comment.user_name}</span>
+          <span className="text-xs text-slate-400">{formatCommentDate(comment.created_at)}</span>
+          {isLate && <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-black text-rose-700">지각</span>}
+          <span className="ml-auto flex items-center gap-1">
+            {isPeerFeedback && (isVideoOwner ? (
+              <button type="button" onClick={() => onToggleRead(comment.id, data)} aria-pressed={isRead} className={`rounded-full px-2.5 py-1 text-[11px] font-bold transition ${isRead ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600 hover:bg-emerald-50 hover:text-emerald-700'}`}>{isRead ? '✓ 확인함' : '읽음 확인'}</button>
+            ) : isRead && <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700">✓ 발표자 확인</span>)}
+            {isReadLate && <span className="rounded-full bg-orange-50 px-2 py-1 text-[11px] font-bold text-orange-700">늦게 확인</span>}
+            {mine && <IconButton icon={Trash2} label="피드백 삭제" size="sm" onClick={() => onDelete(comment.id)} />}
+          </span>
         </div>
-
-        <div className="flex items-center gap-3">
-          {currentUserId === data.user_id && (
-             <button onClick={() => onDelete(commentId)} className="opacity-100 text-xs font-bold text-slate-400 hover:text-red-600 transition-opacity">삭제</button>
-          )}
-
-          {isPeerFeedback && (
-            <div className="flex items-center gap-2">
-              {isVideoOwner ? (
-                <button onClick={() => onToggleRead(commentId, data)} className={`text-xs font-bold px-2 py-1 transition-colors border rounded-sm ${isRead ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 'bg-white text-slate-500 border-slate-300 hover:bg-slate-50'}`}>
-                  {isRead ? '✅ 확인 완료' : '읽음 확인'}
-                </button>
-              ) : (
-                isRead && <span className="text-xs font-bold text-emerald-600 border border-emerald-200 bg-emerald-50 px-2 py-0.5 rounded-sm">✅ 작성자가 확인</span>
-              )}
-              {isReadLate && <span className="text-xs font-bold bg-orange-50 text-orange-600 border border-orange-200 px-1 py-0.5 rounded-sm">LATE 확인</span>}
-            </div>
-          )}
-        </div>
+        <div className="mt-2"><FeedbackView data={data} /></div>
       </div>
-
-      <div className="space-y-4 pl-1">
-        <div>
-          <p className="text-xs font-bold text-slate-400 mb-1 uppercase">Original Message</p>
-          <p className="text-sm font-medium text-slate-700 leading-relaxed border-l-2 border-slate-300 pl-3 py-1">{data.originalMessage}</p>
-        </div>
-        <FeedbackBox title="Insight" plus={data.insightPlus} minus={data.insightMinus} />
-        <FeedbackBox title="Graphic" plus={data.graphicPlus} minus={data.graphicMinus} />
-        <FeedbackBox title="Delivery" plus={data.deliveryPlus} minus={data.deliveryMinus} />
-      </div>
-    </div>
-  )
-}
-
-function FeedbackBox({ title, plus, minus }) {
-  if (!plus && !minus) return null;
-  return (
-    <div className="space-y-1.5 mt-2">
-      <p className="text-xs font-bold text-slate-400 uppercase">{title}</p>
-      <div className="grid gap-1.5 border-l-2 border-slate-200 pl-3">
-        {plus && <p className="text-xs font-medium text-slate-700 leading-relaxed"><span className="font-bold text-emerald-500 mr-1">+)</span> {plus}</p>}
-        {minus && <p className="text-xs font-medium text-slate-700 leading-relaxed"><span className="font-bold text-red-500 mr-1">-)</span> {minus}</p>}
-      </div>
-    </div>
+    </li>
   )
 }
 

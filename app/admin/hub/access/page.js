@@ -37,13 +37,13 @@ function describeAccessError(error) {
   return message
 }
 
-// 관리자 계정이 학회원 명단의 누구인지: 재학 학회원 · 졸업생 · 명단 미연결
-function accountKindLabel(item, memberMode) {
+// 관리자 계정이 학회원 명단의 누구인지: 재학 학회원 · 졸업생
+function accountKindLabel(item) {
   const kind = item.account_kind || (item.member_id ? (item.member_status === 'alumni' ? 'alumni' : 'member') : 'unlinked')
   if (kind === 'member') return { tone: 'teal', icon: UsersRound, text: [item.member_generation, item.member_university].filter(Boolean).join(' · ') || '학회원' }
   if (kind === 'alumni') return { tone: 'violet', icon: GraduationCap, text: `졸업생 계정${item.member_generation || item.signup_generation ? ` · ${item.member_generation || item.signup_generation}` : ''}` }
-  if (kind === 'alumni_name') return { tone: 'violet', icon: GraduationCap, text: '졸업생 계정 (졸업생 명단과 이름 일치, 계정 연결은 안 됨)' }
-  return memberMode ? { tone: 'gray', icon: null, text: '학회원 명단과 연결되지 않은 계정' } : null
+  // 재학 학회원은 모두 명단에 연결되어 있으므로, 연결이 없는 관리자 계정은 졸업생으로 본다
+  return { tone: 'violet', icon: GraduationCap, text: `졸업생 계정${item.signup_generation ? ` · ${item.signup_generation}` : ''}` }
 }
 
 const KIND_TEXT = { teal: 'text-teal-700', violet: 'text-violet-700', gray: 'text-slate-500' }
@@ -97,7 +97,7 @@ export default function AdminAccessPage() {
     active: admins.filter((item) => item.is_active).length,
     superAdmins: admins.filter((item) => item.role === 'super_admin' && item.is_active).length,
     developers: admins.filter((item) => item.role === 'developer' && item.is_active).length,
-    alumni: admins.filter((item) => ['alumni', 'alumni_name'].includes(item.account_kind) || item.member_status === 'alumni').length,
+    alumni: admins.filter((item) => accountKindLabel(item).icon === GraduationCap).length,
     viewers: admins.filter((item) => item.role === 'viewer' && item.is_active).length,
   }), [admins])
 
@@ -226,7 +226,7 @@ export default function AdminAccessPage() {
                     const isCurrentUser = item.user_id === session?.user?.id
                     const changed = draft.role !== item.role || draft.is_active !== item.is_active
                     const capabilities = roleCapabilities(draft.role)
-                    const kind = accountKindLabel(item, state.memberMode)
+                    const kind = accountKindLabel(item)
                     const lockedDeveloper = !isDeveloper && item.role === 'developer'
                     return (
                       <tr key={item.user_id} className="align-top">

@@ -1,14 +1,13 @@
 'use client'
 // 정량 평가: 같은 클러스터의 발표(팀 또는 개인)를 루브릭으로 채점한다
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Trophy } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { displayTopic, fetchCurrentSemester, presentationWeekFor, weekFromParam } from '@/lib/semester'
 import { MemberHeader, MemberPage, rememberWeekContext, useMember } from '@/app/components/MemberShell'
-import { Button, EmptyState, ErrorState, LoadingState, StatusBadge, useAsyncAction, useToast } from '@/app/components/ui'
-
-const EMPTY_FEEDBACK = { originalMessage: '', insightPlus: '', insightMinus: '', graphicPlus: '', graphicMinus: '', deliveryPlus: '', deliveryMinus: '', memo: '' }
+import { Button, EmptyState, ErrorState, LoadingState, useAsyncAction, useToast } from '@/app/components/ui'
+import { EMPTY_FEEDBACK, FeedbackFields, TargetRail, WeekRail } from '../_components/Editorial'
 
 // 루브릭 색상 키 → 고정 클래스 (Tailwind가 지우지 않도록 전체 문자열로 둔다)
 const COLOR_THEMES = {
@@ -201,6 +200,19 @@ export default function ScorePage() {
   const allEvaluated = targetsToScore.length > 0 && targetsToScore.every((target) => target.pids.some((pid) => votedPids.includes(pid)))
   const isSameGroup = currentTarget?.group_id === myInfo.group_id
   const topic = evalTargets[0]?.topic || displayTopic(semester.weekTopics, week, 'regular') || '주제 미정'
+  const railItems = evalTargets.map((target) => {
+    const done = target.pids.some((pid) => votedPids.includes(pid))
+    const me = target.members.includes(myName)
+    return { id: target.id, target, label: shortName(target), me, done, draft: Boolean(drafts[target.pids[0]]), sameGroup: !me && target.group_id === myInfo.group_id, disabled: me || done }
+  })
+
+  function selectTarget({ id, target }) {
+    if (id === selectedTargetId) return
+    if (scoredCount > 0 && !confirm('입력하던 점수와 피드백이 지워집니다. 다른 발표로 바꿀까요?')) return
+    setSelectedTargetId(id)
+    setFeedback({ ...EMPTY_FEEDBACK, ...drafts[target.pids[0]]?.details?.qualitative })
+    setScores((prev) => Object.fromEntries(Object.keys(prev).map((key) => [key, null])))
+  }
 
   return (
     <MemberPage>
@@ -209,121 +221,78 @@ export default function ScorePage() {
         title="정량 평가"
         description="같은 클러스터의 발표를 루브릭에 따라 채점합니다. 같은 조 발표에는 정성 피드백을, 다른 조 발표에는 간단한 메모를 남길 수 있습니다."
         actions={<Button href="/vote/feedback">정성 피드백 작성</Button>}
-      >
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          <StatusBadge tone="gray">{semester.name}</StatusBadge>
-          <StatusBadge tone="gray">평가표 {version}</StatusBadge>
-          {myInfo.cluster_id && <StatusBadge tone="teal">클러스터 {myInfo.cluster_id} · {myInfo.group_id}조</StatusBadge>}
-        </div>
-      </MemberHeader>
+      />
 
-      <div className="rounded-lg border border-slate-200 bg-white p-3">
-        <div className="flex gap-2 overflow-x-auto pb-1" role="group" aria-label="주차 선택">
-          {weeks.map((value) => (
-            <button key={value} type="button" aria-pressed={value === week} onClick={() => changeWeek(value)} className={`min-h-9 shrink-0 rounded-md border px-3 text-sm font-bold ${value === week ? 'border-teal-700 bg-teal-700 text-white' : 'border-slate-200 text-slate-600 hover:border-teal-400'}`}>W{value}</button>
-          ))}
-        </div>
-        <p className="mt-2 px-1 text-sm text-slate-600">W{week} 주제 <span className="font-bold text-slate-900">{topic}</span></p>
-      </div>
+      <WeekRail weeks={weeks} week={week} onChange={changeWeek} topic={topic}>
+        <p className="mb-5 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11px] font-black uppercase tracking-widest">
+          <span className="text-slate-500">{semester.name}</span>
+          <span className="h-3 w-px bg-rose-200" aria-hidden="true" />
+          <span className="text-slate-500">평가표 {version}</span>
+          {myInfo.cluster_id && <><span className="h-3 w-px bg-rose-200" aria-hidden="true" /><span className="text-rose-600">클러스터 {myInfo.cluster_id} · {myInfo.group_id}조</span></>}
+        </p>
+      </WeekRail>
 
-      {weekState.status === 'loading' && <LoadingState className="mt-6" />}
-      {weekState.status === 'error' && <div className="mt-6"><ErrorState title="이 주차 발표를 불러오지 못했습니다." description={weekState.error} onRetry={() => setReloadKey((value) => value + 1)} /></div>}
+      {weekState.status === 'loading' && <LoadingState />}
+      {weekState.status === 'error' && <ErrorState title="이 주차 발표를 불러오지 못했습니다." description={weekState.error} onRetry={() => setReloadKey((value) => value + 1)} />}
       {weekState.status === 'ready' && evalTargets.length === 0 && (
-        <div className="mt-6"><EmptyState title="이 주차에 등록된 발표가 없습니다." description="운영진이 발표 순서를 등록하면 채점할 수 있습니다." /></div>
+        <EmptyState title="이 주차에 등록된 발표가 없습니다." description="운영진이 발표 순서를 등록하면 채점할 수 있습니다." />
       )}
 
       {weekState.status === 'ready' && evalTargets.length > 0 && (
-        <div className="mt-6 grid items-start gap-6 lg:grid-cols-[220px_minmax(0,1fr)] xl:grid-cols-[220px_minmax(0,1fr)_340px]">
-          <aside className="rounded-lg border border-slate-200 bg-white p-3 lg:sticky lg:top-24">
-            <h2 className="flex items-center justify-between px-1 text-sm font-bold text-slate-900">발표 순서<span className="text-xs font-semibold text-slate-500"><span className="text-amber-500" aria-hidden="true">★</span> 같은 조</span></h2>
-            <ol className="mt-2 space-y-1">
-              {evalTargets.map((target, index) => {
-                const voted = target.pids.some((pid) => votedPids.includes(pid))
-                const isMe = target.members.includes(myName)
-                const selectable = !isMe && !voted
-                return (
-                  <li key={target.id}>
-                    <button
-                      type="button"
-                      disabled={!selectable}
-                      aria-current={target.id === selectedTargetId ? 'true' : undefined}
-                      onClick={() => {
-                        if (target.id === selectedTargetId) return
-                        if (scoredCount > 0 && !confirm('입력하던 점수와 피드백이 지워집니다. 다른 발표로 바꿀까요?')) return
-                        setSelectedTargetId(target.id)
-                        setFeedback({ ...EMPTY_FEEDBACK, ...drafts[target.pids[0]]?.details?.qualitative })
-                        setScores((prev) => Object.fromEntries(Object.keys(prev).map((key) => [key, null])))
-                      }}
-                      className={`flex w-full items-start gap-2 rounded-md px-2 py-2 text-left text-sm ${target.id === selectedTargetId ? 'bg-teal-50 font-bold text-teal-800' : selectable ? 'text-slate-700 hover:bg-slate-50' : 'text-slate-400'}`}
-                    >
-                      <span className="w-5 shrink-0 text-xs font-bold">{String(index + 1).padStart(2, '0')}</span>
-                      <span className="min-w-0 flex-1 break-keep">
-                        <span className={voted ? 'line-through' : ''}>{shortName(target)}</span>{!isMe && target.group_id === myInfo.group_id && <span className="ml-1 text-amber-500" title="같은 조" aria-label="같은 조">★</span>}
-                        <span className="mt-0.5 flex flex-wrap gap-1">
-                          {isMe && <StatusBadge tone="blue">나</StatusBadge>}
-                          {voted && <StatusBadge tone="green">채점 완료</StatusBadge>}
-                        </span>
-                      </span>
-                    </button>
-                  </li>
-                )
-              })}
-            </ol>
-          </aside>
+        <div className="grid items-start gap-10 lg:grid-cols-[210px_minmax(0,1fr)] xl:grid-cols-[220px_minmax(0,1fr)_340px] xl:gap-12">
+          <TargetRail items={railItems} selectedId={selectedTargetId} onSelect={selectTarget} />
 
-          <div className="min-w-0 space-y-6">
+          <div className="min-w-0">
             {allEvaluated ? (
-              <div className="rounded-lg border border-slate-200 bg-white px-6 py-14 text-center">
-                <Trophy className="mx-auto h-10 w-10 text-teal-700" aria-hidden="true" />
-                <h2 className="mt-4 text-xl font-bold text-slate-900">이 주차 평가를 모두 마쳤습니다</h2>
-                <p className="mt-1 text-sm text-slate-500">결과는 운영진이 공개하면 내 결과에서 확인할 수 있습니다.</p>
-                <Button href="/vote/results/my" variant="primary" className="mt-5">내 결과 보기</Button>
+              <div className="border-y-2 border-rose-600 py-20 text-center">
+                <span className="text-6xl" aria-hidden="true">🏆</span>
+                <h2 className="mt-6 text-2xl font-black text-slate-900 sm:text-3xl">이 주차 평가를 모두 마쳤습니다</h2>
+                <p className="mt-2 text-sm text-slate-500">결과는 운영진이 공개하면 내 결과에서 확인할 수 있습니다.</p>
+                <Link href="/vote/results/my" className="mt-8 inline-block border-b-[3px] border-rose-600 pb-1 text-sm font-black text-rose-700 transition hover:text-rose-900">내 결과 보기 ↗</Link>
               </div>
             ) : !currentTarget ? (
               <EmptyState title="채점할 대상을 왼쪽에서 고르세요." description="내 발표와 이미 채점한 발표는 고를 수 없습니다." />
             ) : rubric.length === 0 ? (
               <EmptyState title={`평가표 ${version}을 찾지 못했습니다.`} description="운영진에게 평가표 설정을 확인해 달라고 알려 주세요." />
             ) : (
-              <>
-                <div className="rounded-lg border border-teal-200 bg-teal-50/50 px-4 py-3">
-                  <p className="text-xs font-bold text-teal-700">지금 채점하는 발표</p>
-                  <p className="text-xl font-extrabold text-teal-900">{isTeamTarget(currentTarget) ? `${currentTarget.team_id}팀 (${currentTarget.members.join(', ')})` : `${currentTarget.members[0]} 님`}</p>
+              <div className="space-y-14">
+                <div className="border-b-[3px] border-rose-600 pb-6 text-center">
+                  <p className="text-[11px] font-black uppercase tracking-[0.25em] text-rose-500">Now Scoring</p>
+                  <p className="mt-2 break-keep text-3xl font-black tracking-tight text-slate-900 sm:text-4xl">{isTeamTarget(currentTarget) ? `${currentTarget.team_id}팀 (${currentTarget.members.join(', ')})` : `${currentTarget.members[0]} 님`}</p>
+                  <div className="mx-auto mt-5 h-1.5 max-w-xs overflow-hidden rounded-full bg-rose-100" role="progressbar" aria-valuemin={0} aria-valuemax={itemCount} aria-valuenow={scoredCount} aria-label="평가한 항목">
+                    <div className="h-full rounded-full bg-gradient-to-r from-rose-500 to-amber-400 transition-all" style={{ width: `${itemCount ? (scoredCount / itemCount) * 100 : 0}%` }} />
+                  </div>
+                  <p className="mt-2 text-xs font-bold text-slate-400">{scoredCount} / {itemCount}개 항목 평가</p>
                 </div>
                 {rubric.map((category, index) => (
-                  <CategoryCard key={category.id || index} category={category} total={categoryTotal(category)} theme={themeOf(category.color)}>
+                  <CategorySection key={category.id || index} category={category} total={categoryTotal(category)} theme={themeOf(category.color)}>
                     {category.items.map((item) => (
                       <EvaluationItem key={item.id} item={item} value={scores[item.id]} onChange={(value) => setScores((prev) => ({ ...prev, [item.id]: Number(value) }))} theme={themeOf(category.color)} />
                     ))}
-                  </CategoryCard>
+                  </CategorySection>
                 ))}
-                <div className="rounded-lg border border-slate-200 bg-white p-5 text-center">
-                  <p className="text-sm font-semibold text-slate-500">총점 · {scoredCount}/{itemCount}개 항목 평가</p>
-                  <p className="mt-1 text-4xl font-extrabold text-teal-800">{grandTotal}<span className="ml-2 text-xl text-slate-400">/ {maxPossible}</span></p>
-                  <Button variant="primary" size="lg" className="mt-4 w-full max-w-sm" loading={submitting} onClick={submit}>채점 제출</Button>
+                <div className="border-y-2 border-rose-600 py-12 text-center">
+                  <p className="text-[11px] font-black uppercase tracking-[0.25em] text-rose-500">Total Score</p>
+                  <p className="mt-3 text-6xl font-black tracking-tight text-slate-900 sm:text-7xl">{grandTotal}<span className="ml-3 text-2xl text-slate-300 sm:text-3xl">/ {maxPossible}</span></p>
+                  <Button variant="primary" size="lg" className="mt-8 w-full max-w-sm" loading={submitting} onClick={submit}>채점 제출</Button>
                 </div>
-              </>
+              </div>
             )}
           </div>
 
           {!allEvaluated && currentTarget && (
-            <aside className="rounded-lg border border-slate-200 bg-white p-4 lg:col-span-2 xl:sticky xl:top-24 xl:col-span-1">
-              <div className="flex items-end justify-between gap-2 border-b border-slate-200 pb-2">
-                <h2 className="text-base font-bold text-slate-900">{isSameGroup ? '정성 피드백' : '메모'}</h2>
-                <span className="text-xs text-slate-500">{isSameGroup ? <><span className="text-amber-500" aria-hidden="true">★</span> 같은 조 발표</> : '다른 조 발표'}</span>
+            <aside className="min-w-0 lg:col-span-2 xl:sticky xl:top-24 xl:col-span-1">
+              <div className="flex items-end justify-between gap-2 border-b-2 border-rose-600 pb-3">
+                <h2 className="break-keep text-lg font-black text-slate-900">{isSameGroup ? '정성 피드백' : '메모'}</h2>
+                <span className={`text-[11px] font-black uppercase tracking-widest ${isSameGroup ? 'text-amber-600' : 'text-slate-400'}`}>{isSameGroup ? '★ 같은 조' : '다른 조'}</span>
               </div>
-              {isSameGroup ? (
-                <div className="mt-4 space-y-5">
-                  <label className="block">
-                    <span className="mb-1 block text-xs font-bold text-slate-600">핵심 메시지</span>
-                    <input value={feedback.originalMessage} onChange={(event) => setFeedback((prev) => ({ ...prev, originalMessage: event.target.value }))} className="w-full border-b-2 border-slate-300 bg-transparent py-2 text-sm font-semibold outline-none focus:border-teal-700" placeholder="발표의 핵심 메시지" />
-                  </label>
-                  <FeedbackSection title="Insight" subtitle="독창성" plus={feedback.insightPlus} minus={feedback.insightMinus} onPlus={(value) => setFeedback((prev) => ({ ...prev, insightPlus: value }))} onMinus={(value) => setFeedback((prev) => ({ ...prev, insightMinus: value }))} />
-                  <FeedbackSection title="Graphic" subtitle="가독성" plus={feedback.graphicPlus} minus={feedback.graphicMinus} onPlus={(value) => setFeedback((prev) => ({ ...prev, graphicPlus: value }))} onMinus={(value) => setFeedback((prev) => ({ ...prev, graphicMinus: value }))} />
-                  <FeedbackSection title="Delivery" subtitle="전달력" plus={feedback.deliveryPlus} minus={feedback.deliveryMinus} onPlus={(value) => setFeedback((prev) => ({ ...prev, deliveryPlus: value }))} onMinus={(value) => setFeedback((prev) => ({ ...prev, deliveryMinus: value }))} />
-                </div>
-              ) : (
-                <textarea aria-label="메모" value={feedback.memo} onChange={(event) => setFeedback((prev) => ({ ...prev, memo: event.target.value }))} className="mt-4 min-h-72 w-full resize-y rounded-md border border-slate-200 p-3 text-sm leading-6 outline-none focus:border-teal-600" placeholder="자유롭게 메모하세요." />
-              )}
+              <div className="mt-6">
+                {isSameGroup ? (
+                  <FeedbackFields value={feedback} onChange={(key, text) => setFeedback((prev) => ({ ...prev, [key]: text }))} />
+                ) : (
+                  <textarea aria-label="메모" value={feedback.memo} onChange={(event) => setFeedback((prev) => ({ ...prev, memo: event.target.value }))} className="min-h-80 w-full resize-y border-b-2 border-rose-200 bg-transparent py-1 text-sm leading-7 text-slate-800 outline-none transition placeholder:text-slate-300 focus:border-rose-500" placeholder="자유롭게 메모하세요." />
+                )}
+              </div>
             </aside>
           )}
         </div>
@@ -332,54 +301,49 @@ export default function ScorePage() {
   )
 }
 
-function CategoryCard({ category, total, theme, children }) {
+function CategorySection({ category, total, theme, children }) {
   return (
-    <section className="rounded-lg border border-slate-200 bg-white p-4 sm:p-5">
-      <div className={`flex items-end justify-between gap-3 border-b pb-3 ${theme.border}`}>
-        <h2 className={`flex items-center gap-2 text-xl font-extrabold ${theme.text}`}>{category.icon && <span aria-hidden="true">{category.icon}</span>}{category.title}</h2>
-        <p className="text-sm font-semibold text-slate-500"><span className={`text-xl font-extrabold ${theme.text}`}>{total}</span> / {categoryMax(category)}</p>
+    <section>
+      <div className={`flex items-end justify-between gap-3 border-b-2 pb-3 ${theme.border}`}>
+        <h2 className={`flex items-center gap-2 text-2xl font-black tracking-tight sm:text-3xl ${theme.text}`}>{category.icon && <span aria-hidden="true">{category.icon}</span>}{category.title}</h2>
+        <p className="text-xs font-black uppercase tracking-widest text-slate-400">Score <span className={`ml-1 text-2xl ${theme.text}`}>{total}</span><span className="text-sm">/{categoryMax(category)}</span></p>
       </div>
-      <div className="mt-5 space-y-8">{children}</div>
+      <div className="mt-8 space-y-12">{children}</div>
     </section>
   )
 }
 
+// 기준 문장을 눌러도 그 점수를 고른다. 아래 숫자는 기준 사이 점수까지 고를 수 있다
 function EvaluationItem({ item, value, onChange, theme }) {
   const max = itemMax(item)
   const min = Math.min(...item.criteria.map((criterion) => criterion.s), 0)
   const points = []
   for (let point = max; point >= min; point--) points.push(point)
+  const empty = value === null || value === undefined
   return (
     <div>
       <div className="flex items-end justify-between gap-3">
-        <h3 className="text-base font-bold text-slate-900">{item.label}</h3>
-        <span className={`rounded px-2 py-0.5 text-sm font-bold ${theme.text} ${theme.lightBg}`}>{value === null || value === undefined ? '미평가' : `${value}점`}</span>
+        <h3 className="text-lg font-extrabold tracking-tight text-slate-900">{item.label}</h3>
+        <span className={`text-sm font-black ${empty ? 'text-slate-300' : theme.text}`}>{empty ? '— pt' : `${value} pt`}</span>
       </div>
-      <table className="mt-2 w-full text-left">
-        <tbody>
-          {[...item.criteria].sort((a, b) => b.s - a.s).map((criterion, index) => (
-            <tr key={index} className="border-b border-slate-100 last:border-0">
-              <td className={`break-keep py-2 pr-4 text-sm leading-6 ${value === criterion.s ? `${theme.text} font-bold` : 'text-slate-600'}`}>{criterion.t}</td>
-              <td className={`w-10 py-2 text-right text-sm font-bold ${value === criterion.s ? theme.text : 'text-slate-400'}`}>{criterion.s}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      <div className="mt-2 flex flex-wrap gap-1.5" role="group" aria-label={`${item.label} 점수`}>
+      <ul className="mt-3 space-y-0.5">
+        {[...item.criteria].sort((a, b) => b.s - a.s).map((criterion, index) => {
+          const selected = value === criterion.s
+          return (
+            <li key={index}>
+              <button type="button" onClick={() => onChange(criterion.s)} className={`flex w-full items-start gap-4 rounded-md px-2 py-2 text-left transition ${selected ? theme.lightBg : 'hover:bg-slate-50'}`}>
+                <span className={`min-w-0 flex-1 break-keep text-[13px] leading-6 ${selected ? `${theme.text} font-extrabold` : 'text-slate-600'}`}>{criterion.t}</span>
+                <span className={`w-8 shrink-0 pt-0.5 text-right text-xs font-black ${selected ? theme.text : 'text-slate-300'}`}>{criterion.s}</span>
+              </button>
+            </li>
+          )
+        })}
+      </ul>
+      <div className="mt-3 flex flex-wrap gap-1" role="group" aria-label={`${item.label} 점수`}>
         {points.map((point) => (
-          <button key={point} type="button" aria-pressed={value === point} onClick={() => onChange(point)} className={`min-h-10 min-w-10 flex-1 rounded-md border text-base font-bold ${value === point ? `${theme.border} ${theme.lightBg} ${theme.text}` : 'border-slate-200 text-slate-500 hover:border-slate-400'}`}>{point}</button>
+          <button key={point} type="button" aria-pressed={value === point} onClick={() => onChange(point)} className={`min-h-10 min-w-9 flex-1 border-b-[3px] pb-1 text-lg transition ${value === point ? `${theme.border} ${theme.text} font-black` : 'border-transparent font-bold text-slate-300 hover:border-slate-200 hover:text-slate-600'}`}>{point}</button>
         ))}
       </div>
     </div>
-  )
-}
-
-function FeedbackSection({ title, subtitle, plus, minus, onPlus, onMinus }) {
-  return (
-    <fieldset className="space-y-2">
-      <legend className="text-sm font-bold text-slate-800">{title} <span className="text-xs font-semibold text-slate-500">{subtitle}</span></legend>
-      <textarea aria-label={`${title} 장점`} value={plus} onChange={(event) => onPlus(event.target.value)} className="min-h-14 w-full resize-y rounded-md border border-emerald-200 p-2 text-sm outline-none focus:border-emerald-600" placeholder="(+) 장점" />
-      <textarea aria-label={`${title} 개선점`} value={minus} onChange={(event) => onMinus(event.target.value)} className="min-h-14 w-full resize-y rounded-md border border-red-200 p-2 text-sm outline-none focus:border-red-600" placeholder="(-) 개선점" />
-    </fieldset>
   )
 }

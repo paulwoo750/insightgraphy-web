@@ -140,7 +140,7 @@ export default function HomeHub() {
           <p className="text-sm font-bold text-teal-700">{semester.name} · {week}주차</p>
           <h1 className="text-2xl font-extrabold tracking-tight text-slate-950 sm:text-3xl">{name}님, 반가워요</h1>
         </div>
-        {records?.nameFallback && <StatusBadge tone="amber">학회원 명단과 연결되지 않은 계정</StatusBadge>}
+        {(records?.nameFallback || identity.member?.status === 'alumni') && <StatusBadge tone="violet">🎓 졸업생 계정</StatusBadge>}
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.4fr)_minmax(320px,0.9fr)]">

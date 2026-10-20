@@ -16,11 +16,12 @@
 --   exempt     invited users (auth.users.invited_at set: dashboard "Invite user", or
 --              auth.admin.inviteUserByEmail with the service role). Dashboard "Add user" without an
 --              invite is refused like any other sign-up.
---   the code   Never in this file or the repository. The old code is public, so a new one is set
---              after running this step, in the SQL Editor only:
---                select ig_private.set_signup_code('새 학회 코드');
---              At least 8 characters. Until it is set every sign-up is refused. Run it again to
---              change the code.
+--   the code   Set after running this step, in the SQL Editor only (only its hash is stored):
+--                select ig_private.set_signup_code('학회 코드');
+--              At least 4 characters, compared exactly (case and inner spaces count). The club
+--              keeps the existing code by choice; it is public, so it only filters casual sign-ups.
+--              New accounts still wait for admin approval (STEP 22). Until a code is set every
+--              sign-up is refused. Run it again to change the code.
 --
 -- Deploy the sign-up page that sends signup_code first, then run this step. Before that, the old
 -- page sends no code and every sign-up would be refused.
@@ -86,11 +87,8 @@ declare
   new_salt text := pg_catalog.gen_random_uuid()::text;
   code text := pg_catalog.btrim(coalesce(p_code, ''));
 begin
-  if pg_catalog.upper(code) like '%IG2012%' then
-    raise exception '이미 공개된 예전 코드(IG2012)가 들어 있습니다. 새 코드를 정하세요';
-  end if;
-  if pg_catalog.char_length(code) < 8 then
-    raise exception '가입 코드는 8자 이상이어야 합니다';
+  if pg_catalog.char_length(code) < 4 then
+    raise exception '가입 코드는 4자 이상이어야 합니다';
   end if;
 
   insert into ig_private.signup_code (id, code_hash, salt, updated_at)
@@ -100,7 +98,7 @@ begin
     salt = excluded.salt,
     updated_at = excluded.updated_at;
 
-  return '가입 코드를 저장했습니다. 운영진 안내로만 전달하세요';
+  return '가입 코드를 저장했습니다';
 end;
 $$;
 
@@ -328,7 +326,7 @@ from (
     exists (select 1 from ig_private.signup_code),
     case when exists (select 1 from ig_private.signup_code)
       then '코드를 바꾸려면 select ig_private.set_signup_code(''새 코드''); 를 다시 실행한다'
-      else '지금은 모든 가입이 거절된다. SQL Editor에서 select ig_private.set_signup_code(''새 학회 코드''); 를 실행한다 (8자 이상, 예전 코드 IG2012 불가, 저장소·채팅에 적지 않는다)'
+      else '지금은 모든 가입이 거절된다. SQL Editor에서 select ig_private.set_signup_code(''학회 코드''); 를 실행한다 (4자 이상, 대소문자 구분)'
     end
   union all
   select 7, 'other_auth_triggers',

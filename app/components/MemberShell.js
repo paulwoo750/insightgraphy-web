@@ -462,11 +462,11 @@ export function MemberHeader({ eyebrow, title, description, actions, children, e
   const pathname = usePathname() || ''
   const theme = memberThemeFor(pathname)
   return (
-    <header className={`relative mb-6 overflow-hidden rounded-2xl border bg-gradient-to-br px-5 py-5 sm:px-6 sm:py-6 ${theme.border} ${theme.hero}`}>
+    <header className={`relative mb-6 overflow-hidden rounded-2xl bg-gradient-to-br px-5 py-5 sm:px-6 sm:py-6 ${theme.hero}`}>
       <HeroDecoration theme={theme} />
       <div className="relative flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div className="flex min-w-0 gap-3 sm:gap-4">
-          <span className={`grid h-12 w-12 shrink-0 place-items-center rounded-2xl border bg-white/90 text-2xl shadow-sm sm:h-14 sm:w-14 sm:text-3xl ${theme.border}`} aria-hidden="true">{emoji || theme.emoji}</span>
+          <span className={`grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-white text-2xl shadow-sm sm:h-14 sm:w-14 sm:text-3xl`} aria-hidden="true">{emoji || theme.emoji}</span>
           <div className="min-w-0">
             {eyebrow && <p className={`mb-1 text-xs font-bold ${theme.accent}`}>{eyebrow}</p>}
             <h1 className="text-2xl font-extrabold tracking-tight text-slate-950 sm:text-3xl">{title}</h1>
