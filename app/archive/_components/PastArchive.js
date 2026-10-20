@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react'
 import { ExternalLink, Trash2 } from 'lucide-react'
 import ArchiveModal from './ArchiveModal'
 import FileThumbnail from '@/app/components/FileThumbnail'
-import { Button } from '@/app/components/ui'
+import { Button, IconButton } from '@/app/components/ui'
 import { formatKst, sortSemestersDesc } from '@/lib/semester'
 import {
   FILE_CATEGORIES,
@@ -134,7 +134,7 @@ export default function PastArchive({ currentCode, files, semesters, weekRows, a
 
       {nav.category && (
         categoryFiles.length === 0 ? <p className="rounded-lg border border-dashed border-slate-300 px-4 py-12 text-center text-sm text-slate-500">등록된 자료가 없습니다.</p> : (
-          <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          <ul className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
             {categoryFiles.map((file) => (
               <PastCard key={file.id} file={file} manage={canManage(file)} onDelete={() => onDeleteFile(file)} />
             ))}
@@ -212,15 +212,15 @@ function CategoryGroup({ label, categories, onSelect, weekday = false }) {
 
 function PastCard({ file, manage, onDelete }) {
   return (
-    <li className="min-w-0 rounded-lg border border-slate-200 bg-white p-3">
+    <li className="flex min-w-0 flex-col rounded-xl border border-slate-200 bg-white p-2 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
       <FileThumbnail url={file.file_url} storagePath={file.storage_path} title={file.file_name} />
       <div className="mt-2 min-w-0">
         <p className="truncate text-sm font-bold text-slate-900" title={file.file_name}>{file.file_name}</p>
         <p className="text-xs text-slate-500">{fileCategoryLabel(file.file_category, { short: true })} · {file.uploader || '제출자 미상'}{file.created_at ? ` · ${formatKst(file.created_at, { year: true })}` : ''}</p>
       </div>
-      <div className="mt-2 flex flex-wrap gap-1.5">
-        <Button size="sm" href={file.file_url} target="_blank" icon={ExternalLink}>원본 열기</Button>
-        {manage && <Button size="sm" variant="danger" icon={Trash2} onClick={onDelete}>삭제</Button>}
+      <div className="mt-2 flex items-center gap-1">
+        <Button size="sm" className="flex-1" href={file.file_url} target="_blank" icon={ExternalLink}>원본</Button>
+        {manage && <IconButton size="sm" icon={Trash2} label="삭제" onClick={onDelete} className="text-red-600 hover:bg-red-50" />}
       </div>
     </li>
   )

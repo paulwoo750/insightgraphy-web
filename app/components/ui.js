@@ -3,10 +3,11 @@
 import { createContext, useCallback, useContext, useEffect, useId, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { AlertCircle, AlertTriangle, CheckCircle2, CircleHelp, Info, Loader2, RefreshCw, X } from 'lucide-react'
+import { EmptyIllustration } from '@/app/components/Decor'
 
 // ---------------------------------------------------------------- 버튼
 const BUTTON_VARIANTS = {
-  primary: 'bg-teal-700 text-white hover:bg-teal-800 disabled:bg-teal-700/50',
+  primary: 'bg-gradient-to-r from-teal-600 to-emerald-600 text-white shadow-sm shadow-teal-700/20 hover:from-teal-700 hover:to-emerald-700 disabled:opacity-50',
   dark: 'bg-slate-900 text-white hover:bg-slate-800 disabled:bg-slate-400',
   secondary: 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 hover:text-slate-950 disabled:text-slate-400',
   danger: 'border border-red-200 bg-white text-red-700 hover:bg-red-50 disabled:text-red-300',
@@ -82,6 +83,12 @@ const BADGE_TONES = {
   blue: 'bg-blue-50 text-blue-700 ring-blue-200',
   gray: 'bg-slate-100 text-slate-600 ring-slate-200',
   dark: 'bg-slate-900 text-white ring-slate-900',
+  violet: 'bg-violet-50 text-violet-700 ring-violet-200',
+  rose: 'bg-rose-50 text-rose-700 ring-rose-200',
+  sky: 'bg-sky-50 text-sky-700 ring-sky-200',
+  indigo: 'bg-indigo-50 text-indigo-700 ring-indigo-200',
+  fuchsia: 'bg-fuchsia-50 text-fuchsia-700 ring-fuchsia-200',
+  gold: 'bg-gradient-to-r from-amber-300 to-yellow-200 text-amber-900 ring-amber-300',
 }
 
 export function StatusBadge({ tone = 'gray', children, className = '' }) {
@@ -103,8 +110,12 @@ export function LoadingState({ label = '불러오는 중입니다.', className =
 
 export function EmptyState({ title, description, action, icon: Icon }) {
   return (
-    <div className="px-5 py-12 text-center">
-      {Icon && <Icon className="mx-auto mb-3 h-7 w-7 text-slate-300" aria-hidden="true" />}
+    <div className="px-5 py-10 text-center">
+      {Icon ? (
+        <span className="mx-auto mb-3 grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-teal-50 to-violet-50 ring-1 ring-inset ring-slate-200">
+          <Icon className="h-6 w-6 text-teal-600" aria-hidden="true" />
+        </span>
+      ) : <EmptyIllustration className="mx-auto mb-2 h-20 w-28" />}
       <p className="text-sm font-bold text-slate-700">{title}</p>
       {description && <p className="mx-auto mt-1 max-w-md text-sm leading-6 text-slate-500">{description}</p>}
       {action && <div className="mt-4 flex justify-center">{action}</div>}

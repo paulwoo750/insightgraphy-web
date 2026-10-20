@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { ExternalLink, Link2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
-import { currentSemesterIdFilter, displayTopic, fetchCurrentSemester, formatKst, fromKstInput, groupDeadlines, memberGroup, nearestDeadlineWeek, submissionTopic } from '@/lib/semester'
+import { currentSemesterIdFilter, displayTopic, fetchCurrentSemester, formatKst, fromKstInput, groupDeadlines, memberGroup, submissionTopic } from '@/lib/semester'
 import { MemberHeader, MemberPage, useMember } from '@/app/components/MemberShell'
 import WeekOverviewCard from '@/app/components/WeekOverviewCard'
 import { Button, ErrorState, Field, inputClass, LoadingState, useAsyncAction, useToast } from '@/app/components/ui'
@@ -63,7 +63,7 @@ export default function SlideRoom() {
   const selection = useWeekSelection({
     ready: state.status === 'ready',
     totalWeeks: semester?.totalWeeks || 0,
-    defaultWeek: nearestDeadlineWeek(deadlineRows, 'slide'),
+    defaultWeek: semester?.currentWeek ?? 1,
     allowWeekday: semester?.type === 'vacation',
   })
   const week = selection.week ?? 0

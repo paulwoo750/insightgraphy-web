@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Trophy } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
-import { displayTopic, fetchCurrentSemester, weekFromParam } from '@/lib/semester'
+import { displayTopic, fetchCurrentSemester, presentationWeekFor, weekFromParam } from '@/lib/semester'
 import { MemberHeader, MemberPage, rememberWeekContext, useMember } from '@/app/components/MemberShell'
 import { Button, EmptyState, ErrorState, LoadingState, StatusBadge, useAsyncAction, useToast } from '@/app/components/ui'
 
@@ -74,9 +74,10 @@ export default function ScorePage() {
     async function load() {
       try {
         const current = await fetchCurrentSemester()
-        const { data: latest, error } = await supabase.from('presentations').select('week').eq('semester', current.code).order('created_at', { ascending: false }).limit(1)
+        // 기본 주차: 현재 주차에 발표가 있으면 그 주차, 없으면 그 전 가장 최근 발표 주차
+        const { data: weekRows, error } = await supabase.from('presentations').select('week').eq('semester', current.code)
         if (error) throw error
-        const fallback = latest?.[0]?.week ?? 1
+        const fallback = presentationWeekFor((weekRows || []).map((row) => row.week), current.currentWeek)
         const initial = weekFromParam(new URLSearchParams(window.location.search).get('week'), current.totalWeeks, fallback)
         if (!active) return
         setSemester(current)
@@ -234,7 +235,7 @@ export default function ScorePage() {
       {weekState.status === 'ready' && evalTargets.length > 0 && (
         <div className="mt-6 grid items-start gap-6 lg:grid-cols-[220px_minmax(0,1fr)] xl:grid-cols-[220px_minmax(0,1fr)_340px]">
           <aside className="rounded-lg border border-slate-200 bg-white p-3 lg:sticky lg:top-24">
-            <h2 className="px-1 text-sm font-bold text-slate-900">발표 순서</h2>
+            <h2 className="flex items-center justify-between px-1 text-sm font-bold text-slate-900">발표 순서<span className="text-xs font-semibold text-slate-500"><span className="text-amber-500" aria-hidden="true">★</span> 같은 조</span></h2>
             <ol className="mt-2 space-y-1">
               {evalTargets.map((target, index) => {
                 const voted = target.pids.some((pid) => votedPids.includes(pid))
@@ -257,10 +258,9 @@ export default function ScorePage() {
                     >
                       <span className="w-5 shrink-0 text-xs font-bold">{String(index + 1).padStart(2, '0')}</span>
                       <span className="min-w-0 flex-1 break-keep">
-                        <span className={voted ? 'line-through' : ''}>{shortName(target)}</span>
+                        <span className={voted ? 'line-through' : ''}>{shortName(target)}</span>{!isMe && target.group_id === myInfo.group_id && <span className="ml-1 text-amber-500" title="같은 조" aria-label="같은 조">★</span>}
                         <span className="mt-0.5 flex flex-wrap gap-1">
                           {isMe && <StatusBadge tone="blue">나</StatusBadge>}
-                          {!isMe && target.group_id === myInfo.group_id && <StatusBadge tone="teal">같은 조</StatusBadge>}
                           {voted && <StatusBadge tone="green">채점 완료</StatusBadge>}
                         </span>
                       </span>
@@ -309,7 +309,7 @@ export default function ScorePage() {
             <aside className="rounded-lg border border-slate-200 bg-white p-4 lg:col-span-2 xl:sticky xl:top-24 xl:col-span-1">
               <div className="flex items-end justify-between gap-2 border-b border-slate-200 pb-2">
                 <h2 className="text-base font-bold text-slate-900">{isSameGroup ? '정성 피드백' : '메모'}</h2>
-                <span className="text-xs text-slate-500">{isSameGroup ? '같은 조 발표' : '다른 조 발표'}</span>
+                <span className="text-xs text-slate-500">{isSameGroup ? <><span className="text-amber-500" aria-hidden="true">★</span> 같은 조 발표</> : '다른 조 발표'}</span>
               </div>
               {isSameGroup ? (
                 <div className="mt-4 space-y-5">

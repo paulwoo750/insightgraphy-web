@@ -87,8 +87,8 @@ export default function VoteSetup() {
       const current = await fetchCurrentSemester()
       const { data: versionRows } = await supabase.from('pr_vote_criteria').select('version')
       if (versionRows?.length) setVersions(versionRows.map((row) => row.version))
-      const { data: latest } = await supabase.from('presentations').select('week').eq('semester', current.code).order('created_at', { ascending: false }).limit(1)
-      const startWeek = latest?.[0]?.week ?? current.currentWeek
+      // 발표 편성은 다가오는 세션(날짜 기준 현재 주차)부터 연다
+      const startWeek = current.currentWeek
       setSemester(current)
       setWeek(startWeek)
       await loadWeek(current, startWeek)

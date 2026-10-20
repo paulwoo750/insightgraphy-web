@@ -151,7 +151,7 @@ export default function AdminMembersPage() {
   const activeCount = members.filter((member) => member.status === 'active').length
   const alumniCount = members.filter((member) => member.status === 'alumni').length
   const pendingCount = members.filter((member) => member.status === 'pending').length
-  const canDeleteMembers = ['super_admin', 'admin', 'operator'].includes(admin?.role)
+  const canDeleteMembers = ['developer', 'super_admin', 'admin', 'operator'].includes(admin?.role)
 
   const filteredMembers = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase('ko-KR')

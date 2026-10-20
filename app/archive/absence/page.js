@@ -61,10 +61,8 @@ export default function AbsencePage() {
           if (row.category === 'absence') regular[row.week] = row.deadline_time
           else weekday[row.week] = row.deadline_time
         })
-        // 기본 주차: 아직 지나지 않은 정규 사유서 마감 중 가장 빠른 주차, 모두 지났으면 마지막 주차
-        const regularRows = (dlData || []).filter((row) => row.category === 'absence' && row.deadline_time)
-        const upcoming = regularRows.find((row) => new Date(row.deadline_time).getTime() > Date.now())
-        const targetWeek = upcoming ? upcoming.week : regularRows.length ? regularRows[regularRows.length - 1].week : 1
+        // 기본 주차: 실제 세션 날짜 기준 현재 주차
+        const targetWeek = current.currentWeek || 1
         await fetchAbsences(current)
         if (!active) return
         setSemester(current)

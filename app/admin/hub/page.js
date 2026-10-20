@@ -8,6 +8,7 @@ import {
   ArrowRight,
   CalendarCheck2,
   CalendarDays,
+  CalendarClock,
   CheckCircle2,
   ClipboardCheck,
   FolderKanban,
@@ -16,24 +17,25 @@ import {
   UsersRound,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
-import { fetchCurrentSemester, formatKstDate, kstDateString } from '@/lib/semester'
+import { fetchCurrentSemester, formatKst, formatKstDate, kstDateString } from '@/lib/semester'
 import { fetchSemesterSchedules, scheduleTimeLabel } from '@/lib/schedules'
 import { useAdminContext } from '@/app/admin/_components/AdminShell'
 import { AdminPage, Button, EmptyState, ErrorState, LoadingState, Metric, PageHeader, Panel, ReadOnlyBanner, StatusBadge } from '@/app/admin/_components/AdminUI'
 
 const moduleLinks = [
-  { href: '/admin/hub/semesters', label: '학기 및 주차', description: '현재 학기, 주차 주제와 진행 상태', icon: CalendarDays },
-  { href: '/admin/hub/members', label: '학회원', description: '인물 정보와 학기별 참여 및 직책', icon: UsersRound },
-  { href: '/admin/hub/dashboard', label: '세션 및 제출', description: '주차별 주제·출석·마감·편성·제출물', icon: FolderKanban },
-  { href: '/admin/hub/archive', label: '아카이브', description: '공용 자료와 과거 학기 자료', icon: Archive },
-  { href: '/admin/hub/absence', label: '사유서', description: '사유서 검토와 승인 처리', icon: ClipboardCheck },
-  { href: '/admin/hub/attendance', label: '출결 대시보드', description: '개인별 출결, 위험 기준과 벌금 현황', icon: CalendarCheck2 },
+  { href: '/admin/hub/semesters', label: '학기 및 주차', description: '현재 학기, 주차 주제와 진행 상태', icon: CalendarDays, tile: 'bg-teal-100 text-teal-700' },
+  { href: '/admin/hub/members', label: '학회원', description: '인물 정보와 학기별 참여 및 직책', icon: UsersRound, tile: 'bg-sky-100 text-sky-700' },
+  { href: '/admin/hub/dashboard', label: '세션 및 제출', description: '주차별 주제·출석·마감·편성·제출물', icon: FolderKanban, tile: 'bg-violet-100 text-violet-700' },
+  { href: '/admin/hub/archive', label: '아카이브', description: '공용 자료와 과거 학기 자료', icon: Archive, tile: 'bg-indigo-100 text-indigo-700' },
+  { href: '/admin/hub/absence', label: '사유서', description: '사유서 검토와 승인 처리', icon: ClipboardCheck, tile: 'bg-amber-100 text-amber-700' },
+  { href: '/admin/hub/attendance', label: '출결 대시보드', description: '개인별 출결, 위험 기준과 벌금 현황', icon: CalendarCheck2, tile: 'bg-emerald-100 text-emerald-700' },
 ]
 
 export default function AdminHubPage() {
   const { semester, role } = useAdminContext() || {}
   const [state, setState] = useState({ status: 'loading', error: '' })
-  const [summary, setSummary] = useState({ members: 0, participants: 0, upcomingEvents: [], issues: null, issuesError: '', legacy: null })
+  const [summary, setSummary] = useState({ members: 0, participants: 0, upcomingEvents: [], issues: null, issuesError: '', legacy: null, week: null })
+  const isDeveloper = role === 'developer'
   const [reloadKey, setReloadKey] = useState(0)
 
   useEffect(() => {
@@ -65,6 +67,7 @@ export default function AdminHubPage() {
         issues: issueResult.error ? null : issueResult.count || 0,
         issuesError: issueResult.error?.message || '',
         legacy: current.legacy,
+        week: current.id ? { current: current.currentWeek, stored: current.storedCurrentWeek, source: current.currentWeekSource, date: current.currentWeekDate, total: current.totalWeeks } : null,
       })
       setState({ status: 'ready', error: '' })
     }
@@ -78,14 +81,15 @@ export default function AdminHubPage() {
   const tasks = useMemo(() => {
     const items = []
     if (!semester) items.push({ tone: 'red', title: '활성 학기를 지정해야 합니다.', href: '/admin/hub/semesters', action: '학기 설정' })
-    if (semester && !semester.current_week_no) items.push({ tone: 'amber', title: '현재 주차가 지정되지 않았습니다.', href: '/admin/hub/semesters', action: '주차 지정' })
+    if (summary.week && summary.week.source === 'schedule' && summary.week.stored !== summary.week.current) items.push({ tone: 'amber', title: `저장된 현재 주차(W${summary.week.stored})가 날짜 기준 현재 주차(W${summary.week.current})와 다릅니다.`, description: '화면 표시는 이미 날짜 기준입니다. 학기 및 주차에서 맞추면 주차 진행 상태(완료·현재·예정)도 함께 맞춰집니다.', href: '/admin/hub/semesters', action: '맞추기' })
+    if (summary.week && summary.week.source !== 'schedule') items.push({ tone: 'amber', title: '세션 날짜가 없어 저장된 현재 주차를 씁니다.', description: '전체 일정에 정규 세션 주차를 넣거나 출석 시간을 저장하면 실제 날짜로 현재 주차를 계산합니다.', href: '/admin/hub/schedule', action: '일정 입력' })
     if (semester && state.status === 'ready' && summary.participants === 0) items.push({ tone: 'amber', title: '현재 학기에 참여 학회원이 없습니다.', href: '/admin/hub/members', action: '명단 편성' })
     if (summary.legacy?.codeMismatch) items.push({ tone: 'amber', title: `예전 설정의 현재 학기(${summary.legacy.legacyCode})가 운영 학기와 다릅니다.`, href: '/admin/hub/semesters', action: '확인' })
     const topicIssues = (summary.legacy?.topicConflicts?.length || 0) + (summary.legacy?.topicsMissing?.length || 0)
     if (topicIssues > 0) items.push({ tone: 'amber', title: `주차 주제 ${topicIssues}칸이 예전 설정값과 다릅니다.`, href: '/admin/hub/semesters', action: '주제 확인' })
-    if (summary.issues > 0) items.push({ tone: 'amber', title: `연결 확인이 필요한 기존 기록이 ${summary.issues}건 있습니다.`, description: '실패한 작업이 아니라, 학회원과 연결되지 않은 예전 출결·벌금·제출 등의 기록입니다.', href: '/admin/hub/records', action: '목록 보기' })
+    if (isDeveloper && summary.issues > 0) items.push({ tone: 'amber', title: `연결 확인이 필요한 기존 기록이 ${summary.issues}건 있습니다.`, description: '실패한 작업이 아니라, 학회원과 연결되지 않은 예전 출결·벌금·제출 등의 기록입니다.', href: '/admin/hub/records', action: '목록 보기' })
     return items
-  }, [semester, summary, state.status])
+  }, [semester, summary, state.status, isDeveloper])
 
   return (
     <AdminPage>
@@ -102,16 +106,28 @@ export default function AdminHubPage() {
       ) : (
         <>
           <div className="mb-5 grid grid-cols-2 gap-3 xl:grid-cols-4">
-            <Metric label="활성 학회원" value={state.status === 'loading' ? '-' : `${summary.members}명`} note="활동 중인 학회원" />
-            <Metric label="이번 학기 참여" value={state.status === 'loading' ? '-' : `${summary.participants}명`} note={semester?.name || '활성 학기 없음'} tone="teal" />
-            <Metric label="다가오는 일정" value={state.status === 'loading' ? '-' : `${summary.upcomingEvents.length}건`} note="오늘 이후 5건까지 · 내부 일정 포함" tone="blue" />
-            <Metric
-              label="연결 확인이 필요한 기존 기록"
-              value={state.status === 'loading' ? '-' : summary.issues == null ? '확인 불가' : `${summary.issues}건`}
-              note={summary.issuesError ? '열람 권한이 없거나 조회에 실패했습니다.' : '학회원과 연결되지 않은 예전 기록 (실패한 SQL 아님)'}
-              tone={summary.issues ? 'amber' : 'green'}
-              href="/admin/hub/records"
-            />
+            <Metric label="👥 활성 학회원" value={state.status === 'loading' ? '-' : `${summary.members}명`} note="활동 중인 학회원" tone="sky" icon={UsersRound} />
+            <Metric label="🎓 이번 학기 참여" value={state.status === 'loading' ? '-' : `${summary.participants}명`} note={semester?.name || '활성 학기 없음'} tone="teal" icon={CheckCircle2} />
+            <Metric label="📅 다가오는 일정" value={state.status === 'loading' ? '-' : `${summary.upcomingEvents.length}건`} note="오늘 이후 5건까지 · 내부 일정 포함" tone="blue" icon={CalendarDays} />
+            {isDeveloper ? (
+              <Metric
+                label="🔗 연결 확인이 필요한 기존 기록"
+                value={state.status === 'loading' ? '-' : summary.issues == null ? '확인 불가' : `${summary.issues}건`}
+                note={summary.issuesError ? '열람 권한이 없거나 조회에 실패했습니다.' : '학회원과 연결되지 않은 예전 기록 (개발자 전용)'}
+                tone={summary.issues ? 'amber' : 'green'}
+                icon={Link2}
+                href="/admin/hub/records"
+              />
+            ) : (
+              <Metric
+                label="📍 현재 주차"
+                value={state.status === 'loading' || !summary.week ? '-' : `W${summary.week.current}`}
+                note={summary.week?.date ? `다음 세션 ${formatKst(`${summary.week.date}T00:00:00+09:00`, { time: false })} · 날짜 기준` : '세션 날짜가 없어 저장된 주차'}
+                tone="violet"
+                icon={CalendarClock}
+                href="/admin/hub/dashboard"
+              />
+            )}
           </div>
 
           <div className="grid gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,.65fr)]">
@@ -143,11 +159,11 @@ export default function AdminHubPage() {
 
               <Panel title="관리 영역">
                 <div className="divide-y divide-slate-100">
-                  {[...moduleLinks, { href: '/admin/hub/records', label: '기록 연결 검토', description: '학회원과 연결되지 않은 기존 기록 확인', icon: Link2 }].map((module) => {
+                  {[...moduleLinks, ...(isDeveloper ? [{ href: '/admin/hub/records', label: '기록 연결 검토', description: '학회원과 연결되지 않은 기존 기록 확인 (개발자)', icon: Link2, tile: 'bg-slate-900 text-white' }] : [])].map((module) => {
                     const Icon = module.icon
                     return (
                       <Link key={module.href} href={module.href} className="grid min-h-[72px] grid-cols-[36px_minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 hover:bg-slate-50 sm:px-5">
-                        <div className="grid h-9 w-9 place-items-center rounded-md border border-slate-200 bg-slate-50 text-slate-600">
+                        <div className={`grid h-9 w-9 place-items-center rounded-lg ${module.tile || 'bg-slate-100 text-slate-600'}`}>
                           <Icon className="h-[18px] w-[18px]" aria-hidden="true" />
                         </div>
                         <div className="min-w-0">

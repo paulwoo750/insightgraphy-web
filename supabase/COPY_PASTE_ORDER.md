@@ -291,6 +291,30 @@ Get-Content -Raw -Encoding UTF8 .\supabase\STEP_18_SITE_CONTENT_SUMMARY_AND_LAND
 - 확인 1: 알럼나이 인터뷰 목록. `id`가 실행 전과 같고 `summary_line`은 비어 있어야 한다.
 - 확인 2: `alumni_summary_columns_ready`·`landing_schedule_mode_ready`가 `true`, `current_landing_mode`가 `auto`인지 확인한다.
 
+## 18B. 학회장·개발자 역할 분리 (2026-10-20 적용 완료)
+
+처음에는 STEP 20이라는 이름으로 전달했다. 같은 날 다른 작업의 STEP 19~23과 번호가 겹쳐 파일 이름만 바꿨고, 이미 실행했다면 다시 실행할 필요가 없다. STEP 19~23과 겹치는 함수는 없다.
+
+- 새 역할 `developer`(개발자)를 추가한다. 개발자는 모든 관리자 검사를 통과하고, 기존 기록 연결 검토(STEP 17 함수)는 개발자만 쓸 수 있다. 개발자 역할은 개발자만 주고 바꿀 수 있다.
+- `super_admin`은 DB 값은 그대로 두고 앱에서 **학회장**으로 표시한다. 학회장은 관리자 권한 조회·변경을 한다(개발자 계정 제외).
+- 자기 계정의 역할·사용 여부는 스스로 바꿀 수 없고, 활성 학회장 또는 개발자가 최소 한 명은 남아야 한다.
+- `admin_list_access()`가 계정 종류를 함께 돌려준다: 학회원 명단 연결 · 🎓 졸업생(졸업생 명단과 연결, 졸업생으로 가입 요청, 또는 가입 이름이 졸업생 명단의 한 명과만 같음 — 이 경우도 연결하지는 않는다) · 명단 미연결.
+
+**STEP 16·17 다음에 실행한다.** 실행 전에 SQL 안의 `REPLACE_WITH_DEVELOPER_LOGIN_EMAIL`을 개발자 로그인 이메일로 바꾼다. 바꾸지 않으면 개발자 지정만 건너뛰고 나머지는 적용된다(이 경우 기록 연결 검토는 아무도 못 쓰므로, 이메일을 넣어 다시 실행한다). 다시 실행해도 안전하다.
+
+```powershell
+Get-Content -Raw -Encoding UTF8 .\supabase\STEP_18B_DEVELOPER_AND_PRESIDENT_ROLES.sql | Set-Clipboard
+```
+
+- 확인 1: 역할별 계정과 `account_kind`. 개발자 행이 맨 위에 보여야 한다.
+- 확인 2: 여섯 값이 모두 `true`인지 확인한다.
+  - `role_check_ready`
+  - `developer_passes_admin_ready`
+  - `records_developer_only_ready`
+  - `list_account_kind_ready`
+  - `developer_assigned` (이메일을 넣었을 때)
+  - `lead_account_ready`
+
 ## 참고: 공개 키로 읽을 수 있는 개인 기록 점검 (읽기 전용)
 
 점검 중 로그인하지 않은 공개 키(anon)로도 출결·벌금·사유서(사유·증빙 링크 포함) 행을 읽을 수 있는 것을 확인했다. 이번 작업에서는 정책을 바꾸지 않았다. 아래 조회로 현재 정책을 확인한 뒤, 막을지 여부를 결정한다. 막을 경우 학회원 화면(사유서 게시판의 공개 열람 등)에 영향이 있으므로 별도로 진행한다.

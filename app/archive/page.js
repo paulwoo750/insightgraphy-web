@@ -1,6 +1,6 @@
 'use client'
 import { useCallback, useEffect, useState, Suspense } from 'react'
-import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { ArrowLeft, Download, ExternalLink, FileText, FolderOpen, FolderPlus, Pencil, Plus, Trash2, X } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { CLUB_RULES } from '@/lib/clubRules'
@@ -9,7 +9,7 @@ import { FOLDER_PLACEHOLDER_TITLE, deleteSubmittedFile } from '@/lib/archive'
 import { canWrite } from '@/lib/permissions'
 import { MemberHeader, MemberPage, useMember } from '@/app/components/MemberShell'
 import FileThumbnail from '@/app/components/FileThumbnail'
-import { Button, EmptyState, ErrorState, Field, inputClass, LoadingState, SegmentedControl, Tabs, useAsyncAction, useToast } from '@/app/components/ui'
+import { Button, EmptyState, ErrorState, Field, IconButton, inputClass, LoadingState, SegmentedControl, useAsyncAction, useToast } from '@/app/components/ui'
 import PastArchive from './_components/PastArchive'
 import ArchiveModal from './_components/ArchiveModal'
 
@@ -38,12 +38,11 @@ export default function ArchivePage() {
 
 function ArchiveUserPage() {
   const router = useRouter()
-  const pathname = usePathname()
   const searchParams = useSearchParams()
   const identity = useMember()
   const toast = useToast()
   const [run, busy] = useAsyncAction()
-  // 탭은 URL(?tab=)이 단일 기준이라 상단 메뉴와 탭 버튼이 같은 상태를 본다
+  // 탭은 URL(?tab=)이 단일 기준이다. 탭 버튼은 공통 틀의 섹션 탭(아카이브 메뉴)이 그린다
   const tabParam = searchParams.get('tab')
   const activeTab = TABS.some((tab) => tab.key === tabParam) ? tabParam : 'past'
 
@@ -51,8 +50,6 @@ function ArchiveUserPage() {
   const [archive, setArchive] = useState(EMPTY_ARCHIVE)
   const [editResource, setEditResource] = useState(null)
   const [creatingFolder, setCreatingFolder] = useState(false)
-  // 탭 버튼을 다시 누르면 그 탭의 첫 화면(학기 선택·폴더 목록)으로 돌아간다
-  const [tabResetKey, setTabResetKey] = useState(0)
 
   const loadArchive = useCallback(async () => {
     const current = await fetchCurrentSemester()
@@ -188,11 +185,6 @@ function ArchiveUserPage() {
     })
   }
 
-  const changeTab = (key) => {
-    setTabResetKey((value) => value + 1)
-    router.replace(`${pathname}?tab=${key}`, { scroll: false })
-  }
-
   if (identity.status !== 'ready' || state.status === 'loading') return <MemberPage><LoadingState label="아카이브를 여는 중입니다." /></MemberPage>
   if (state.status === 'error') return <MemberPage><ErrorState title="아카이브를 불러오지 못했습니다." description={state.error} onRetry={() => window.location.reload()} /></MemberPage>
 
@@ -203,15 +195,13 @@ function ArchiveUserPage() {
     <MemberPage>
       <MemberHeader
         eyebrow="아카이브"
-        title="학회 자료실"
+        title={TABS.find((tab) => tab.key === activeTab)?.label || '학회 자료실'}
         description="지난 학기 제출물, 교육·특별세션 자료, 양식과 회칙을 한곳에서 봅니다."
         actions={<Button href="/archive/absence" icon={FileText}>사유서 게시판</Button>}
       />
 
-      <Tabs tabs={TABS} value={activeTab} onChange={changeTab} label="자료실 종류" />
-
       {/* 탭 컴포넌트는 탭을 바꿀 때 언마운트되므로 하위 탐색·업로드 폼 상태가 자동으로 초기화된다 */}
-      <div key={tabResetKey} className="mt-6">
+      <div key={activeTab}>
         {activeTab === 'past' && (
           <PastArchive
             currentCode={archive.currentCode}
@@ -399,7 +389,7 @@ function ResourceSection({ title, desc, emptyText, rows, target, allowYoutube = 
       )}
 
       {rows.length === 0 ? <p className="rounded-lg border border-dashed border-slate-300 px-4 py-12 text-center text-sm text-slate-500">{emptyText}</p> : (
-        <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        <ul className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
           {rows.map((row) => (
             <ResourceCard key={row.id} row={row} manage={canManage(row)} onEdit={() => onEdit(row)} onDelete={() => onDelete(row)} />
           ))}
@@ -411,17 +401,17 @@ function ResourceSection({ title, desc, emptyText, rows, target, allowYoutube = 
 
 function ResourceCard({ row, manage, onEdit, onDelete }) {
   return (
-    <li className="min-w-0 rounded-lg border border-slate-200 bg-white p-3">
+    <li className="flex min-w-0 flex-col rounded-xl border border-slate-200 bg-white p-2 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
       <FileThumbnail url={row.file_url} title={row.title} />
       <div className="mt-2 min-w-0">
         <p className="truncate text-sm font-bold text-slate-900" title={row.title}>{row.title}</p>
         {row.description && <p className="line-clamp-2 text-xs leading-5 text-slate-500">{row.description}</p>}
         <p className="mt-0.5 text-xs text-slate-500">{row.uploader_name || '작성자 미상'}{row.created_at ? ` · ${formatKst(row.created_at, { year: true })}` : ''}</p>
       </div>
-      <div className="mt-2 flex flex-wrap gap-1.5">
-        <Button size="sm" href={row.file_url} target="_blank" icon={ExternalLink}>원본 열기</Button>
-        {manage && <Button size="sm" icon={Pencil} onClick={onEdit}>수정</Button>}
-        {manage && <Button size="sm" variant="danger" icon={Trash2} onClick={onDelete}>삭제</Button>}
+      <div className="mt-2 flex items-center gap-1">
+        <Button size="sm" className="flex-1" href={row.file_url} target="_blank" icon={ExternalLink}>원본</Button>
+        {manage && <IconButton size="sm" icon={Pencil} label="수정" onClick={onEdit} />}
+        {manage && <IconButton size="sm" icon={Trash2} label="삭제" onClick={onDelete} className="text-red-600 hover:bg-red-50" />}
       </div>
     </li>
   )

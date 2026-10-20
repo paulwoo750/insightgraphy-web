@@ -8,7 +8,7 @@ import { formatKst, groupSubmissionsByTeam, weekFromParam } from '@/lib/semester
 import { canWrite } from '@/lib/permissions'
 import { rememberWeekContext } from '@/app/components/MemberShell'
 import FileThumbnail from '@/app/components/FileThumbnail'
-import { Button, Field, inputClass, Modal, SegmentedControl, StatusBadge } from '@/app/components/ui'
+import { Button, Field, IconButton, inputClass, Modal, SegmentedControl, StatusBadge } from '@/app/components/ui'
 
 export function useWeekSelection({ ready, totalWeeks, defaultWeek, allowWeekday }) {
   const [selection, setSelection] = useState({ week: null, session: 'regular' })
@@ -84,24 +84,25 @@ export function SubmissionList({ files, weeklySetup, week, session, owner, admin
             <h3 id={`group-${section.key}`} className="text-base font-bold text-slate-900">{section.title}</h3>
             <span className="text-xs font-semibold text-slate-500">{section.list.length}건</span>
           </div>
-          <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          <ul className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
             {section.list.map((file) => {
               const mine = isOwnFile(file, owner)
               const manage = mine || adminCanManage
               return (
-                <li key={file.id} className="min-w-0 rounded-lg border border-slate-200 bg-white p-3">
-                  <FileThumbnail url={file.file_url} storagePath={file.storage_path} title={file.file_name} aspect={aspect} />
-                  <div className="mt-2 flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-bold text-slate-900" title={file.file_name}>{file.file_name}</p>
-                      <p className="text-xs text-slate-500">{file.uploader}{mine ? ' · 내 제출' : ''} · {formatKst(file.created_at)}</p>
+                <li key={file.id} className={`flex min-w-0 flex-col rounded-xl border bg-white p-2 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${mine ? 'border-violet-300 ring-2 ring-violet-100' : 'border-slate-200'}`}>
+                  <FileThumbnail url={file.file_url} storagePath={file.storage_path} title={file.file_name} aspect={aspect} width={480} />
+                  <div className="mt-1.5 min-w-0 flex-1 px-0.5">
+                    <p className="line-clamp-2 text-[13px] font-bold leading-5 text-slate-900" title={file.file_name}>{file.file_name}</p>
+                    <p className="mt-0.5 truncate text-xs text-slate-500">{file.uploader} · {formatKst(file.created_at, { weekday: false })}</p>
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {mine && <StatusBadge tone="violet">✨ 내 제출</StatusBadge>}
+                      {file.is_late && <StatusBadge tone="red">⏰ 지각</StatusBadge>}
                     </div>
-                    {file.is_late && <StatusBadge tone="red">지각</StatusBadge>}
                   </div>
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {onOpen ? <Button size="sm" variant="primary" onClick={() => onOpen(file)}>열기·피드백</Button> : <Button size="sm" href={file.file_url} target="_blank" icon={ExternalLink}>원본 열기</Button>}
-                    {manage && onEdit && <Button size="sm" icon={Pencil} onClick={() => onEdit(file)}>이름 수정</Button>}
-                    {manage && onDelete && <Button size="sm" variant="danger" icon={Trash2} onClick={() => onDelete(file)}>삭제</Button>}
+                  <div className="mt-2 flex items-center gap-1">
+                    {onOpen ? <Button size="sm" variant="primary" className="flex-1" onClick={() => onOpen(file)}>열기·피드백</Button> : <Button size="sm" className="flex-1" href={file.file_url} target="_blank" icon={ExternalLink}>원본</Button>}
+                    {manage && onEdit && <IconButton size="sm" variant="ghost" icon={Pencil} label="이름 수정" onClick={() => onEdit(file)} />}
+                    {manage && onDelete && <IconButton size="sm" variant="ghost" icon={Trash2} label="삭제" onClick={() => onDelete(file)} className="text-red-600 hover:bg-red-50" />}
                   </div>
                 </li>
               )

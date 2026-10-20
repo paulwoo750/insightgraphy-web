@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { ExternalLink, FileUp, Pencil, Send, Trash2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { deleteSubmittedFile } from '@/lib/archive'
-import { currentSemesterIdFilter, displayTopic, fetchCurrentSemester, formatKst, groupDeadlines, memberGroup, nearestDeadlineWeek, submissionTopic } from '@/lib/semester'
+import { currentSemesterIdFilter, displayTopic, fetchCurrentSemester, formatKst, groupDeadlines, memberGroup, submissionTopic } from '@/lib/semester'
 import { MemberHeader, MemberPage, useMember } from '@/app/components/MemberShell'
 import WeekOverviewCard from '@/app/components/WeekOverviewCard'
 import FileThumbnail from '@/app/components/FileThumbnail'
@@ -64,7 +64,7 @@ export default function ProposalRoom() {
   }, [identity.status, identity.session, router, fetchFiles])
 
   const deadlines = useMemo(() => groupDeadlines(deadlineRows), [deadlineRows])
-  const selection = useWeekSelection({ ready: state.status === 'ready', totalWeeks: semester?.totalWeeks || 0, defaultWeek: nearestDeadlineWeek(deadlineRows, 'proposal'), allowWeekday: false })
+  const selection = useWeekSelection({ ready: state.status === 'ready', totalWeeks: semester?.totalWeeks || 0, defaultWeek: semester?.currentWeek ?? 1, allowWeekday: false })
   const week = selection.week ?? 0
   const setup = semester?.weeklySetup?.[week] || {}
   const team = setup.evalMode === 'team' ? (setup.memberTeams || setup.members || {})[name] : null

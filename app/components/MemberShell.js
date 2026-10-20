@@ -4,14 +4,20 @@
 // - 오른쪽에 외부 홈페이지(공개 루트) 버튼과 별도의 로그아웃 버튼을 둔다.
 // - 자료실 메뉴는 마지막으로 본 주차·세션을 이어서 연다.
 // - 화면 안내(투어)는 계정·릴리스별로 한 번 자동으로 열리고, 도움말 버튼으로 다시 본다.
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
+// - 드롭다운 메뉴에 묶인 화면(자료실·아카이브·투표·결과)은 위쪽 섹션 탭으로 바로 오간다.
+import { createContext, Suspense, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
-import { usePathname, useRouter } from 'next/navigation'
-import { ChevronDown, CircleHelp, Globe2, LogOut, Menu, Settings2, X } from 'lucide-react'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import {
+  BookOpen, ChartLine, ChevronDown, CircleHelp, Clapperboard, FileStack, FileText, FolderOpen, Globe2, History, Home, Library, LogOut, Mail,
+  MapPin, Menu, MessageSquareText, Presentation, Scale, Settings2, Sparkles, Sprout, Trophy, UserRound, Vote, X,
+} from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useSiteUrls } from '@/lib/siteUrls'
-import { MEMBER_TOUR } from '@/lib/tours'
+import { MEMBER_TOUR, TOUR_AUTO_START } from '@/lib/tours'
+import { memberThemeFor, toneOf } from '@/lib/theme'
+import { HeroDecoration } from '@/app/components/Decor'
 import { ToastProvider } from '@/app/components/ui'
 import GuidedTour, { useTourState } from '@/app/components/GuidedTour'
 
@@ -60,42 +66,48 @@ function readWeekContext() {
 }
 
 const NAV = [
-  { label: '홈', href: '/home', match: (path) => path === '/home' },
+  { label: '홈', href: '/home', icon: Home, tone: 'teal', match: (path) => path === '/home' },
   {
     label: '주차별 자료실',
+    icon: FolderOpen,
+    tone: 'violet',
     match: (path) => path.startsWith('/dashboard'),
     weekAware: true,
     items: [
-      { label: '기획서 제출', href: '/dashboard/proposal', description: '이번 주 기획서와 조원 피드백' },
-      { label: '슬라이드 제출', href: '/dashboard/slide', description: '발표 슬라이드 링크 제출' },
-      { label: '발표영상', href: '/dashboard/video', description: '영상 등록과 정성·셀프 피드백' },
+      { label: '기획서 제출', href: '/dashboard/proposal', icon: FileText, description: '이번 주 기획서와 조원 피드백' },
+      { label: '슬라이드 제출', href: '/dashboard/slide', icon: Presentation, description: '발표 슬라이드 링크 제출' },
+      { label: '발표영상', href: '/dashboard/video', icon: Clapperboard, description: '영상 등록과 정성·셀프 피드백' },
     ],
   },
-  { label: '출석', href: '/attendance', match: (path) => path.startsWith('/attendance') },
-  { label: '사유서', href: '/archive/absence', match: (path) => path.startsWith('/archive/absence') },
+  { label: '출석', href: '/attendance', icon: MapPin, tone: 'emerald', match: (path) => path.startsWith('/attendance') },
+  { label: '사유서', href: '/archive/absence', icon: Mail, tone: 'amber', match: (path) => path.startsWith('/archive/absence') },
   {
     label: '아카이브',
+    icon: Library,
+    tone: 'indigo',
     match: (path) => path.startsWith('/archive') && !path.startsWith('/archive/absence'),
     items: [
-      { label: '과거 자료실', href: '/archive?tab=past', description: '지난 학기 주차별 제출 자료' },
-      { label: '교육자료실', href: '/archive?tab=edu', description: '교육 세션 자료' },
-      { label: '특별세션 자료실', href: '/archive?tab=special', description: '연합·기업 세션 자료' },
-      { label: '양식 자료실', href: '/archive?tab=template', description: '기획서·사유서 양식' },
-      { label: '회칙 열람실', href: '/archive?tab=rules', description: '학회 회칙' },
+      { label: '과거 자료실', href: '/archive?tab=past', icon: History, description: '지난 학기 주차별 제출 자료' },
+      { label: '교육자료실', href: '/archive?tab=edu', icon: BookOpen, description: '교육 세션 자료' },
+      { label: '특별세션 자료실', href: '/archive?tab=special', icon: Sparkles, description: '연합·기업 세션 자료' },
+      { label: '양식 자료실', href: '/archive?tab=template', icon: FileStack, description: '기획서·사유서 양식' },
+      { label: '회칙 열람실', href: '/archive?tab=rules', icon: Scale, description: '학회 회칙' },
     ],
   },
   {
     label: '투표·결과',
+    icon: Vote,
+    tone: 'rose',
     match: (path) => path.startsWith('/vote'),
     items: [
-      { label: '발표 채점', href: '/vote/score', description: '오늘 세션 발표 평가' },
-      { label: '임시저장 피드백', href: '/vote/feedback', description: '채점 중 남긴 정성 피드백' },
-      { label: '내 결과', href: '/vote/results/my', description: '주차별 점수와 분석' },
-      { label: '받은 피드백', href: '/vote/results/arxiv', description: '받은 정성·셀프 피드백 모아보기' },
-      { label: '베스트 프레젠터', href: '/vote/results/ranking', description: '주차별 랭킹' },
+      { label: '발표 채점', href: '/vote/score', icon: Vote, description: '오늘 세션 발표 평가' },
+      { label: '임시저장 피드백', href: '/vote/feedback', icon: MessageSquareText, description: '채점 중 남긴 정성 피드백' },
+      { label: '내 결과', href: '/vote/results/my', icon: ChartLine, description: '주차별 점수와 분석' },
+      { label: '받은 피드백', href: '/vote/results/arxiv', icon: Sprout, description: '받은 정성·셀프 피드백 모아보기' },
+      { label: '베스트 프레젠터', href: '/vote/results/ranking', icon: Trophy, description: '주차별 시상식' },
     ],
   },
-  { label: '마이페이지', href: '/mypage', match: (path) => path.startsWith('/mypage') },
+  { label: '마이페이지', href: '/mypage', icon: UserRound, tone: 'sky', match: (path) => path.startsWith('/mypage') },
 ]
 
 const PAGE_LABELS = { '/home': '홈' }
@@ -110,7 +122,7 @@ export default function MemberShell({ children }) {
   const [weekContext, setWeekContext] = useState(null)
   const navRef = useRef(null)
   const userId = identity.session?.user?.id || null
-  const tour = useTourState(MEMBER_TOUR, userId, { autoStart: pathname === '/home', ready: identity.status === 'ready' })
+  const tour = useTourState(MEMBER_TOUR, userId, { autoStart: TOUR_AUTO_START, ready: identity.status === 'ready' })
 
   useEffect(() => {
     let active = true
@@ -181,11 +193,14 @@ export default function MemberShell({ children }) {
   const displayName = identity.member?.name || identity.session?.user?.user_metadata?.name || '학회원'
   const externalTarget = site.crossHost ? '_blank' : undefined
 
+  const theme = memberThemeFor(pathname)
+
   return (
     <MemberContext.Provider value={contextValue}>
       <ToastProvider>
-        <div className="min-h-screen bg-white text-slate-900">
+        <div className="min-h-screen bg-gradient-to-b from-slate-50/60 via-white to-white text-slate-900">
           <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/95 backdrop-blur">
+            <div className={`h-1 bg-gradient-to-r ${theme.bar}`} aria-hidden="true" />
             <div ref={navRef} className="mx-auto flex h-16 w-full max-w-[1440px] items-center gap-3 px-4 sm:px-6 lg:px-8">
               <Link href="/home" onClick={closeAll} className="flex shrink-0 items-center gap-2">
                 <Image src="/logo.png" alt="" width={28} height={28} className="object-contain" />
@@ -195,30 +210,37 @@ export default function MemberShell({ children }) {
               <nav data-tour="member-nav" aria-label="학회원 메뉴" className="ml-2 hidden min-w-0 flex-1 items-center gap-0.5 xl:flex">
                 {NAV.map((group) => {
                   const active = group.match(pathname)
+                  const groupTone = toneOf(group.tone)
                   if (!group.items) {
                     return (
-                      <Link key={group.label} href={group.href} aria-current={active ? 'page' : undefined} onClick={closeAll} className={`relative flex h-10 items-center whitespace-nowrap rounded-md px-3 text-sm font-bold transition-colors ${active ? 'text-teal-800' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-950'}`}>
+                      <Link key={group.label} href={group.href} aria-current={active ? 'page' : undefined} onClick={closeAll} className={`relative flex h-10 items-center whitespace-nowrap rounded-md px-3 text-sm font-bold transition-colors ${active ? groupTone.accent : `text-slate-600 ${groupTone.hover}`}`}>
                         {group.label}
-                        {active && <span className="absolute inset-x-3 -bottom-[13px] h-[3px] bg-teal-700" aria-hidden="true" />}
+                        {active && <span className={`absolute inset-x-3 -bottom-[13px] h-[3px] rounded-full ${groupTone.dot}`} aria-hidden="true" />}
                       </Link>
                     )
                   }
                   const open = openMenu === group.label
                   return (
                     <div key={group.label} className="relative">
-                      <button type="button" aria-expanded={open} aria-haspopup="true" onClick={() => setOpenMenu(open ? null : group.label)} className={`flex h-10 items-center gap-1 whitespace-nowrap rounded-md px-3 text-sm font-bold transition-colors ${open ? 'bg-slate-100 text-slate-950' : active ? 'text-teal-800' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-950'}`}>
+                      <button type="button" aria-expanded={open} aria-haspopup="true" onClick={() => setOpenMenu(open ? null : group.label)} className={`flex h-10 items-center gap-1 whitespace-nowrap rounded-md px-3 text-sm font-bold transition-colors ${open ? 'bg-slate-100 text-slate-950' : active ? groupTone.accent : `text-slate-600 ${groupTone.hover}`}`}>
                         {group.label}
                         <ChevronDown className={`h-4 w-4 transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden="true" />
                       </button>
-                      {active && <span className="pointer-events-none absolute inset-x-3 -bottom-[13px] h-[3px] bg-teal-700" aria-hidden="true" />}
+                      {active && <span className={`pointer-events-none absolute inset-x-3 -bottom-[13px] h-[3px] rounded-full ${groupTone.dot}`} aria-hidden="true" />}
                       {open && (
-                        <div className="absolute left-0 top-full z-50 mt-2 w-72 rounded-md border border-slate-200 bg-white p-1.5 shadow-lg">
-                          {group.items.map((item) => (
-                            <Link key={item.href} href={itemHref(group, item)} onClick={closeAll} className="block rounded-md px-3 py-2.5 hover:bg-slate-50 focus-visible:bg-slate-50">
-                              <span className="block text-sm font-bold text-slate-900">{item.label}</span>
-                              <span className="block text-xs text-slate-500">{item.description}</span>
-                            </Link>
-                          ))}
+                        <div className="absolute left-0 top-full z-50 mt-2 w-80 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl">
+                          {group.items.map((item) => {
+                            const ItemIcon = item.icon
+                            return (
+                              <Link key={item.href} href={itemHref(group, item)} onClick={closeAll} className="flex items-start gap-3 rounded-lg px-3 py-2.5 hover:bg-slate-50 focus-visible:bg-slate-50">
+                                <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg ${groupTone.iconTile}`}><ItemIcon className="h-[18px] w-[18px]" aria-hidden="true" /></span>
+                                <span className="min-w-0">
+                                  <span className="block text-sm font-bold text-slate-900">{item.label}</span>
+                                  <span className="block text-xs text-slate-500">{item.description}</span>
+                                </span>
+                              </Link>
+                            )
+                          })}
                         </div>
                       )}
                     </div>
@@ -227,20 +249,22 @@ export default function MemberShell({ children }) {
               </nav>
 
               <div className="ml-auto flex items-center gap-2">
-                <a data-tour="member-external" href={site.publicUrl('/')} target={externalTarget} rel={externalTarget ? 'noopener noreferrer' : undefined} className="inline-flex h-9 items-center gap-1.5 whitespace-nowrap rounded-md border border-slate-300 bg-white px-3 text-sm font-bold text-slate-700 hover:bg-slate-50">
+                <a data-tour="member-external" href={site.publicUrl('/')} target={externalTarget} rel={externalTarget ? 'noopener noreferrer' : undefined} className="inline-flex h-9 items-center gap-1.5 whitespace-nowrap rounded-md border border-sky-200 bg-sky-50 px-3 text-sm font-bold text-sky-800 hover:bg-sky-100">
                   <Globe2 className="h-4 w-4" aria-hidden="true" />
                   <span className="hidden sm:inline">외부 홈페이지</span>
                 </a>
-                <button type="button" data-tour="member-help" onClick={tour.start} className="inline-grid h-9 w-9 place-items-center rounded-md border border-slate-300 bg-white text-slate-600 hover:bg-slate-50" aria-label="화면 안내 다시 보기" title="화면 안내 다시 보기">
+                <button type="button" data-tour="member-help" onClick={tour.start} className="inline-flex h-9 items-center gap-1.5 rounded-md border border-teal-200 bg-teal-50 px-2.5 text-sm font-bold text-teal-800 hover:bg-teal-100" aria-label="화면에서 도움말 보기" title="화면에서 도움말 보기">
                   <CircleHelp className="h-4 w-4" aria-hidden="true" />
+                  <span className="hidden 2xl:inline">도움말</span>
                 </button>
                 {identity.admin && (
-                  <Link href="/admin/hub" className="hidden h-9 items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 text-sm font-bold text-slate-700 hover:bg-slate-50 xl:inline-flex">
+                  <Link href="/admin/hub" className="hidden h-9 items-center gap-1.5 rounded-md border border-violet-200 bg-violet-50 px-3 text-sm font-bold text-violet-800 hover:bg-violet-100 xl:inline-flex">
                     <Settings2 className="h-4 w-4" aria-hidden="true" />관리자
                   </Link>
                 )}
                 <div className="hidden items-center gap-2 border-l border-slate-200 pl-3 xl:flex">
-                  <span className="max-w-[120px] truncate text-sm font-bold text-slate-800">{displayName}</span>
+                  <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-gradient-to-br from-teal-500 to-violet-500 text-xs font-bold text-white" aria-hidden="true">{String(displayName).slice(0, 1)}</span>
+                  <span className="max-w-[110px] truncate text-sm font-bold text-slate-800">{displayName}</span>
                   <button type="button" onClick={signOut} className="inline-flex h-9 items-center gap-1.5 whitespace-nowrap rounded-md px-2.5 text-sm font-bold text-slate-500 hover:bg-slate-100 hover:text-slate-900">
                     <LogOut className="h-4 w-4" aria-hidden="true" />로그아웃
                   </button>
@@ -252,29 +276,44 @@ export default function MemberShell({ children }) {
             </div>
 
             {mobileOpen && (
-              <nav data-tour="member-nav" aria-label="학회원 메뉴" className="max-h-[calc(100vh-64px)] overflow-y-auto border-t border-slate-200 bg-white px-4 pb-6 pt-2 sm:px-6 xl:hidden">
-                {NAV.map((group) => group.items ? (
-                  <div key={group.label} className="pt-3">
-                    <p className="px-2 pb-1 text-xs font-bold text-slate-500">{group.label}</p>
-                    <div className="grid gap-0.5 sm:grid-cols-2">
-                      {group.items.map((item) => (
-                        <Link key={item.href} href={itemHref(group, item)} onClick={closeAll} className="rounded-md px-2 py-2.5 text-sm font-bold text-slate-800 hover:bg-slate-50">{item.label}</Link>
-                      ))}
+              <nav data-tour="member-nav" aria-label="학회원 메뉴" className="max-h-[calc(100vh-68px)] overflow-y-auto border-t border-slate-200 bg-white px-4 pb-6 pt-2 sm:px-6 xl:hidden">
+                {NAV.map((group) => {
+                  const groupTone = toneOf(group.tone)
+                  const GroupIcon = group.icon
+                  return group.items ? (
+                    <div key={group.label} className="pt-3">
+                      <p className={`flex items-center gap-1.5 px-2 pb-1 text-xs font-bold ${groupTone.accent}`}><GroupIcon className="h-3.5 w-3.5" aria-hidden="true" />{group.label}</p>
+                      <div className="grid gap-0.5 sm:grid-cols-2">
+                        {group.items.map((item) => {
+                          const ItemIcon = item.icon
+                          return (
+                            <Link key={item.href} href={itemHref(group, item)} onClick={closeAll} className="flex items-center gap-2.5 rounded-md px-2 py-2 text-sm font-bold text-slate-800 hover:bg-slate-50">
+                              <span className={`grid h-7 w-7 place-items-center rounded-md ${groupTone.iconTile}`}><ItemIcon className="h-4 w-4" aria-hidden="true" /></span>{item.label}
+                            </Link>
+                          )
+                        })}
+                      </div>
                     </div>
-                  </div>
-                ) : (
-                  <Link key={group.label} href={group.href} onClick={closeAll} aria-current={group.match(pathname) ? 'page' : undefined} className={`mt-1 block rounded-md px-2 py-2.5 text-sm font-bold ${group.match(pathname) ? 'bg-teal-50 text-teal-900' : 'text-slate-800 hover:bg-slate-50'}`}>{group.label}</Link>
-                ))}
+                  ) : (
+                    <Link key={group.label} href={group.href} onClick={closeAll} aria-current={group.match(pathname) ? 'page' : undefined} className={`mt-1 flex items-center gap-2.5 rounded-md px-2 py-2 text-sm font-bold ${group.match(pathname) ? groupTone.soft : 'text-slate-800 hover:bg-slate-50'}`}>
+                      <span className={`grid h-7 w-7 place-items-center rounded-md ${groupTone.iconTile}`}><GroupIcon className="h-4 w-4" aria-hidden="true" /></span>{group.label}
+                    </Link>
+                  )
+                })}
                 <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 pt-4">
                   <span className="text-sm font-bold text-slate-800">{displayName}</span>
                   <div className="flex gap-2">
-                    {identity.admin && <Link href="/admin/hub" onClick={closeAll} className="inline-flex h-9 items-center gap-1.5 rounded-md border border-slate-300 px-3 text-sm font-bold text-slate-700"><Settings2 className="h-4 w-4" aria-hidden="true" />관리자</Link>}
+                    {identity.admin && <Link href="/admin/hub" onClick={closeAll} className="inline-flex h-9 items-center gap-1.5 rounded-md border border-violet-200 bg-violet-50 px-3 text-sm font-bold text-violet-800"><Settings2 className="h-4 w-4" aria-hidden="true" />관리자</Link>}
                     <button type="button" onClick={signOut} className="inline-flex h-9 items-center gap-1.5 rounded-md border border-slate-300 px-3 text-sm font-bold text-slate-700"><LogOut className="h-4 w-4" aria-hidden="true" />로그아웃</button>
                   </div>
                 </div>
               </nav>
             )}
           </header>
+
+          <Suspense fallback={null}>
+            <SectionTabs pathname={pathname} />
+          </Suspense>
 
           <main className="min-w-0">{children}</main>
         </div>
@@ -284,22 +323,65 @@ export default function MemberShell({ children }) {
   )
 }
 
-// 학회원 화면 본문 틀 (폭·여백 통일)
-export function MemberPage({ children, className = '' }) {
-  return <div className={`mx-auto w-full max-w-[1280px] px-4 py-6 sm:px-6 lg:px-8 lg:py-10 ${className}`}>{children}</div>
+// 같은 메뉴(드롭다운)에 묶인 화면을 위쪽에 가로로 보여 준다. 자료실은 보고 있는 주차를 그대로 넘긴다.
+function SectionTabs({ pathname }) {
+  const searchParams = useSearchParams()
+  const group = NAV.find((item) => item.items && item.match(pathname))
+  if (!group) return null
+  const groupTone = toneOf(group.tone)
+  const GroupIcon = group.icon
+  const currentTab = searchParams.get('tab') || 'past'
+  const carry = new URLSearchParams()
+  if (group.weekAware) {
+    if (searchParams.get('week') != null) carry.set('week', searchParams.get('week'))
+    if (searchParams.get('session') === 'weekday') carry.set('session', 'weekday')
+  }
+  return (
+    <div className={`border-b border-slate-200/70 bg-gradient-to-r ${groupTone.hero}`}>
+      <nav data-tour="member-section-tabs" aria-label={`${group.label} 화면`} className="mx-auto flex w-full max-w-[1280px] items-center gap-2 overflow-x-auto px-4 py-2.5 sm:px-6 lg:px-8">
+        <span className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold ring-1 ring-inset ${groupTone.soft}`}>
+          <GroupIcon className="h-3.5 w-3.5" aria-hidden="true" />{group.label}
+        </span>
+        {group.items.map((item) => {
+          const [path, query] = item.href.split('?')
+          const active = path === pathname && (!query || new URLSearchParams(query).get('tab') === currentTab)
+          const ItemIcon = item.icon
+          const href = carry.toString() ? `${path}?${carry.toString()}` : item.href
+          return (
+            <Link key={item.href} href={href} aria-current={active ? 'page' : undefined} className={`inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 text-sm font-bold transition ${active ? groupTone.pill : 'bg-white/80 text-slate-600 ring-1 ring-inset ring-slate-200 hover:bg-white hover:text-slate-900'}`}>
+              <ItemIcon className="h-4 w-4" aria-hidden="true" />{item.label}
+            </Link>
+          )
+        })}
+      </nav>
+    </div>
+  )
 }
 
-// 학회원 화면 제목 줄
-export function MemberHeader({ eyebrow, title, description, actions, children }) {
+// 학회원 화면 본문 틀 (폭·여백 통일)
+export function MemberPage({ children, className = '' }) {
+  return <div className={`mx-auto w-full max-w-[1280px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8 ${className}`}>{children}</div>
+}
+
+// 학회원 화면 제목 영역: 메뉴별 색·이모지와 장식 그림
+export function MemberHeader({ eyebrow, title, description, actions, children, emoji }) {
+  const pathname = usePathname() || ''
+  const theme = memberThemeFor(pathname)
   return (
-    <header className="mb-6 flex flex-col gap-4 border-b border-slate-200 pb-5 md:flex-row md:items-end md:justify-between">
-      <div className="min-w-0">
-        {eyebrow && <p className="mb-1 text-xs font-bold text-teal-700">{eyebrow}</p>}
-        <h1 className="text-2xl font-extrabold tracking-tight text-slate-950 sm:text-3xl">{title}</h1>
-        {description && <p className="mt-1.5 max-w-3xl break-keep text-sm leading-6 text-slate-600">{description}</p>}
-        {children}
+    <header className={`relative mb-6 overflow-hidden rounded-2xl border bg-gradient-to-br px-5 py-5 sm:px-6 sm:py-6 ${theme.border} ${theme.hero}`}>
+      <HeroDecoration theme={theme} />
+      <div className="relative flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+        <div className="flex min-w-0 gap-3 sm:gap-4">
+          <span className={`grid h-12 w-12 shrink-0 place-items-center rounded-2xl border bg-white/90 text-2xl shadow-sm sm:h-14 sm:w-14 sm:text-3xl ${theme.border}`} aria-hidden="true">{emoji || theme.emoji}</span>
+          <div className="min-w-0">
+            {eyebrow && <p className={`mb-1 text-xs font-bold ${theme.accent}`}>{eyebrow}</p>}
+            <h1 className="text-2xl font-extrabold tracking-tight text-slate-950 sm:text-3xl">{title}</h1>
+            {description && <p className="mt-1.5 max-w-3xl break-keep text-sm leading-6 text-slate-600">{description}</p>}
+            {children}
+          </div>
+        </div>
+        {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
       </div>
-      {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
     </header>
   )
 }

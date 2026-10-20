@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { currentSemesterIdFilter, displayTopic, fetchCurrentSemester, fetchSemesterMembers, formatDateTime, fromKstInput, groupDeadlines, memberGroup, nearestDeadlineWeek, submissionTopic, weekFromParam } from '@/lib/semester'
+import { currentSemesterIdFilter, displayTopic, fetchCurrentSemester, fetchSemesterMembers, formatDateTime, fromKstInput, groupDeadlines, memberGroup, submissionTopic, weekFromParam } from '@/lib/semester'
 import { MemberHeader, MemberPage, rememberWeekContext, useMember } from '@/app/components/MemberShell'
 import WeekOverviewCard from '@/app/components/WeekOverviewCard'
 import { Button, inputClass, useToast } from '@/app/components/ui'
@@ -99,7 +99,7 @@ export default function VideoRoom() {
 
     const { data: dlData } = await supabase.from('pr_deadlines').select('*').or(currentSemesterIdFilter(semester))
     const params = new URLSearchParams(window.location.search)
-    const initialWeek = weekFromParam(params.get('week'), semester.totalWeeks, nearestDeadlineWeek(dlData, 'video'))
+    const initialWeek = weekFromParam(params.get('week'), semester.totalWeeks, semester.currentWeek)
     const initialMode = semester.type === 'vacation' && params.get('session') === 'weekday' ? 'weekday' : 'regular'
     setDeadlines(groupDeadlines(dlData))
     setSelectedWeek(initialWeek)

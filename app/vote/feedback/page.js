@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Save } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
-import { displayTopic, fetchCurrentSemester, sameJson, weekFromParam } from '@/lib/semester'
+import { displayTopic, fetchCurrentSemester, presentationWeekFor, sameJson, weekFromParam } from '@/lib/semester'
 import { MemberHeader, MemberPage, rememberWeekContext, useMember } from '@/app/components/MemberShell'
 import { Button, EmptyState, ErrorState, LoadingState, SaveStatus, StatusBadge, useAsyncAction, useToast, useUnsavedChanges } from '@/app/components/ui'
 
@@ -49,17 +49,9 @@ export default function FeedbackPage() {
     async function load() {
       try {
         const current = await fetchCurrentSemester()
-        // 처음 주차: 주소의 ?week= → 이번 학기에 마지막으로 채점한 주차 → 이번 학기 최근 발표 주차
-        let resolved = null
-        const { data: lastScore } = await supabase.from('scores').select('presentation_id').eq('voter_name', myName).order('created_at', { ascending: false }).limit(1)
-        if (lastScore?.length) {
-          const { data: presentation } = await supabase.from('presentations').select('week, semester').eq('id', lastScore[0].presentation_id).maybeSingle()
-          if (presentation && presentation.semester === current.code) resolved = presentation.week
-        }
-        if (resolved === null) {
-          const { data: latest } = await supabase.from('presentations').select('week').eq('semester', current.code).order('created_at', { ascending: false }).limit(1)
-          resolved = latest?.[0]?.week ?? 1
-        }
+        // 처음 주차: 주소의 ?week= → 현재 주차(발표가 없으면 그 전 가장 최근 발표 주차)
+        const { data: weekRows } = await supabase.from('presentations').select('week').eq('semester', current.code)
+        const resolved = presentationWeekFor((weekRows || []).map((row) => row.week), current.currentWeek)
         const initial = weekFromParam(new URLSearchParams(window.location.search).get('week'), current.totalWeeks, resolved)
         if (!active) return
         setSemester(current)
@@ -217,14 +209,13 @@ export default function FeedbackPage() {
       {weekState.status === 'ready' && evalTargets.length > 0 && (
         <div className="mt-6 grid items-start gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
           <aside className="rounded-lg border border-slate-200 bg-white p-3 lg:sticky lg:top-24">
-            <h2 className="px-1 text-sm font-bold text-slate-900">피드백 대상</h2>
+            <h2 className="flex items-center justify-between px-1 text-sm font-bold text-slate-900">피드백 대상<span className="text-xs font-semibold text-slate-500"><span className="text-amber-500" aria-hidden="true">★</span> 같은 조</span></h2>
             <ul className="mt-2 space-y-1">
               {evalTargets.map((item) => (
                 <li key={item.id}>
                   <button type="button" aria-current={item.id === selectedTargetId ? 'true' : undefined} onClick={() => selectTarget(item)} className={`w-full rounded-md px-2 py-2 text-left text-sm ${item.id === selectedTargetId ? 'bg-teal-50 font-bold text-teal-800' : 'text-slate-700 hover:bg-slate-50'}`}>
-                    <span className="block break-keep">{targetName(item.target_info)}</span>
+                    <span className="block break-keep">{targetName(item.target_info)}{item.target_info.group_id === myInfo.group_id && <span className="ml-1 text-amber-500" title="같은 조" aria-label="같은 조">★</span>}</span>
                     <span className="mt-0.5 flex flex-wrap gap-1">
-                      {item.target_info.group_id === myInfo.group_id && <StatusBadge tone="teal">같은 조</StatusBadge>}
                       {item.scored && <StatusBadge tone="green">채점 완료</StatusBadge>}
                       {!item.scored && item.score_record_id && <StatusBadge tone="amber">임시 저장</StatusBadge>}
                     </span>

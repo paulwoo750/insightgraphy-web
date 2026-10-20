@@ -55,7 +55,7 @@ export default function AdminAuthPage() {
         <h1 className="mt-1 text-xl font-bold">관리자 권한이 등록되지 않았습니다</h1>
         <p className="mt-3 text-sm leading-6 text-slate-600">
           현재 로그인 계정 <strong className="text-slate-900">{state.email}</strong>은 활성 관리자 목록에 없습니다.
-          최고관리자에게 관리자 권한 화면에서 이 계정(학회원)을 선택해 역할을 달라고 요청한 뒤 다시 접속해주세요.
+          학회장에게 관리자 권한 화면에서 이 계정(학회원)을 선택해 역할을 달라고 요청한 뒤 다시 접속해주세요.
         </p>
         <div className="mt-7 flex flex-wrap gap-2 border-t border-slate-200 pt-5">
           <Link href="/login" className="inline-flex min-h-10 items-center rounded-md bg-teal-700 px-4 text-sm font-bold text-white hover:bg-teal-800">다른 계정으로 로그인</Link>

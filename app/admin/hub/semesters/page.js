@@ -381,7 +381,18 @@ export default function SemesterManagerPage() {
                 <Field label="전체 주차" htmlFor="semester-weeks"><input id="semester-weeks" type="number" min="1" max="52" value={draft.total_weeks} onChange={(event) => setTotalWeeks(event.target.value)} disabled={!canWrite} className={inputClass} /></Field>
                 <Field label="시작일" htmlFor="semester-start"><input id="semester-start" type="date" value={draft.starts_on} onChange={(event) => setDraft({ ...draft, starts_on: event.target.value })} disabled={!canWrite} className={inputClass} /></Field>
                 <Field label="종료일" htmlFor="semester-end"><input id="semester-end" type="date" value={draft.ends_on} onChange={(event) => setDraft({ ...draft, ends_on: event.target.value })} disabled={!canWrite} className={inputClass} /></Field>
-                <Field label="현재 주차" htmlFor="semester-current"><select id="semester-current" value={draft.current_week_no} onChange={(event) => setDraft({ ...draft, current_week_no: Number(event.target.value) })} disabled={!canWrite} className={inputClass}>{rows.filter((row) => row.week_no > 0).map((row) => <option key={row.week_no} value={row.week_no}>{row.week_no}주차</option>)}</select></Field>
+                <Field
+                  label="현재 주차 (진행 상태 기준)"
+                  htmlFor="semester-current"
+                  hint={context?.isActive && context.currentWeekSource === 'schedule' ? `📍 실제 세션 날짜 기준 W${context.currentWeek}${context.currentWeekDate ? ` (${formatKst(`${context.currentWeekDate}T00:00:00+09:00`, { time: false })} 세션)` : ''} · 화면 표시는 이 날짜 기준을 씁니다` : '세션 날짜가 없으면 이 값으로 현재 주차를 표시합니다'}
+                >
+                  <div className="flex gap-2">
+                    <select id="semester-current" value={draft.current_week_no} onChange={(event) => setDraft({ ...draft, current_week_no: Number(event.target.value) })} disabled={!canWrite} className={inputClass}>{rows.filter((row) => row.week_no > 0).map((row) => <option key={row.week_no} value={row.week_no}>{row.week_no}주차</option>)}</select>
+                    {context?.isActive && context.currentWeekSource === 'schedule' && Number(draft.current_week_no) !== context.currentWeek && (
+                      <Button size="sm" variant="secondary" onClick={() => setDraft({ ...draft, current_week_no: context.currentWeek })} disabled={!canWrite} className="self-center">날짜 기준 W{context.currentWeek}로</Button>
+                    )}
+                  </div>
+                </Field>
               </div>
             </Panel>
 

@@ -11,6 +11,7 @@ import { can } from '@/lib/permissions'
 import { useAdminRole } from '@/app/admin/_components/AdminShell'
 import {
   AdminPage,
+  DeveloperOnly,
   Button,
   EmptyState,
   ErrorState,
@@ -78,7 +79,14 @@ function sourceSummary(item) {
   return parts.join(' · ') || '-'
 }
 
+// 기존 기록 연결 검토는 개발자만 연다 (DB 함수도 is_developer로 막는다)
 export default function RecordLinkPage() {
+  const { isDeveloper } = useAdminRole()
+  if (!isDeveloper) return <DeveloperOnly title="기록 연결 검토" />
+  return <RecordLinkReview />
+}
+
+function RecordLinkReview() {
   const { role } = useAdminRole()
   const canLink = can('records', 'update', role)
   const toast = useToast()
@@ -329,7 +337,7 @@ function IssueDetail({ item, canLink, onClose, onDone }) {
           {item.linked_member && <div className="sm:col-span-2"><dt className="text-xs font-bold text-slate-500">현재 연결</dt><dd className="mt-1 text-slate-800">{item.linked_member.name} · {item.linked_member.generation || '-'} · {item.linked_member.status}</dd></div>}
         </dl>
 
-        {!canLink && <Notice tone="neutral">연결·종료는 최고관리자와 관리자만 할 수 있습니다.</Notice>}
+        {!canLink && <Notice tone="neutral">연결·종료는 개발자 계정만 할 수 있습니다.</Notice>}
 
         {item.classification === 'needs_link' && (
           <>

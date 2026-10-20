@@ -4,10 +4,17 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { Archive, ArrowRight, CalendarCheck, CheckCircle2, Database, ShieldCheck } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
-import { useAdminContext } from '@/app/admin/_components/AdminShell'
-import { AdminPage, EmptyState, PageHeader, Panel, StatusBadge } from '@/app/admin/_components/AdminUI'
+import { useAdminContext, useAdminRole } from '@/app/admin/_components/AdminShell'
+import { AdminPage, DeveloperOnly, EmptyState, PageHeader, Panel, StatusBadge } from '@/app/admin/_components/AdminUI'
 
+// 데이터 점검 도구라 개발자만 연다
 export default function SemesterCloseoutPage() {
+  const { isDeveloper } = useAdminRole()
+  if (!isDeveloper) return <DeveloperOnly title="학기 마감 도구" />
+  return <SemesterCloseoutTool />
+}
+
+function SemesterCloseoutTool() {
   const { semester } = useAdminContext() || {}
   const [loading, setLoading] = useState(true)
   const [counts, setCounts] = useState({ files: 0, scores: 0, attendance: 0, fines: 0, absences: 0, sessions: 0 })
