@@ -869,6 +869,59 @@ $$;
 commit;
 ```
 
+## 24. 출석을 서버에서 확인 (휴대폰 앱 준비) (2026-10-20 적용 완료)
+
+지금까지 출석 화면은 브라우저가 거리를 계산하고 `pr_attendance`에 직접 `출석완료`를 넣었다. 승인 학회원이면 현장에 없어도 기록을 넣을 수 있었다. 이 단계부터 휴대폰은 좌표만 보내고, 출석 시간·장소 반경·지각 여부는 DB 함수가 판단한다.
+
+- `public.member_attendance_context()`: 이번 출석 세션(정규, 방학학기면 내 평일 조)의 시간·장소·내 기록. 주차는 예전 화면과 같은 기준(열린 출석 → 다음 출석 → 마지막 주차)으로 고른다.
+- `public.member_check_in(종류, 위도, 경도, 정확도)`: 서버 시간으로 출석 시간을 확인하고, 장소 반경(기본 100m)과 GPS 정확도(1km 넘게 틀리면 거절)를 본 뒤 본인 행을 쓴다. 세션 시작 뒤면 `지각`. 결과는 code로 돌려준다(OK·LATE·ALREADY·NOT_OPEN·CLOSED·TOO_FAR·LOW_ACCURACY 등).
+- 모든 시도는 `ig_private.attendance_attempts`에 남는다(“왜 출석이 안 되나요” 확인용).
+- `pr_attendance`에 빈 열 세 개(`distance_m` 없으면, `location_accuracy_m`, `checked_in_via`)만 더한다. 기존 행은 바꾸지 않는다.
+
+**새 사이트를 배포하기 전에** 실행한다(새 출석 화면이 이 함수를 쓴다). 다시 실행해도 안전하다.
+
+결과는 7행이다. `ok`가 `false`인 행이 없어야 한다.
+
+- `functions`: `context, check_in`. `anon_cannot_check_in`: `막힘`.
+- `distance`·`kst_time`: `ok`(거리 계산·한국 시간 확인).
+- `member_context`: `ok (n개 세션)` — 실제 학회원 한 명으로 출석 정보를 읽어 봤다. `no_coordinates_refused`: `ok (BAD_LOCATION 등)` — 좌표 없이 부르면 기록 없이 거절된다(되돌림).
+- `next_regular_window`: 다음 정규 출석 시간(정보).
+
+## 25. 휴대폰 앱 푸시 알림 (2026-10-20 적용 완료)
+
+- 기기 등록·알림 종류(출석·마감·베스트·벌금/사유서)는 `ig_private`에 저장한다(API로 직접 노출되지 않음).
+- 5분마다(pg_cron) 출석 열림·지각 10분 전(아직 출석 안 한 사람), 기획서·슬라이드·영상 마감 하루 전·3시간 전(아직 안 낸 사람), 피드백 마감 3시간 전, 벌금 부과·사유서 결재 결과를 알림 대기열에 넣고, 사이트의 `/api/push/send`를 불러(pg_net) 보낸다. 같은 알림은 한 번만 간다.
+- `pr_fines`(추가)·`absence_forms`(상태 변경)에 AFTER 트리거를 하나씩 단다. 트리거는 알림 재료만 남기고, 실패해도 원래 저장을 막지 않는다.
+- 베스트 프레젠터는 관리자 `투표 및 평가` 화면의 `알림 보내기`(`admin_queue_best_presenter_push`)로 운영진이 보낸다.
+- 실행 중에 가상 학회원·기기·벌금·사유서·마감을 만들어 알림이 생기는지 보고 모두 되돌린다.
+
+순서:
+
+1. STEP 24 다음, 배포 전에 실행한다.
+2. 배포 환경(Vercel) 환경 변수에 `.env.local`의 네 값을 넣는다: `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, `PUSH_CRON_SECRET`. 값은 채팅·저장소에 적지 않는다.
+3. 배포 후 SQL Editor에서 사이트 주소와 같은 비밀값을 저장한다.
+
+```sql
+select ig_private.set_push_config('https://insightgraphy.org', '여기에 PUSH_CRON_SECRET 값');
+```
+
+결과는 10행이다.
+
+- `functions`: `9개`. `triggers`: 두 트리거 이름.
+- `fine_push`·`absence_push`: `ok → queued`, `deadline_push`: `ok (3시간 전 알림)`, `queue_cycle`: `ok`.
+- `pg_cron`·`pg_net`: `ok`. `not enabled`가 나오면 대시보드 Database → Extensions에서 `pg_cron`·`pg_net`을 켠 뒤 이 STEP을 다시 실행한다. `cron_job`: `scheduled every 5 minutes`.
+- `push_config`: 처음엔 `미설정`(정보). 위 3번을 하면 `설정됨`.
+
+확인: 휴대폰 앱 → 내 정보 → 알림 → 알림 켜기 → `알림 테스트 보내기`. 관리자 `투표 및 평가` 화면의 알림 패널에 기기 수·최근 발송·마지막 확인 결과가 나온다.
+
+## 26. 학회원의 출석 기록 직접 쓰기 막기 (배포 후)
+
+새 출석 화면이 배포된 **뒤에** 실행한다. 학회원이 API로 `pr_attendance`에 직접 넣거나 바꾸는 것을 막는 제한 정책 3개를 더한다(운영진 `is_admin()`은 그대로, 서버 출석 함수도 그대로). 출석 함수가 RLS 아래에서 쓸 수 없는 상태면 적용하지 않고 멈춘다. 실제 학회원 한 명으로 직접 넣기가 거절되는지 확인하고 되돌린다.
+
+결과는 3행이다. `policies`: 정책 3개, `member_direct_insert`: `ok (refused)`, `check_in_function`: `있음`.
+
+되돌리기: `drop policy ig_step26_attendance_admin_writes on public.pr_attendance;` (updates·deletes 정책도 같은 방식)
+
 ## 중단 조건
 
 - 어느 단계에서든 빨간색 오류가 나오면 다음 단계로 넘어가지 않는다.

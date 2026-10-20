@@ -12,7 +12,7 @@ import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import {
   BookOpen, ChartLine, ChevronDown, CircleHelp, Clapperboard, FileStack, FileText, FolderOpen, Globe2, History, Home, Hourglass, Library, LogOut, Mail,
-  MapPin, Menu, MessageSquareText, Presentation, RefreshCw, Scale, Settings2, Sparkles, Sprout, Trophy, UserRound, UserX, Vote, X,
+  MapPin, Menu, MessageSquareText, Presentation, RefreshCw, Scale, Settings2, Smartphone, Sparkles, Sprout, Trophy, UserRound, UserX, Vote, X,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useSiteUrls } from '@/lib/siteUrls'
@@ -22,7 +22,8 @@ import { HeroDecoration } from '@/app/components/Decor'
 import { Button, StatusBadge, ToastProvider, useAsyncAction, useToast } from '@/app/components/ui'
 import GuidedTour, { useTourState } from '@/app/components/GuidedTour'
 
-const MemberContext = createContext(null)
+// 휴대폰 앱(/app)도 같은 학회원 문맥을 쓴다
+export const MemberContext = createContext(null)
 const WEEK_CONTEXT_KEY = 'ig-member-week-context'
 const IDENTITY_TTL = 60 * 1000
 // 개인 기록(출결·벌금·사유서·점수·댓글)을 읽고 쓸 수 있는 학회원 상태 (STEP 20의 is_approved_member와 같은 기준)
@@ -30,9 +31,13 @@ const APPROVED_STATUSES = new Set(['active', 'leave', 'inactive', 'alumni'])
 const REQUEST_LABELS = { active: '활동 회원', alumni: '졸업 회원' }
 let identityCache = null
 
+export function resetIdentityCache() {
+  identityCache = null
+}
+
 // 로그인 계정 → 학회원 행 → 관리자 여부를 한 번에 읽는다 (화면 이동 때 깜빡이지 않게 잠시 기억)
 // 조회가 실패하면 승인 여부를 모르는 것이므로 lookupError로 표시하고 기억하지 않는다.
-async function loadIdentity() {
+export async function loadIdentity() {
   if (identityCache && Date.now() - identityCache.at < IDENTITY_TTL) return identityCache.value
   const { data } = await supabase.auth.getSession()
   const session = data?.session || null
@@ -52,7 +57,7 @@ async function loadIdentity() {
 
 // 승인 전 계정인가: 로그인했고, 관리자가 아니고, 승인된 학회원 행에 연결되지 않았다.
 // 조회 실패는 승인 전으로 단정하지 않는다 (승인 학회원이 일시 오류로 막히지 않게).
-function isAwaitingApproval(identity) {
+export function isAwaitingApproval(identity) {
   if (identity.status !== 'ready' || !identity.session || identity.lookupError || identity.admin) return false
   return !APPROVED_STATUSES.has(identity.member?.status)
 }
@@ -276,6 +281,12 @@ export default function MemberShell({ children }) {
                   <Globe2 className="h-4 w-4" aria-hidden="true" />
                   <span className="hidden sm:inline">외부 홈페이지</span>
                 </a>
+                {!awaitingApproval && (
+                  <Link href="/app/install" className="inline-flex h-9 items-center gap-1.5 whitespace-nowrap rounded-md bg-teal-700 px-2.5 text-sm font-bold text-white hover:bg-teal-800" aria-label="휴대폰 앱 설치 안내">
+                    <Smartphone className="h-4 w-4" aria-hidden="true" />
+                    <span className="hidden sm:inline">앱</span>
+                  </Link>
+                )}
                 {!awaitingApproval && (
                   <button type="button" data-tour="member-help" onClick={tour.start} className="inline-flex h-9 items-center gap-1.5 rounded-md border border-teal-200 bg-teal-50 px-2.5 text-sm font-bold text-teal-800 hover:bg-teal-100" aria-label="화면에서 도움말 보기" title="화면에서 도움말 보기">
                     <CircleHelp className="h-4 w-4" aria-hidden="true" />

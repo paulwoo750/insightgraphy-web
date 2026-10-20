@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { ArrowRight, ListOrdered, NotebookPen } from 'lucide-react'
 import { AdminPage, PageHeader } from '@/app/admin/_components/AdminUI'
+import BestPresenterPush from './_components/BestPresenterPush'
 
 const sections = [
   {
@@ -40,6 +41,7 @@ export default function VoteManagerHub() {
           )
         })}
       </div>
+      <BestPresenterPush />
     </AdminPage>
   )
 }

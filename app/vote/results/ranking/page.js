@@ -6,26 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { displayTopic, fetchCurrentSemester, presentationWeekFor, sortSemestersDesc, weekFromParam } from '@/lib/semester'
 import { MemberPage, useMember } from '@/app/components/MemberShell'
 import { ErrorState, LoadingState } from '@/app/components/ui'
-
-// 정성 피드백만 임시 저장한 행(점수 없음, 0점)은 순위에 넣지 않는다
-const isRealScore = (row) => Boolean(row.details?.scores) || Number(row.total_score) > 0
-const avgOf = (rows) => (rows.length ? rows.reduce((sum, row) => sum + (row.total_score || 0), 0) / rows.length : 0)
-
-// 같은 order_index가 여러 명이면 팀 발표로 본다
-function buildEntries(presentations, scoresByPresentation) {
-  const teamMode = presentations.length > 0 && new Set(presentations.map((row) => row.order_index)).size < presentations.length
-  if (!teamMode) {
-    return presentations.map((row) => ({ key: row.id, name: row.presenter_name, members: [row.presenter_name], cluster: row.cluster_id, score: avgOf(scoresByPresentation[row.id] || []) }))
-  }
-  const map = new Map()
-  presentations.forEach((row) => {
-    if (!map.has(row.order_index)) map.set(row.order_index, { key: `team-${row.order_index}`, team: row.team_id, cluster: row.cluster_id, members: [], pids: [] })
-    const team = map.get(row.order_index)
-    team.members.push(row.presenter_name)
-    team.pids.push(row.id)
-  })
-  return [...map.values()].map((team) => ({ ...team, name: team.team ? `${team.team}팀` : team.members.join(', '), score: avgOf(team.pids.flatMap((pid) => scoresByPresentation[pid] || [])) }))
-}
+import { avgOf, buildEntries, isRealScore } from '@/lib/ranking'
 
 export default function RankingPage() {
   const router = useRouter()
