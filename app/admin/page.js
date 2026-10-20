@@ -49,7 +49,7 @@ export default function AdminAuthPage() {
 
   return (
     <div className="grid min-h-screen place-items-center bg-slate-50 px-6 py-12 text-slate-900">
-      <div className="w-full max-w-md rounded-md border border-slate-200 bg-white p-7 sm:p-9">
+      <div className="w-full max-w-md rounded-2xl bg-white p-7 shadow-xl shadow-slate-900/5 sm:p-9">
         <ShieldAlert className="h-8 w-8 text-amber-600" aria-hidden="true" />
         <p className="mt-5 text-xs font-bold text-slate-500">관리자 접근</p>
         <h1 className="mt-1 text-xl font-bold">관리자 권한이 등록되지 않았습니다</h1>

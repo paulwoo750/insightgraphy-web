@@ -5,12 +5,12 @@ import Link from 'next/link'
 import { Archive, ArrowRight, CalendarCheck, CheckCircle2, Database, ShieldCheck } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAdminContext, useAdminRole } from '@/app/admin/_components/AdminShell'
-import { AdminPage, DeveloperOnly, EmptyState, PageHeader, Panel, StatusBadge } from '@/app/admin/_components/AdminUI'
+import { AdminPage, EmptyState, PageHeader, Panel, PresidentOnly, StatusBadge } from '@/app/admin/_components/AdminUI'
 
-// 데이터 점검 도구라 개발자만 연다
+// 학기 마감 점검은 학회장·개발자만 연다 (조회만 하는 화면)
 export default function SemesterCloseoutPage() {
-  const { isDeveloper } = useAdminRole()
-  if (!isDeveloper) return <DeveloperOnly title="학기 마감 도구" />
+  const { isSuperAdmin } = useAdminRole()
+  if (!isSuperAdmin) return <PresidentOnly title="학기 마감 점검" />
   return <SemesterCloseoutTool />
 }
 
@@ -77,7 +77,7 @@ function SemesterCloseoutTool() {
         <Panel><EmptyState title="활성 학기가 없습니다." description="학기 및 주차 화면에서 운영할 학기를 지정하세요." /></Panel>
       ) : (
         <>
-          <div className="mb-5 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3">
+          <div className="mb-5 rounded-lg bg-emerald-50 px-4 py-3">
             <div className="flex items-start gap-3">
               <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-emerald-700" aria-hidden="true" />
               <div>
@@ -125,13 +125,13 @@ function SemesterCloseoutTool() {
 }
 
 function RecordCount({ label, value }) {
-  return <div className="rounded-md border border-slate-200 bg-white p-4"><p className="text-xs font-semibold text-slate-500">{label}</p><p className="mt-1.5 text-xl font-bold text-slate-950">{value}건</p></div>
+  return <div className="border-t-[3px] border-teal-500 bg-gradient-to-b from-teal-50/70 to-white px-4 pb-4 pt-3"><p className="text-xs font-semibold text-slate-500">{label}</p><p className="mt-1.5 text-xl font-bold text-slate-950">{value}건</p></div>
 }
 
 function CloseoutStep({ number, icon: Icon, title, description, href, status }) {
   const content = (
     <div className="grid min-h-[86px] grid-cols-[38px_minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 sm:px-5">
-      <div className="grid h-9 w-9 place-items-center border border-slate-200 bg-slate-50 text-slate-600"><Icon className="h-[18px] w-[18px]" aria-hidden="true" /></div>
+      <div className="grid h-9 w-9 place-items-center rounded-lg bg-teal-50 text-teal-700"><Icon className="h-[18px] w-[18px]" aria-hidden="true" /></div>
       <div><p className="text-sm font-bold text-slate-900"><span className="mr-2 text-slate-400">{number}.</span>{title}</p><p className="mt-1 text-xs leading-5 text-slate-500">{description}</p></div>
       <span className="text-xs font-bold text-teal-700">{status}</span>
     </div>

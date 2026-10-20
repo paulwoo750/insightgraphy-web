@@ -112,7 +112,7 @@ export function EmptyState({ title, description, action, icon: Icon }) {
   return (
     <div className="px-5 py-10 text-center">
       {Icon ? (
-        <span className="mx-auto mb-3 grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-teal-50 to-violet-50 ring-1 ring-inset ring-slate-200">
+        <span className="mx-auto mb-3 grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-teal-50 to-violet-50">
           <Icon className="h-6 w-6 text-teal-600" aria-hidden="true" />
         </span>
       ) : <EmptyIllustration className="mx-auto mb-2 h-20 w-28" />}
@@ -135,18 +135,18 @@ export function ErrorState({ title = '불러오지 못했습니다.', descriptio
 }
 
 const NOTICE_TONES = {
-  info: { box: 'border-blue-200 bg-blue-50 text-blue-900', icon: Info, iconClass: 'text-blue-600' },
-  success: { box: 'border-emerald-200 bg-emerald-50 text-emerald-900', icon: CheckCircle2, iconClass: 'text-emerald-600' },
-  warning: { box: 'border-amber-200 bg-amber-50 text-amber-900', icon: AlertTriangle, iconClass: 'text-amber-600' },
-  danger: { box: 'border-red-200 bg-red-50 text-red-900', icon: AlertCircle, iconClass: 'text-red-600' },
-  neutral: { box: 'border-slate-200 bg-slate-50 text-slate-800', icon: Info, iconClass: 'text-slate-500' },
+  info: { box: 'bg-sky-50 text-sky-900', icon: Info, iconClass: 'text-blue-600' },
+  success: { box: 'bg-emerald-50 text-emerald-900', icon: CheckCircle2, iconClass: 'text-emerald-600' },
+  warning: { box: 'bg-amber-50 text-amber-900', icon: AlertTriangle, iconClass: 'text-amber-600' },
+  danger: { box: 'bg-red-50 text-red-900', icon: AlertCircle, iconClass: 'text-red-600' },
+  neutral: { box: 'bg-teal-50/60 text-slate-800', icon: Info, iconClass: 'text-slate-500' },
 }
 
 export function Notice({ tone = 'info', title, children, action, className = '', onClose }) {
   const style = NOTICE_TONES[tone] || NOTICE_TONES.info
   const Icon = style.icon
   return (
-    <div className={`flex gap-3 rounded-md border px-4 py-3 text-sm ${style.box} ${className}`} role={tone === 'danger' ? 'alert' : 'status'}>
+    <div className={`flex gap-3 rounded-lg px-4 py-3 text-sm ${style.box} ${className}`} role={tone === 'danger' ? 'alert' : 'status'}>
       <Icon className={`mt-0.5 h-4 w-4 shrink-0 ${style.iconClass}`} aria-hidden="true" />
       <div className="min-w-0 flex-1 break-keep leading-6">
         {title && <p className="font-bold">{title}</p>}
@@ -181,7 +181,7 @@ export function HelpTip({ children, label = '도움말' }) {
         <CircleHelp className="h-4 w-4" aria-hidden="true" />
       </button>
       {open && (
-        <span id={id} role="tooltip" className="absolute left-1/2 top-full z-50 mt-2 w-72 max-w-[80vw] -translate-x-1/2 rounded-md border border-slate-200 bg-white p-3 text-left text-xs font-medium leading-5 text-slate-700 shadow-lg">
+        <span id={id} role="tooltip" className="absolute left-1/2 top-full z-50 mt-2 w-72 max-w-[80vw] -translate-x-1/2 rounded-lg bg-white p-3 ring-1 ring-slate-900/5 text-left text-xs font-medium leading-5 text-slate-700 shadow-lg">
           {children}
         </span>
       )}
@@ -229,7 +229,7 @@ export function Tabs({ tabs, value, onChange, label = '보기 선택', className
 
 export function SegmentedControl({ options, value, onChange, label, size = 'md', disabled = false }) {
   return (
-    <div role="radiogroup" aria-label={label} className="inline-flex rounded-md border border-slate-300 bg-slate-100 p-0.5">
+    <div role="radiogroup" aria-label={label} className="inline-flex rounded-lg bg-slate-100 p-0.5">
       {options.map((option) => {
         const active = option.value === value
         return (
@@ -299,8 +299,8 @@ export function Modal({ title, description, onClose, children, footer, size = 'm
   const widths = { sm: 'max-w-md', md: 'max-w-xl', lg: 'max-w-3xl', xl: 'max-w-5xl' }
   return (
     <div className="fixed inset-0 z-[80] grid place-items-center bg-slate-950/50 p-3 sm:p-6" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose?.() }}>
-      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1} className={`flex max-h-[calc(100vh-24px)] w-full ${widths[size] || widths.md} flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-2xl outline-none sm:max-h-[calc(100vh-48px)]`}>
-        <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1} className={`flex max-h-[calc(100vh-24px)] w-full ${widths[size] || widths.md} flex-col overflow-hidden rounded-xl bg-white shadow-2xl outline-none sm:max-h-[calc(100vh-48px)]`}>
+        <div className="flex items-start justify-between gap-4 px-5 pb-2 pt-5">
           <div className="min-w-0">
             <h2 id={titleId} className="text-base font-bold text-slate-950">{title}</h2>
             {description && <p className="mt-1 break-keep text-sm leading-6 text-slate-500">{description}</p>}
@@ -308,7 +308,7 @@ export function Modal({ title, description, onClose, children, footer, size = 'm
           {onClose && <IconButton icon={X} label="닫기" onClick={onClose} className="-mr-2 -mt-1" />}
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
-        {footer && <div className="flex flex-wrap justify-end gap-2 border-t border-slate-200 bg-slate-50 px-5 py-3">{footer}</div>}
+        {footer && <div className="flex flex-wrap justify-end gap-2 px-5 pb-5 pt-3">{footer}</div>}
       </div>
     </div>
   )

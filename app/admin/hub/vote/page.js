@@ -29,7 +29,7 @@ export default function VoteManagerHub() {
         {sections.map((section) => {
           const Icon = section.icon
           return (
-            <Link key={section.href} href={section.href} className="group flex min-h-[200px] flex-col justify-between rounded-md border border-slate-200 bg-white p-6 transition-colors hover:border-teal-500">
+            <Link key={section.href} href={section.href} className="group flex min-h-[200px] flex-col justify-between rounded-xl bg-teal-50/50 p-6 transition-colors hover:bg-teal-100/60">
               <div>
                 <Icon className="h-7 w-7 text-teal-700" aria-hidden="true" />
                 <h2 className="mt-4 text-lg font-bold text-slate-900">{section.title}</h2>

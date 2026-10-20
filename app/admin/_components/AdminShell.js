@@ -97,7 +97,7 @@ const navGroups = [
       { href: '/admin/hub/rules-doc', label: '회칙 문서', description: '회칙 원문 편집', icon: FileText },
       { href: '/admin/hub/access', label: '관리자 권한', description: '학회원 선택으로 역할 부여', icon: ShieldCheck, roles: ['developer', 'super_admin'] },
       { href: '/admin/hub/records', label: '기록 연결 검토', description: '학회원과 연결되지 않은 기존 기록 (개발자)', icon: Link2, roles: ['developer'] },
-      { href: '/admin/hub/reset', label: '학기 마감 도구', description: '학기 기록 보존 점검 (개발자)', icon: RotateCcw, roles: ['developer'] },
+      { href: '/admin/hub/reset', label: '학기 마감 점검', description: '학기 기록 보존 점검 (학회장)', icon: RotateCcw, roles: ['developer', 'super_admin'] },
     ],
   },
 ]
@@ -238,7 +238,7 @@ export default function AdminShell({ children }) {
   return (
     <AdminContext.Provider value={contextValue}>
       <ToastProvider>
-        <div className="min-h-screen bg-[#f4f6f5] text-slate-950">
+        <div className="min-h-screen bg-white text-slate-950">
           {/* 메뉴 줄(64px)만 상단에 고정한다. 페이지 안의 sticky 요소는 top-16 이상을 기준으로 둔다 */}
           <header className="sticky top-0 z-40 border-b border-slate-200 bg-white">
             <div className={`h-1 bg-gradient-to-r ${currentTone.bar}`} aria-hidden="true" />
@@ -261,7 +261,7 @@ export default function AdminShell({ children }) {
                         type="button"
                         onClick={() => setOpenGroup(isOpen ? null : group.label)}
                         aria-expanded={isOpen}
-                        className={`flex h-10 items-center gap-1 rounded-md px-3 text-sm font-bold transition-colors ${isOpen ? 'bg-slate-100 text-slate-950' : isCurrent ? 'text-teal-800' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-950'}`}
+                        className={`flex h-10 items-center gap-1 whitespace-nowrap rounded-md px-3 text-sm font-bold transition-colors ${isOpen ? 'bg-slate-100 text-slate-950' : isCurrent ? 'text-teal-800' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-950'}`}
                       >
                         <span className={`h-2 w-2 rounded-full ${(GROUP_TONES[group.tone] || GROUP_TONES.teal).dot}`} aria-hidden="true" />
                         {group.label}
@@ -269,7 +269,7 @@ export default function AdminShell({ children }) {
                       </button>
                       {isCurrent && <span className={`pointer-events-none absolute inset-x-3 -bottom-[13px] h-[3px] rounded-full ${(GROUP_TONES[group.tone] || GROUP_TONES.teal).dot}`} aria-hidden="true" />}
                       {isOpen && (
-                        <div className="absolute left-0 top-full z-50 mt-2 w-[320px] rounded-md border border-slate-200 bg-white p-1.5 shadow-lg">
+                        <div className="absolute left-0 top-full z-50 mt-2 w-[320px] rounded-xl bg-white ring-1 ring-slate-900/5 p-1.5 shadow-lg">
                           {group.items.map((item) => <NavItem key={item.href} item={item} tone={group.tone} active={isItemActive(item, pathname)} onNavigate={closeMenus} />)}
                         </div>
                       )}
@@ -279,20 +279,20 @@ export default function AdminShell({ children }) {
               </nav>
 
               <div className="ml-auto flex items-center gap-2">
-                <button type="button" data-tour="admin-help" onClick={tour.start} className="flex h-9 items-center gap-2 rounded-md border border-teal-200 bg-teal-50 px-3 text-sm font-bold text-teal-800 hover:bg-teal-100" aria-label="화면에서 도움말 보기">
+                <button type="button" data-tour="admin-help" onClick={tour.start} className="flex h-9 items-center gap-2 whitespace-nowrap rounded-lg bg-teal-50 px-3 text-sm font-bold text-teal-800 hover:bg-teal-100" aria-label="화면에서 도움말 보기">
                   <CircleHelp className="h-4 w-4" aria-hidden="true" />
                   <span className="hidden sm:inline">도움말</span>
                 </button>
-                <button type="button" onClick={() => setChangelogOpen(true)} className="relative flex h-9 items-center gap-2 rounded-md border border-violet-200 bg-violet-50 px-3 text-sm font-bold text-violet-800 hover:bg-violet-100" aria-label="업데이트 내역">
+                <button type="button" onClick={() => setChangelogOpen(true)} className="relative flex h-9 items-center gap-2 whitespace-nowrap rounded-md border border-violet-200 bg-violet-50 px-3 text-sm font-bold text-violet-800 hover:bg-violet-100" aria-label="업데이트 내역">
                   <Sparkles className="h-4 w-4" aria-hidden="true" />
                   <span className="hidden 2xl:inline">새 소식</span>
                   {unseenRelease && <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-rose-500 ring-2 ring-white" aria-hidden="true" />}
                 </button>
-                <a href={site.publicUrl('/')} target={linkTarget} rel={linkTarget ? 'noopener noreferrer' : undefined} className="hidden h-9 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-bold text-slate-600 hover:bg-slate-50 xl:flex">
+                <a href={site.publicUrl('/')} target={linkTarget} rel={linkTarget ? 'noopener noreferrer' : undefined} className="hidden h-9 items-center gap-2 whitespace-nowrap rounded-md border border-slate-300 bg-white px-3 text-sm font-bold text-slate-600 hover:bg-slate-50 xl:flex">
                   <Globe2 className="h-4 w-4" aria-hidden="true" />
                   외부 홈페이지
                 </a>
-                <a href={site.memberUrl('/home')} target={linkTarget} rel={linkTarget ? 'noopener noreferrer' : undefined} className="hidden h-9 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-bold text-slate-600 hover:bg-slate-50 xl:flex">
+                <a href={site.memberUrl('/home')} target={linkTarget} rel={linkTarget ? 'noopener noreferrer' : undefined} className="hidden h-9 items-center gap-2 whitespace-nowrap rounded-md border border-slate-300 bg-white px-3 text-sm font-bold text-slate-600 hover:bg-slate-50 xl:flex">
                   <UsersRound className="h-4 w-4" aria-hidden="true" />
                   학회원 화면
                 </a>
@@ -331,9 +331,9 @@ export default function AdminShell({ children }) {
                     <p className="truncate text-xs text-slate-500">{roleLabel(role)}{role === 'viewer' ? ' · 열람 전용' : ''}</p>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    <a href={site.publicUrl('/')} target={linkTarget} rel={linkTarget ? 'noopener noreferrer' : undefined} className="flex h-9 items-center gap-2 rounded-md border border-slate-200 px-3 text-sm font-bold text-slate-600"><Globe2 className="h-4 w-4" aria-hidden="true" />외부 홈페이지</a>
-                    <a href={site.memberUrl('/home')} target={linkTarget} rel={linkTarget ? 'noopener noreferrer' : undefined} className="flex h-9 items-center gap-2 rounded-md border border-slate-200 px-3 text-sm font-bold text-slate-600"><UsersRound className="h-4 w-4" aria-hidden="true" />학회원 화면</a>
-                    <button type="button" onClick={signOut} className="flex h-9 items-center gap-2 rounded-md border border-slate-200 px-3 text-sm font-bold text-slate-600"><LogOut className="h-4 w-4" aria-hidden="true" />로그아웃</button>
+                    <a href={site.publicUrl('/')} target={linkTarget} rel={linkTarget ? 'noopener noreferrer' : undefined} className="flex h-9 items-center gap-2 whitespace-nowrap rounded-md border border-slate-200 px-3 text-sm font-bold text-slate-600"><Globe2 className="h-4 w-4" aria-hidden="true" />외부 홈페이지</a>
+                    <a href={site.memberUrl('/home')} target={linkTarget} rel={linkTarget ? 'noopener noreferrer' : undefined} className="flex h-9 items-center gap-2 whitespace-nowrap rounded-md border border-slate-200 px-3 text-sm font-bold text-slate-600"><UsersRound className="h-4 w-4" aria-hidden="true" />학회원 화면</a>
+                    <button type="button" onClick={signOut} className="flex h-9 items-center gap-2 whitespace-nowrap rounded-md border border-slate-200 px-3 text-sm font-bold text-slate-600"><LogOut className="h-4 w-4" aria-hidden="true" />로그아웃</button>
                   </div>
                 </div>
               </div>

@@ -240,7 +240,7 @@ export default function AboutManager() {
               {alumni.map((alumnus, index) => {
                 const status = summaryState(alumnus)
                 return (
-                  <li key={alumnus.key} className="flex flex-col rounded-md border border-slate-200 bg-white p-4">
+                  <li key={alumnus.key} className="flex flex-col rounded-lg bg-teal-50/40 p-4">
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
                         <p className="text-xs font-bold text-teal-700">{[alumnus.generation, alumnus.university, alumnus.dept].filter(Boolean).join(' · ') || '소속 미입력'}</p>
@@ -276,7 +276,7 @@ export default function AboutManager() {
           <Panel title="3대 핵심 가치">
             <div className="space-y-3 p-4 sm:p-5">
               {content.coreValues.map((item, index) => (
-                <div key={index} className="grid grid-cols-[72px_minmax(0,1fr)] gap-3 rounded-md border border-slate-200 p-3">
+                <div key={index} className="grid grid-cols-[72px_minmax(0,1fr)] gap-3 rounded-lg bg-teal-50/40 p-3">
                   <TextInput label="아이콘" value={item.icon} disabled={!canWrite} onChange={(value) => updateList('coreValues', index, 'icon', value)} />
                   <TextInput label="제목" value={item.title} disabled={!canWrite} onChange={(value) => updateList('coreValues', index, 'title', value)} />
                   <div className="col-span-2"><TextInput label="설명" value={item.desc} disabled={!canWrite} onChange={(value) => updateList('coreValues', index, 'desc', value)} /></div>
@@ -287,7 +287,7 @@ export default function AboutManager() {
           <Panel title="IGD 핵심 역량">
             <div className="space-y-3 p-4 sm:p-5">
               {content.igdValues.map((item, index) => (
-                <div key={index} className="grid grid-cols-[72px_minmax(0,1fr)] gap-3 rounded-md border border-slate-200 p-3">
+                <div key={index} className="grid grid-cols-[72px_minmax(0,1fr)] gap-3 rounded-lg bg-teal-50/40 p-3">
                   <TextInput label="아이콘" value={item.icon} disabled={!canWrite} onChange={(value) => updateList('igdValues', index, 'icon', value)} />
                   <TextInput label="제목" value={item.title} disabled={!canWrite} onChange={(value) => updateList('igdValues', index, 'title', value)} />
                   <div className="col-span-2"><TextInput label="설명" value={item.desc} disabled={!canWrite} onChange={(value) => updateList('igdValues', index, 'desc', value)} /></div>
@@ -397,7 +397,7 @@ function InterviewEditor({ alumnus, canWrite, summaryReady, onChange, onClose })
           <section className="space-y-3">
             <h3 className="text-sm font-bold text-slate-900">문답 ({qna.length}개)</h3>
             {qna.map((item, index) => (
-              <div key={index} className="space-y-2 rounded-md border border-slate-200 p-3">
+              <div key={index} className="space-y-2 rounded-lg bg-teal-50/40 p-3">
                 <div className="flex items-start gap-2">
                   <span className="mt-2 text-sm font-bold text-teal-700">Q{index + 1}</span>
                   <textarea aria-label={`질문 ${index + 1}`} rows={2} value={item.question} onChange={(event) => setQna(qna.map((entry, entryIndex) => entryIndex === index ? { ...entry, question: event.target.value } : entry))} disabled={!canWrite} className={textareaClass} />
@@ -411,7 +411,7 @@ function InterviewEditor({ alumnus, canWrite, summaryReady, onChange, onClose })
         </div>
 
         <aside className="space-y-4">
-          <section className="rounded-md border border-slate-200 p-4">
+          <section className="rounded-lg bg-teal-50/40 p-4">
             <h3 className="flex items-center gap-2 text-sm font-bold text-slate-900"><Sparkles className="h-4 w-4 text-teal-700" aria-hidden="true" />인터뷰 한 줄 요약</h3>
             <p className="mt-1 text-xs leading-5 text-slate-500">문답 전체를 근거로 한 한국어 한 문장(40~80자). 원문에 없는 내용은 넣지 않습니다. 공개 카드에는 &lsquo;인터뷰 한 줄 요약&rsquo;으로 표시되어 직접 인용과 구분됩니다.</p>
             {stale && <Notice tone="warning" className="mt-3">요약을 만든 뒤 인터뷰 본문이 바뀌었습니다. 다시 만들거나 내용을 확인하세요.</Notice>}
@@ -423,7 +423,7 @@ function InterviewEditor({ alumnus, canWrite, summaryReady, onChange, onClose })
               {alumnus.summary_line ? 'AI로 다시 만들기' : 'AI로 요약 만들기'}
             </Button>
             {candidate && (
-              <div className="mt-3 rounded-md border border-teal-300 bg-teal-50 p-3">
+              <div className="mt-3 rounded-lg bg-teal-50 p-3">
                 <p className="text-xs font-bold text-teal-800">새 요약 미리보기 · {summaryLengthNote(candidate.summary)}</p>
                 <p className="mt-1 break-keep text-sm leading-6 text-slate-900">{candidate.summary}</p>
                 <div className="mt-2 flex gap-2">

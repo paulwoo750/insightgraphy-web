@@ -258,7 +258,7 @@ export default function AbsenceAdmin() {
                       {absence.proof_url && <a href={absence.proof_url} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex items-center gap-1 text-sm font-bold text-teal-700 underline-offset-2 hover:underline"><ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />증빙 자료 열기</a>}
                       {!pending && absence.admin_comment && <Notice tone="neutral" className="mt-3" title="운영진 코멘트">{absence.admin_comment}</Notice>}
                     </div>
-                    <div className="space-y-2 rounded-md border border-slate-200 bg-slate-50 p-3">
+                    <div className="space-y-2 rounded-lg bg-teal-50/40 p-3">
                       <p className="text-xs font-bold text-slate-600">{pending ? '결재' : '결재 다시 하기'}</p>
                       <Button className="w-full" variant="primary" onClick={() => resolve(absence, 'full')} disabled={!canWrite || Boolean(processingId)} loading={processingId === absence.id}>완전 인정 (출석 인정)</Button>
                       <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">

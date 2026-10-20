@@ -256,7 +256,7 @@ export default function VoteSetup() {
                         </div>
                         <Droppable droppableId={`cluster-${clusterId}`} isDropDisabled={!canWrite}>
                           {(provided) => (
-                            <ol {...provided.droppableProps} ref={provided.innerRef} className="min-h-[80px] space-y-2 rounded-md border border-slate-200 bg-slate-50 p-3">
+                            <ol {...provided.droppableProps} ref={provided.innerRef} className="min-h-[80px] space-y-2 rounded-lg bg-teal-50/40 p-3">
                               {clusterItems.map((item, index) => (
                                 <Draggable key={item.id} draggableId={String(item.id)} index={index} isDragDisabled={!canWrite}>
                                   {(dragProvided, snapshot) => (

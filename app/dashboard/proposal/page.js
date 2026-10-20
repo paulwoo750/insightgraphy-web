@@ -166,7 +166,7 @@ export default function ProposalRoom() {
           groupLabel={team ? `${team}팀` : group ? `${group}조` : ''}
           deadlines={[{ key: 'proposal', at: deadlines[week]?.proposal }, { key: 'proposal_comment', at: deadlines[week]?.proposal_comment }]}
         />
-        <div className="space-y-3 rounded-lg border border-slate-200 p-4">
+        <div className="space-y-3 rounded-2xl bg-violet-50/60 p-4">
           <h2 className="text-base font-bold text-slate-900">W{week} 기획서 제출</h2>
           <p className="text-sm leading-6 text-slate-600">PDF로 올리면 조원들이 첫 페이지 미리보기와 함께 바로 읽을 수 있습니다. 30MB 이하.</p>
           <input ref={fileInput} type="file" accept=".pdf,.doc,.docx,.hwp,.hwpx,.ppt,.pptx" onChange={upload} className="sr-only" id="proposal-upload" />

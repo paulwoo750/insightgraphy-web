@@ -206,7 +206,7 @@ export default function GuidedTour({ tour, role, userId, startIndex = 0, onClose
         )}
       </div>
 
-      <div ref={cardRef} role="dialog" aria-modal="true" aria-labelledby="guided-tour-title" aria-describedby="guided-tour-body" className="fixed rounded-lg border border-slate-200 bg-white p-4 text-slate-900 shadow-2xl sm:p-5" style={cardStyle}>
+      <div ref={cardRef} role="dialog" aria-modal="true" aria-labelledby="guided-tour-title" aria-describedby="guided-tour-body" className="fixed rounded-xl bg-white p-4 text-slate-900 shadow-2xl sm:p-5" style={cardStyle}>
         <div className="flex items-start justify-between gap-3">
           <p className="text-xs font-bold text-teal-700">{tour.title} · {index + 1} / {steps.length}</p>
           <button type="button" onClick={() => finish('close')} className="-mr-2 -mt-2 grid h-9 w-9 place-items-center rounded-md text-slate-500 hover:bg-slate-100" aria-label="안내 닫기">

@@ -49,12 +49,12 @@ export function isOwnFile(file, { member, name, team }) {
 
 export function WeekSelector({ weeks, week, onChange, session, onSession, allowWeekday, weekTopics }) {
   return (
-    <div className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-white p-3 sm:flex-row sm:items-center sm:justify-between">
-      <div className="flex min-w-0 items-center gap-2 overflow-x-auto" role="group" aria-label="주차 선택">
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex min-w-0 items-center gap-1.5 overflow-x-auto pb-1 [scrollbar-width:none]" role="group" aria-label="주차 선택">
         {weeks.map((value) => {
           const topic = session === 'weekday' ? weekTopics?.[`weekday_${value}`] : weekTopics?.[value]
           return (
-            <button key={value} type="button" aria-pressed={value === week} title={topic || undefined} onClick={() => onChange(value)} className={`min-h-9 shrink-0 rounded-md border px-3 text-sm font-bold ${value === week ? 'border-teal-700 bg-teal-700 text-white' : 'border-slate-200 text-slate-600 hover:border-teal-400'}`}>
+            <button key={value} type="button" aria-pressed={value === week} title={topic || undefined} onClick={() => onChange(value)} className={`min-h-9 shrink-0 rounded-full px-3.5 text-sm font-bold transition ${value === week ? 'bg-teal-700 text-white shadow-sm shadow-teal-700/30' : 'bg-slate-100/70 text-slate-600 hover:bg-teal-50 hover:text-teal-800'}`}>
               W{value}
             </button>
           )
@@ -74,22 +74,22 @@ export function SubmissionList({ files, weeklySetup, week, session, owner, admin
   for (let group = 1; group <= maxGroup; group++) sections.push({ key: group, title: `${group}조`, list: groups[group] })
   if (groups['미분류']?.length) sections.push({ key: 'none', title: maxGroup === 0 ? '제출 목록' : '조 미편성 · 개별 제출', list: groups['미분류'] })
 
-  if (files.length === 0) return <p className="rounded-lg border border-dashed border-slate-300 px-4 py-12 text-center text-sm text-slate-500">{emptyText}</p>
+  if (files.length === 0) return <p className="py-12 text-center text-sm text-slate-500">{emptyText}</p>
 
   return (
     <div className="space-y-8">
       {sections.filter((section) => section.list.length > 0).map((section) => (
         <section key={section.key} aria-labelledby={`group-${section.key}`}>
-          <div className="mb-3 flex items-end justify-between border-b border-slate-200 pb-2">
+          <div className="mb-4 flex items-end justify-between border-b-2 border-teal-600 pb-2">
             <h3 id={`group-${section.key}`} className="text-base font-bold text-slate-900">{section.title}</h3>
             <span className="text-xs font-semibold text-slate-500">{section.list.length}건</span>
           </div>
-          <ul className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
+          <ul className="grid grid-cols-2 gap-x-3 gap-y-4 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
             {section.list.map((file) => {
               const mine = isOwnFile(file, owner)
               const manage = mine || adminCanManage
               return (
-                <li key={file.id} className={`flex min-w-0 flex-col rounded-xl border bg-white p-2 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${mine ? 'border-violet-300 ring-2 ring-violet-100' : 'border-slate-200'}`}>
+                <li key={file.id} className={`flex min-w-0 flex-col rounded-xl p-2 transition hover:-translate-y-0.5 ${mine ? 'bg-violet-50' : 'hover:bg-teal-50/50'}`}>
                   <FileThumbnail url={file.file_url} storagePath={file.storage_path} title={file.file_name} aspect={aspect} width={480} />
                   <div className="mt-1.5 min-w-0 flex-1 px-0.5">
                     <p className="line-clamp-2 text-[13px] font-bold leading-5 text-slate-900" title={file.file_name}>{file.file_name}</p>

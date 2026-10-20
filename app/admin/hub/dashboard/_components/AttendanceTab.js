@@ -133,7 +133,7 @@ export default function AttendanceTab({ week, mode, current, changes, canWrite, 
         </div>
       ) : (
         <section className="space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-slate-200 bg-slate-50 px-4 py-3">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-teal-50/40 px-4 py-3">
             <div>
               <p className="text-sm font-bold text-slate-900">W{week} 평일 세션 진행</p>
               <p className="text-sm text-slate-600">기업 세션 등으로 평일 세션이 없는 주차는 끄세요.</p>
@@ -150,7 +150,7 @@ export default function AttendanceTab({ week, mode, current, changes, canWrite, 
                 {range(setupView.weekdayGroupCount).map((group) => {
                   const team = setupView.weekday?.[group] || {}
                   return (
-                    <div key={group} className="space-y-3 rounded-md border border-slate-200 p-4">
+                    <div key={group} className="space-y-3 rounded-lg bg-teal-50/40 p-4">
                       <h4 className="text-sm font-bold text-teal-800">평일 {group}조</h4>
                       <div className="grid gap-3 sm:grid-cols-4">
                         <Field label="진행 날짜" htmlFor={`team-${group}-date`}><input id={`team-${group}-date`} type="date" value={team.date || ''} onChange={(event) => updateTeam(group, { date: event.target.value })} disabled={!canWrite} className={inputClass} /></Field>

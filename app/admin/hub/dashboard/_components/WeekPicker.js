@@ -15,7 +15,7 @@ export default function WeekPicker({ semesterList, ctx, week, mode, dirtyWeeks, 
   }, [week])
 
   return (
-    <section data-tour="session-week-picker" className="sticky top-16 z-20 -mx-4 mb-4 border-y border-slate-200 bg-white/95 px-4 py-3 backdrop-blur sm:mx-0 sm:rounded-md sm:border">
+    <section data-tour="session-week-picker" className="sticky top-16 z-20 -mx-4 mb-4 border-y border-slate-200 bg-white/95 px-4 py-3 backdrop-blur sm:mx-0">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
         <div className="flex flex-wrap items-center gap-2">
           <label htmlFor="session-semester" className="text-sm font-bold text-slate-700">학기</label>

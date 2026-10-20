@@ -477,7 +477,7 @@ export default function SessionManager() {
       </div>
 
       {currentChanges.length > 0 && (
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-900">
           <span className="flex items-center gap-2"><AlertTriangle className="h-4 w-4" aria-hidden="true" />W{week}에 저장하지 않은 변경 {currentChanges.length}건이 있습니다.</span>
           <div className="flex gap-2">
             <Button size="sm" onClick={() => discardWeek(week)}>이 주차 변경 취소</Button>

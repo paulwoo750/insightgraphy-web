@@ -280,7 +280,7 @@ function SpecialTab({ resources, onCreateFolder, ...resourceProps }) {
           {folders.map((name) => {
             const count = resources.filter((row) => row.category === 'special' && row.file_type === name && row.title !== FOLDER_PLACEHOLDER_TITLE).length
             return (
-              <button key={name} type="button" onClick={() => setFolder(name)} className="flex min-h-28 flex-col items-start justify-between gap-3 rounded-lg border border-slate-200 bg-white p-4 text-left transition hover:border-teal-600 hover:bg-teal-50/40">
+              <button key={name} type="button" onClick={() => setFolder(name)} className="flex min-h-28 flex-col items-start justify-between gap-3 rounded-xl bg-teal-50/60 p-4 text-left transition hover:-translate-y-0.5 hover:bg-teal-100/70">
                 <FolderOpen className="h-6 w-6 text-teal-700" aria-hidden="true" />
                 <span className="w-full">
                   <span className="block break-keep text-base font-bold text-slate-900">{name}</span>
@@ -303,9 +303,9 @@ function RulesTab({ rules }) {
         desc="학회 활동의 근간이 되는 공식 회칙입니다. (26.07.04 기준)"
         action={<a href="/files/IG_%ED%9A%8C%EC%B9%99_260704.docx" download className="inline-flex h-9 items-center gap-1.5 whitespace-nowrap rounded-md border border-slate-300 bg-white px-3 text-sm font-bold text-slate-700 hover:bg-slate-50"><Download className="h-4 w-4" aria-hidden="true" />회칙 원문 받기</a>}
       />
-      <div className="space-y-4">
+      <div className="space-y-8">
         {rules.map((rule) => (
-          <article key={rule.id} className="rounded-lg border border-slate-200 bg-white p-5 sm:p-6">
+          <article key={rule.id}>
             <h3 className="mb-3 border-l-[3px] border-teal-700 pl-3 text-base font-bold text-teal-800">{rule.chapter}</h3>
             <p className="whitespace-pre-wrap text-sm leading-7 text-slate-700">{rule.content}</p>
           </article>
@@ -317,7 +317,7 @@ function RulesTab({ rules }) {
 
 function SectionHeader({ title, desc, action }) {
   return (
-    <div className="flex flex-col gap-3 border-b border-slate-200 pb-4 sm:flex-row sm:items-end sm:justify-between">
+    <div className="flex flex-col gap-3 border-b-2 border-teal-600 pb-4 sm:flex-row sm:items-end sm:justify-between">
       <div className="min-w-0">
         <h2 className="break-keep text-xl font-bold text-slate-900">{title}</h2>
         {desc && <p className="mt-1 text-sm text-slate-500">{desc}</p>}
@@ -368,7 +368,7 @@ function ResourceSection({ title, desc, emptyText, rows, target, allowYoutube = 
       {toolbar}
 
       {adding && (
-        <form onSubmit={submit} className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
+        <form onSubmit={submit} className="space-y-3 rounded-xl bg-teal-50/50 p-4">
           {allowYoutube && <SegmentedControl label="링크 종류" value={type} onChange={setType} options={[{ value: 'drive', label: '구글 드라이브' }, { value: 'youtube', label: '유튜브' }]} />}
           <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
             <Field label="자료 제목" htmlFor={`resource-title-${title}`}>
@@ -388,8 +388,8 @@ function ResourceSection({ title, desc, emptyText, rows, target, allowYoutube = 
         </form>
       )}
 
-      {rows.length === 0 ? <p className="rounded-lg border border-dashed border-slate-300 px-4 py-12 text-center text-sm text-slate-500">{emptyText}</p> : (
-        <ul className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
+      {rows.length === 0 ? <p className="py-12 text-center text-sm text-slate-500">{emptyText}</p> : (
+        <ul className="grid grid-cols-2 gap-x-4 gap-y-6 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
           {rows.map((row) => (
             <ResourceCard key={row.id} row={row} manage={canManage(row)} onEdit={() => onEdit(row)} onDelete={() => onDelete(row)} />
           ))}
@@ -401,7 +401,7 @@ function ResourceSection({ title, desc, emptyText, rows, target, allowYoutube = 
 
 function ResourceCard({ row, manage, onEdit, onDelete }) {
   return (
-    <li className="flex min-w-0 flex-col rounded-xl border border-slate-200 bg-white p-2 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
+    <li className="flex min-w-0 flex-col transition hover:-translate-y-0.5">
       <FileThumbnail url={row.file_url} title={row.title} />
       <div className="mt-2 min-w-0">
         <p className="truncate text-sm font-bold text-slate-900" title={row.title}>{row.title}</p>

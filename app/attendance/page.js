@@ -356,10 +356,10 @@ export default function AttendancePage() {
         )}
 
         {/* 🌟 메인 출석 보드 (둥근 모서리 제거, 심플한 테두리) */}
-        <div className="bg-white p-8 md:p-10 rounded-sm shadow-xl border border-slate-200 flex flex-col items-center text-center">
+        <div className="bg-white p-8 md:p-10 rounded-2xl shadow-xl shadow-teal-900/10 flex flex-col items-center text-center">
 
           {/* 아이콘 */}
-          <div className="w-16 h-16 bg-teal-50 text-teal-700 border border-teal-200 flex items-center justify-center text-2xl mb-6 shadow-sm rounded-sm">
+          <div className="w-16 h-16 bg-teal-50 text-teal-700 flex items-center justify-center text-2xl mb-6 rounded-2xl">
             📍
           </div>
 
@@ -412,17 +412,17 @@ export default function AttendancePage() {
             /* 🌟 상태에 따른 출석 버튼 (둥근 모서리 제거, 딥 틸 적용) */
             <div className="w-full">
               {timeStatus === 'no_setting' && (
-                <button disabled className="w-full py-5 bg-slate-100 text-slate-400 border border-slate-200 font-extrabold text-sm transition-all opacity-70 cursor-not-allowed">
+                <button disabled className="w-full py-5 rounded-xl bg-slate-100 text-slate-400 font-extrabold text-sm transition-all opacity-70 cursor-not-allowed">
                   관리자 시간 설정 대기 중 ⏳
                 </button>
               )}
               {timeStatus === 'before' && (
-                <button disabled className="w-full py-5 bg-slate-100 text-slate-400 border border-slate-200 font-extrabold text-sm transition-all opacity-70 cursor-not-allowed">
+                <button disabled className="w-full py-5 rounded-xl bg-slate-100 text-slate-400 font-extrabold text-sm transition-all opacity-70 cursor-not-allowed">
                   출석 시간이 아닙니다 ⏰
                 </button>
               )}
               {timeStatus === 'closed' && (
-                <button disabled className="w-full py-5 bg-red-50 text-red-600 border border-red-200 font-extrabold text-sm transition-all cursor-not-allowed">
+                <button disabled className="w-full py-5 rounded-xl bg-red-50 text-red-600 font-extrabold text-sm transition-all cursor-not-allowed">
                   출석이 마감되었습니다 (결석) 🚨
                 </button>
               )}

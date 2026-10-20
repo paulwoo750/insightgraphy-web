@@ -184,7 +184,7 @@ export default function LandingManager() {
       />
       <ReadOnlyBanner role={role} />
 
-      <div className="mb-5 rounded-md border border-slate-200 bg-white px-2">
+      <div className="mb-5 rounded-lg bg-teal-50/40 px-2">
         <Tabs tabs={[{ key: 'select', label: '노출 항목' }, { key: 'landing', label: '대문 문구' }]} value={tab} onChange={setTab} />
       </div>
 
@@ -214,7 +214,7 @@ export default function LandingManager() {
                 {preview.items.length === 0 ? (
                   <EmptyState title="표시할 일정이 없습니다." description={`메인에는 "${land.sessions.empty}" 문구가 보입니다.`} />
                 ) : (
-                  <ol className="divide-y divide-slate-100 rounded-md border border-slate-200">
+                  <ol className="divide-y divide-slate-100 border-y border-slate-200">
                     {preview.items.map((row) => (
                       <li key={row.id} className="flex items-center justify-between gap-3 px-3 py-2.5 text-sm">
                         <span className="min-w-0"><span className="font-bold text-slate-900">{formatKstDate(row.full_date)}</span> <span className="text-slate-700">{row.title}</span></span>
@@ -285,7 +285,7 @@ export default function LandingManager() {
               </div>
               <div className="grid gap-4 lg:grid-cols-2">
                 {land.activities.items.map((item, index) => (
-                  <div key={index} className="space-y-3 rounded-md border border-slate-200 p-4">
+                  <div key={index} className="space-y-3 rounded-lg bg-teal-50/40 p-4">
                     <p className="text-sm font-bold text-teal-800">카드 {index + 1}</p>
                     <div className="grid grid-cols-[80px_minmax(0,1fr)] gap-3">
                       <TextField label="아이콘" value={item.icon} onChange={(value) => upActItem(index, 'icon', value)} disabled={!canWrite} />

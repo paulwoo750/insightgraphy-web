@@ -66,7 +66,7 @@ export default function WeekSummary({ ctx, week, mode, current, favorites, assig
         </ul>
       </SummaryCard>
       {missing.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 md:col-span-2 xl:col-span-4">
+        <div className="flex flex-wrap items-center gap-2 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-900 md:col-span-2 xl:col-span-4">
           <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
           <span className="font-bold">미설정</span>
           {missing.map((item) => (
@@ -82,7 +82,7 @@ export default function WeekSummary({ ctx, week, mode, current, favorites, assig
 
 function SummaryCard({ icon: Icon, label, children, onClick }) {
   return (
-    <div className="min-w-0 rounded-md border border-slate-200 bg-white p-4">
+    <div className="min-w-0 rounded-lg bg-teal-50/40 p-4">
       <div className="mb-2 flex items-center justify-between gap-2">
         <p className="flex items-center gap-1.5 text-xs font-bold text-slate-500"><Icon className="h-3.5 w-3.5" aria-hidden="true" />{label}</p>
         <button type="button" onClick={onClick} className="rounded px-1.5 text-xs font-bold text-teal-700 hover:bg-teal-50 hover:text-teal-900">설정</button>

@@ -184,7 +184,7 @@ export default function FeedbackPage() {
       <WeekRail weeks={weeks} week={week} onChange={changeWeek} topic={evalTargets[0]?.target_info?.topic || displayTopic(semester.weekTopics, week, 'regular') || '주제 미정'}>
         <p className="mb-5 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11px] font-black uppercase tracking-widest">
           <span className="text-slate-500">{semester.name}</span>
-          {myInfo.cluster_id && <><span className="h-3 w-px bg-rose-200" aria-hidden="true" /><span className="text-rose-600">클러스터 {myInfo.cluster_id} · {myInfo.group_id}조</span></>}
+          {myInfo.cluster_id && <><span className="h-3 w-px bg-teal-200" aria-hidden="true" /><span className="text-teal-600">클러스터 {myInfo.cluster_id} · {myInfo.group_id}조</span></>}
         </p>
       </WeekRail>
 
@@ -202,9 +202,9 @@ export default function FeedbackPage() {
             <EmptyState title="왼쪽에서 피드백할 발표를 고르세요." />
           ) : (
             <section className="min-w-0">
-              <div className="flex flex-col gap-3 border-b-[3px] border-rose-600 pb-5 sm:flex-row sm:items-end sm:justify-between">
+              <div className="flex flex-col gap-3 border-b-[3px] border-teal-600 pb-5 sm:flex-row sm:items-end sm:justify-between">
                 <div className="min-w-0">
-                  <p className="text-[11px] font-black uppercase tracking-[0.25em] text-rose-500">{isSameGroup ? '★ 같은 조 · 상세 피드백' : '다른 조 · 메모'}</p>
+                  <p className="text-[11px] font-black uppercase tracking-[0.25em] text-teal-500">{isSameGroup ? '★ 같은 조 · 상세 피드백' : '다른 조 · 메모'}</p>
                   <h2 className="mt-1 break-keep text-3xl font-black tracking-tight text-slate-900">{targetName(current.target_info)}</h2>
                   <p className="mt-1 text-sm text-slate-500">주제 {current.target_info.topic || displayTopic(semester.weekTopics, week, 'regular') || '미정'}</p>
                 </div>
@@ -213,11 +213,11 @@ export default function FeedbackPage() {
 
               <div className="mt-8">
                 {isSameGroup ? (
-                  <FeedbackFields wide value={editFeedback} onChange={(key, text) => setEditFeedback((prev) => ({ ...prev, [key]: text }))} messagePlaceholder="발표를 들으며 핵심 메시지를 기록해 보세요." />
+                  <FeedbackFields wide large value={editFeedback} onChange={(key, text) => setEditFeedback((prev) => ({ ...prev, [key]: text }))} messagePlaceholder="발표를 들으며 핵심 메시지를 기록해 보세요." />
                 ) : (
                   <label className="block">
-                    <span className="text-[11px] font-black uppercase tracking-[0.2em] text-rose-500">메모 <span className="ml-1 normal-case tracking-normal text-slate-400">입력칸을 벗어나면 자동 저장됩니다</span></span>
-                    <textarea value={editFeedback.memo} onChange={(event) => setEditFeedback((prev) => ({ ...prev, memo: event.target.value }))} onBlur={() => { if (dirty) save({ quiet: true }) }} className="mt-2 min-h-80 w-full resize-y border-y-2 border-rose-200 bg-transparent py-4 text-sm leading-7 text-slate-800 outline-none transition placeholder:text-slate-300 focus:border-rose-500" placeholder="이 발표에 대해 자유롭게 메모를 남기세요." />
+                    <span className="text-[11px] font-black uppercase tracking-[0.2em] text-teal-500">메모 <span className="ml-1 normal-case tracking-normal text-slate-400">입력칸을 벗어나면 자동 저장됩니다</span></span>
+                    <textarea value={editFeedback.memo} onChange={(event) => setEditFeedback((prev) => ({ ...prev, memo: event.target.value }))} onBlur={() => { if (dirty) save({ quiet: true }) }} className="mt-2 min-h-80 w-full resize-y border-y-2 border-teal-200 bg-transparent py-4 text-sm leading-7 text-slate-800 outline-none transition placeholder:text-slate-300 focus:border-teal-500" placeholder="이 발표에 대해 자유롭게 메모를 남기세요." />
                   </label>
                 )}
               </div>

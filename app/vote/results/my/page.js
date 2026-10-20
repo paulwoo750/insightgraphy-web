@@ -192,8 +192,8 @@ export default function MyAnalytics() {
         <div className="mt-3"><StatusBadge tone="teal">{semesterLabel} 리포트</StatusBadge></div>
       </MemberHeader>
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <section className="rounded-lg border border-slate-200 bg-white p-5">
+      <div className="grid gap-8 lg:grid-cols-3">
+        <section className="border-t-2 border-teal-600 pt-4">
           <h2 className="text-sm font-bold text-slate-600">평균 점수</h2>
           {report.myOverall ? (
             <>
@@ -210,7 +210,7 @@ export default function MyAnalytics() {
           ) : <p className="mt-6 text-sm text-slate-500">아직 받은 정량 평가가 없습니다.</p>}
         </section>
 
-        <section className="rounded-lg border border-slate-200 bg-white p-5">
+        <section className="border-t-2 border-teal-600 pt-4">
           <h2 className="text-sm font-bold text-slate-600">제출 현황</h2>
           <dl className="mt-3 divide-y divide-slate-100">
             <div className="flex items-baseline justify-between py-2.5"><dt className="text-sm text-slate-600">제출한 자료</dt><dd className="text-2xl font-extrabold text-teal-800">{report.submissions.total}건</dd></div>
@@ -220,7 +220,7 @@ export default function MyAnalytics() {
           <p className="mt-1 text-xs text-slate-500">주차별 제출 여부는 마이페이지와 각 자료실에서 확인하세요.</p>
         </section>
 
-        <section className="flex flex-col rounded-lg border border-slate-200 bg-white p-5">
+        <section className="flex flex-col border-t-2 border-teal-600 pt-4">
           <h2 className="text-sm font-bold text-slate-600">클러스터 1위 <span className="font-semibold text-slate-400">· {report.awards.length}회</span></h2>
           <ul className="mt-3 max-h-56 flex-1 space-y-2 overflow-y-auto">
             {report.awards.map((award) => (
@@ -234,7 +234,7 @@ export default function MyAnalytics() {
         </section>
       </div>
 
-      <div className="mt-4 grid gap-4 lg:grid-cols-2">
+      <div className="mt-10 grid gap-8 lg:grid-cols-2">
         <ChartCard title="총점 추이" empty={scoredWeeks.length === 0}>
           <LineChart data={scoredWeeks} margin={{ right: 20, left: -10, top: 10 }}>
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#cbd5e1" />
@@ -281,12 +281,12 @@ export default function MyAnalytics() {
         </ChartCard>
       </div>
 
-      <section className="mt-4 rounded-lg border border-slate-200 bg-white p-5">
+      <section className="mt-8 border-t-2 border-teal-600 pt-4">
         <h2 className="text-base font-bold text-slate-900">주차별 상세</h2>
         <ul className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {report.weekly.map((row) => (
-            <li key={row.week} className={`rounded-md border p-3 ${row.scored ? 'border-teal-200 bg-white' : 'border-slate-200 bg-slate-50'}`}>
-              <div className="flex items-baseline justify-between border-b border-slate-100 pb-2">
+            <li key={row.week} className={`rounded-xl p-3 ${row.scored ? 'bg-teal-50/60' : 'bg-slate-50/70 opacity-80'}`}>
+              <div className="flex items-baseline justify-between pb-1">
                 <span className="text-base font-bold text-slate-900">W{row.week}</span>
                 <span className={`text-sm font-bold ${row.scored ? 'text-teal-800' : 'text-slate-500'}`}>{row.scored ? `${row.total}점` : row.presented ? '평가 없음' : '발표 없음'}</span>
               </div>
@@ -310,7 +310,7 @@ export default function MyAnalytics() {
 
 function ChartCard({ title, empty, children }) {
   return (
-    <section className="flex h-[380px] flex-col rounded-lg border border-slate-200 bg-white p-5">
+    <section className="flex h-[380px] flex-col border-t-2 border-teal-600 pt-4">
       <h2 className="text-sm font-bold text-slate-600">{title}</h2>
       <div className="mt-3 min-h-0 flex-1">
         {empty ? <p className="grid h-full place-items-center text-sm text-slate-500">표시할 평가 기록이 없습니다.</p> : <ResponsiveContainer width="100%" height="100%">{children}</ResponsiveContainer>}

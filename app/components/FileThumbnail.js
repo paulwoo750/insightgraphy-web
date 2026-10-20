@@ -189,7 +189,7 @@ export default function FileThumbnail({ url, storagePath, title = '', aspect = '
   const src = direct || state.src
 
   return (
-    <div ref={containerRef} className={`relative ${ratio} w-full overflow-hidden rounded-md border border-slate-200 bg-slate-100 ${className}`}>
+    <div ref={containerRef} className={`relative ${ratio} w-full overflow-hidden rounded-lg bg-slate-100 ${className}`}>
       {src && !(generated && state.status !== 'ready') ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={src} alt={title ? `${title} 미리보기` : '자료 미리보기'} loading="lazy" decoding="async" className="h-full w-full object-contain" onError={() => setState((current) => ({ ...current, status: 'error', error: 'failed', src: null }))} />

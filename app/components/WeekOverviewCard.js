@@ -39,8 +39,8 @@ export default function WeekOverviewCard({
   const sessionLabel = sessionMode === 'weekday' ? '평일 세션' : week === 0 ? 'OT' : '정규 세션'
   const visibleDeadlines = deadlines.filter((item) => item.at).sort((a, b) => new Date(a.at) - new Date(b.at))
   return (
-    <article data-tour={tour} className={`min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm ${className}`}>
-      <div className="flex flex-wrap items-center justify-between gap-2 bg-gradient-to-r from-teal-600 via-emerald-600 to-violet-600 px-4 py-3 text-white sm:px-5">
+    <article data-tour={tour} className={`min-w-0 ${className}`}>
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-gradient-to-r from-teal-600 via-emerald-600 to-violet-600 px-4 py-3 text-white sm:px-5">
         <p className="flex items-center gap-2 text-sm font-bold">
           <span className="rounded-lg bg-white/20 px-2 py-0.5 text-base font-black ring-1 ring-inset ring-white/30">W{week}</span>
           {semesterName} · {sessionMode === 'weekday' ? '🏖️' : '🎤'} {sessionLabel}
@@ -50,7 +50,7 @@ export default function WeekOverviewCard({
           {previewLabel && <span className={`rounded-full px-2 py-0.5 text-xs font-bold ring-1 ring-inset ${previewTone === 'amber' ? 'bg-amber-50 text-amber-800 ring-amber-200' : 'bg-emerald-50 text-emerald-700 ring-emerald-200'}`}>{previewLabel}</span>}
         </div>
       </div>
-      <div className="px-4 py-4 sm:px-5">
+      <div className="px-1 py-4 sm:px-2">
         <h3 className="break-keep text-xl font-extrabold leading-8 text-slate-950">{topic || <span className="text-slate-400">주제 미정</span>}</h3>
         <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
           <InfoRow tone="bg-violet-100 text-violet-700" icon={CalendarClock} label="일시" value={scheduleDate ? `${formatKstDate(scheduleDate)}${attendance.late ? ` ${formatKst(attendance.late, { weekday: false }).split(' ')[1]} 시작` : ''}` : attendance.late ? `${formatKst(attendance.late)} 시작` : '일정 미정'} detail={scheduleTitle} />

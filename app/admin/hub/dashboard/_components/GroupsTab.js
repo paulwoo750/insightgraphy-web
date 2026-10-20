@@ -16,7 +16,7 @@ function CountInput({ id, label, value, onChange, disabled, help }) {
 
 function MappingGrid({ title, fromLabel, toLabel, fromCount, toCount, mapping, onChange, disabled }) {
   return (
-    <section className="rounded-md border border-slate-200 p-4">
+    <section className="rounded-lg bg-teal-50/40 p-4">
       <h4 className="mb-3 text-sm font-bold text-slate-900">{title}</h4>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
         {range(fromCount).map((from) => (
@@ -66,7 +66,7 @@ function AssignmentTable({ members, setup, mode, unitLabel, unitCount, canWrite,
   }
 
   return (
-    <section className="rounded-md border border-slate-200">
+    <section className="rounded-lg bg-teal-50/40">
       <div className="flex flex-col gap-3 border-b border-slate-200 p-3 lg:flex-row lg:items-end">
         <Field label="학회원 검색" htmlFor={`${mode}-member-search`} className="lg:w-64">
           <div className="relative">
@@ -139,7 +139,7 @@ function Board({ assignments, unitLabel, clusterOf }) {
   return (
     <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
       {range(assignments.units).map((unit) => (
-        <div key={unit} className="rounded-md border border-slate-200 bg-white p-3">
+        <div key={unit} className="rounded-lg bg-teal-50/40 p-3">
           <div className="mb-1.5 flex items-center justify-between gap-2">
             <p className="text-sm font-bold text-slate-900">{unit}{unitLabel}</p>
             {clusterOf && <StatusBadge tone="teal">클러스터 {clusterOf(unit)}</StatusBadge>}
@@ -147,7 +147,7 @@ function Board({ assignments, unitLabel, clusterOf }) {
           <p className="break-keep text-sm leading-6 text-slate-600">{(assignments.byUnit[unit] || []).map((member) => member.name).join(', ') || '배정된 인원 없음'}</p>
         </div>
       ))}
-      <div className="rounded-md border border-dashed border-slate-300 p-3">
+      <div className="rounded-lg bg-teal-50/40 p-3">
         <p className="mb-1 flex items-center gap-1 text-sm font-bold text-slate-700"><UserX className="h-4 w-4" aria-hidden="true" />미정 · 불참 표시</p>
         <p className="text-sm text-slate-600">미정: {assignments.unassigned.map((member) => member.name).join(', ') || '없음'}</p>
         <p className="text-sm text-slate-600">불참 표시: {assignments.excluded.map((member) => member.name).join(', ') || '없음'}</p>

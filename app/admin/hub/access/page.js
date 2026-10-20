@@ -309,7 +309,7 @@ export default function AdminAccessPage() {
               <Button variant="primary" icon={UserPlus} className="w-full" onClick={grantToMember} loading={pending} disabled={!picked}>
                 {picked ? `${picked.name}에게 ${roleLabel(newRole)} 주기` : '학회원을 먼저 고르세요'}
               </Button>
-              <details className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+              <details className="rounded-lg bg-teal-50/40 px-3 py-2">
                 <summary className="cursor-pointer text-sm font-bold text-slate-600">이메일로 등록 (보조)</summary>
                 <form onSubmit={grantByEmail} className="mt-3 space-y-2">
                   <input type="email" aria-label="로그인 이메일" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="가입한 이메일" className={inputClass} />
@@ -376,7 +376,7 @@ function PolicyTable({ className = '', showEnforcement = false }) {
         </table>
       </div>
       <div className="space-y-1.5 border-t border-slate-100 px-4 py-3 text-sm leading-6 text-slate-600 sm:px-5">
-        <p><strong className="text-slate-800">👑 학회장</strong>은 모든 운영 작업과 관리자 권한 조회·변경을 합니다. <strong className="text-slate-800">🛠️ 개발자</strong>는 여기에 데이터 점검 도구·기존 기록 연결 검토·개발자 계정 관리가 더해집니다.</p>
+        <p><strong className="text-slate-800">👑 학회장</strong>은 모든 운영 작업과 관리자 권한 조회·변경을 합니다. <strong className="text-slate-800">🛠️ 개발자</strong>는 여기에 기존 기록 연결 검토·개발자 계정 관리가 더해집니다. 학기 마감 점검은 학회장과 개발자가 엽니다.</p>
         <p>관리자와 운영진은 권한 변경을 빼면 같은 범위이고, 운영진도 학회원 안전 삭제(기록이 있으면 삭제 불가)를 할 수 있습니다.</p>
         <p>운영진 범위를 줄이려면 해당 RPC·RLS의 역할 목록을 바꿔야 하며, 바꾸면 운영진 계정의 일부 저장 버튼이 실패합니다. 이번 업데이트에서는 기존 권한을 줄이지 않았습니다.</p>
         <p>열람자는 화면 진입 시 자동 결석 동기화·벌금 스캔이 실행되지 않고, 저장·삭제 버튼이 비활성화됩니다. 벌금·일정·제출물·콘텐츠는 예전부터 쓰던 테이블이라 DB 정책이 화면 기준보다 넓을 수 있습니다. 현재 정책은 supabase/COPY_PASTE_ORDER.md의 &lsquo;기존 테이블 정책 확인&rsquo; 쿼리로 확인하세요.</p>

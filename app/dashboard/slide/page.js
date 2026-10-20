@@ -169,7 +169,7 @@ export default function SlideRoom() {
           groupLabel={mode === 'weekday' ? (myWeekdayTeam ? `평일 ${myWeekdayTeam.group}조` : '') : team ? `${team}팀` : memberGroup(semester.weeklySetup, week, name) ? `${memberGroup(semester.weeklySetup, week, name)}조` : ''}
           deadlines={[{ key: 'slide', label: mode === 'weekday' ? '평일 발표자료 마감' : '슬라이드 제출', at: activeDeadline }]}
         />
-        <form onSubmit={submit} className="space-y-3 rounded-lg border border-slate-200 p-4">
+        <form onSubmit={submit} className="space-y-3 rounded-2xl bg-violet-50/60 p-4">
           <h2 className="text-base font-bold text-slate-900">W{week} 슬라이드 제출</h2>
           <Field label="공유 링크" htmlFor="slide-link" hint={`파일 이름은 자동으로 "${week}W (${submissionTopic(semester.weekTopics, week, mode)}) ${name} 발표자료"가 됩니다. 마감 ${activeDeadline ? formatKst(activeDeadline) : '미정'}`}>
             <input id="slide-link" value={driveLink} onChange={(event) => setDriveLink(event.target.value)} placeholder="https://docs.google.com/presentation/…" className={inputClass} />

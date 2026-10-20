@@ -110,7 +110,7 @@ const NAV = [
   {
     label: '투표·결과',
     icon: Vote,
-    tone: 'rose',
+    tone: 'teal',
     match: (path) => path.startsWith('/vote'),
     items: [
       { label: '발표 채점', href: '/vote/score', icon: Vote, description: '오늘 세션 발표 평가' },
@@ -417,7 +417,7 @@ function ApprovalPendingPanel({ member, email, externalHref, externalTarget, onS
 
   return (
     <MemberPage className="grid place-items-center">
-      <section className="relative w-full max-w-md overflow-hidden rounded-2xl border border-teal-100 bg-gradient-to-br from-teal-50 via-white to-violet-50 p-7 shadow-sm sm:p-9">
+      <section className="relative w-full max-w-md overflow-hidden rounded-2xl bg-gradient-to-br from-teal-50 via-white to-violet-50 p-7 sm:p-9">
         <span className={`grid h-12 w-12 place-items-center rounded-2xl ${unlinked ? 'bg-amber-100 text-amber-700' : 'bg-teal-100 text-teal-700'}`}><Icon className="h-6 w-6" aria-hidden="true" /></span>
         <p className="mt-5 text-xs font-bold text-teal-700">학회원 승인</p>
         <h1 className="mt-1 text-xl font-bold text-slate-950">{unlinked ? '학회원 명단과 연결되지 않은 계정입니다.' : '가입 승인 대기 중입니다. ⏳'}</h1>

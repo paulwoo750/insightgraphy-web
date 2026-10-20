@@ -13,9 +13,9 @@ export const FEEDBACK_SECTIONS = [
 // 주차 고르기 + 주제: 위아래 굵은 선 사이에 밑줄 탭
 export function WeekRail({ weeks, week, onChange, topic, children }) {
   return (
-    <section className="mb-10 border-y-2 border-rose-600 py-7 text-center">
+    <section className="mb-10 border-y-2 border-teal-600 py-7 text-center">
       {children}
-      <p className="text-[11px] font-black uppercase tracking-[0.25em] text-rose-500">Select Week</p>
+      <p className="text-[11px] font-black uppercase tracking-[0.25em] text-teal-500">Select Week</p>
       <div role="group" aria-label="주차 선택" className="mt-3 flex gap-x-5 gap-y-2 overflow-x-auto px-1 pb-1 [scrollbar-width:none] sm:flex-wrap sm:justify-center">
         {weeks.map((value) => (
           <button
@@ -23,7 +23,7 @@ export function WeekRail({ weeks, week, onChange, topic, children }) {
             type="button"
             aria-pressed={value === week}
             onClick={() => onChange(value)}
-            className={`shrink-0 border-b-[3px] pb-1 text-base font-black transition sm:text-lg ${value === week ? 'border-rose-600 text-rose-700' : 'border-transparent text-slate-400 hover:text-slate-700'}`}
+            className={`shrink-0 border-b-[3px] pb-1 text-base font-black transition sm:text-lg ${value === week ? 'border-teal-600 text-teal-700' : 'border-transparent text-slate-400 hover:text-slate-700'}`}
           >
             W{value}
           </button>
@@ -41,7 +41,7 @@ export function TargetRail({ title = 'Cluster Flow', items, selectedId, onSelect
   return (
     <nav aria-label="발표 순서" className="lg:sticky lg:top-24">
       <div className="flex items-end justify-between gap-2 pb-3">
-        <h2 className="text-[11px] font-black uppercase tracking-[0.25em] text-rose-500">{title}</h2>
+        <h2 className="text-[11px] font-black uppercase tracking-[0.25em] text-teal-500">{title}</h2>
         <span className="text-[11px] font-bold text-slate-400"><span className="text-amber-500" aria-hidden="true">★</span> 같은 조</span>
       </div>
       <ol className="space-y-0.5">
@@ -54,11 +54,11 @@ export function TargetRail({ title = 'Cluster Flow', items, selectedId, onSelect
                 disabled={item.disabled}
                 aria-current={selected ? 'true' : undefined}
                 onClick={() => onSelect(item)}
-                className={`flex w-full items-start gap-3 border-l-[3px] py-2.5 pl-3 pr-1 text-left transition ${selected ? 'border-rose-600 bg-rose-50/70' : 'border-transparent hover:border-rose-200'} disabled:cursor-not-allowed`}
+                className={`flex w-full items-start gap-3 border-l-[3px] py-2.5 pl-3 pr-1 text-left transition ${selected ? 'border-teal-600 bg-teal-50/70' : 'border-transparent hover:border-teal-200'} disabled:cursor-not-allowed`}
               >
-                {numbered && <span className={`w-5 shrink-0 pt-0.5 text-xs font-black ${selected ? 'text-rose-600' : 'text-slate-300'}`}>{String(index + 1).padStart(2, '0')}</span>}
+                {numbered && <span className={`w-5 shrink-0 pt-0.5 text-xs font-black ${selected ? 'text-teal-600' : 'text-slate-300'}`}>{String(index + 1).padStart(2, '0')}</span>}
                 <span className="min-w-0 flex-1">
-                  <span className={`block break-keep text-sm font-extrabold ${selected ? 'text-rose-800' : item.done ? 'text-slate-400 line-through decoration-slate-300' : item.me ? 'text-slate-400' : 'text-slate-800'}`}>
+                  <span className={`block break-keep text-sm font-extrabold ${selected ? 'text-teal-800' : item.done ? 'text-slate-400 line-through decoration-slate-300' : item.me ? 'text-slate-400' : 'text-slate-800'}`}>
                     {item.label}
                     {item.sameGroup && <span className="ml-1 text-amber-500" title="같은 조" aria-label="같은 조">★</span>}
                   </span>
@@ -90,23 +90,23 @@ function LineInput({ marker, markerClass, lineClass, value, onChange, placeholde
         value={value || ''}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
-        className={`field-sizing-content min-h-10 w-full resize-y border-b-2 supports-[field-sizing:content]:resize-none bg-transparent py-2 leading-6 text-slate-800 outline-none transition placeholder:text-slate-300 ${large ? 'text-base font-semibold' : 'text-sm'} ${lineClass}`}
+        className={`field-sizing-content w-full resize-y border-b-2 supports-[field-sizing:content]:resize-none bg-transparent py-2 text-slate-800 outline-none transition placeholder:text-slate-300 ${large ? 'min-h-[5.5rem] text-[15px] leading-7' : 'min-h-10 text-sm leading-6'} ${lineClass}`}
       />
     </div>
   )
 }
 
-// 핵심 메시지 + Insight/Graphic/Delivery 장단점 입력. wide면 장점·개선점을 나란히 둔다
-export function FeedbackFields({ value, onChange, wide = false, messageLabel = '핵심 메시지', messagePlaceholder = '발표의 핵심 메시지', required = false }) {
+// 핵심 메시지 + Insight/Graphic/Delivery 장단점 입력. wide면 장점·개선점을 나란히 두고, large면 칸을 크게 쓴다
+export function FeedbackFields({ value, onChange, wide = false, large = false, messageLabel = '핵심 메시지', messagePlaceholder = '발표의 핵심 메시지', required = false }) {
   return (
-    <div className="space-y-7">
+    <div className={large ? 'space-y-9' : 'space-y-7'}>
       <label className="block">
-        <span className="text-[11px] font-black uppercase tracking-[0.2em] text-rose-500">{messageLabel}{required && <span className="ml-1 text-rose-600">*</span>}</span>
+        <span className="text-[11px] font-black uppercase tracking-[0.2em] text-teal-500">{messageLabel}{required && <span className="ml-1 text-teal-600">*</span>}</span>
         <input
           value={value.originalMessage || ''}
           onChange={(event) => onChange('originalMessage', event.target.value)}
           placeholder={messagePlaceholder}
-          className="mt-1 w-full border-b-[3px] border-rose-200 bg-transparent py-2 text-base font-bold text-slate-900 outline-none transition placeholder:font-semibold placeholder:text-slate-300 focus:border-rose-600"
+          className="mt-1 w-full border-b-[3px] border-teal-200 bg-transparent py-2 text-base font-bold text-slate-900 outline-none transition placeholder:font-semibold placeholder:text-slate-300 focus:border-teal-600"
         />
       </label>
       {FEEDBACK_SECTIONS.map((section) => (
@@ -116,9 +116,9 @@ export function FeedbackFields({ value, onChange, wide = false, messageLabel = '
             <span className={`text-sm font-black ${section.text}`}>{section.title}</span>
             <span className="text-xs font-semibold text-slate-400">{section.subtitle}</span>
           </legend>
-          <div className={`mt-1 grid gap-x-6 ${wide ? 'sm:grid-cols-2' : ''}`}>
-            <LineInput label={`${section.title} 장점`} marker="+" markerClass="text-emerald-500" lineClass="border-emerald-200 focus:border-emerald-500" value={value[section.plus]} onChange={(text) => onChange(section.plus, text)} placeholder="좋았던 점 · 배울 점" />
-            <LineInput label={`${section.title} 개선점`} marker="−" markerClass="text-rose-500" lineClass="border-rose-200 focus:border-rose-500" value={value[section.minus]} onChange={(text) => onChange(section.minus, text)} placeholder="아쉬운 점 · 개선 아이디어" />
+          <div className={`mt-1 grid gap-x-6 ${large ? 'gap-y-2' : ''} ${wide ? 'sm:grid-cols-2' : ''}`}>
+            <LineInput label={`${section.title} 장점`} marker="+" markerClass="text-emerald-500" lineClass="border-emerald-200 focus:border-emerald-500" value={value[section.plus]} onChange={(text) => onChange(section.plus, text)} placeholder="좋았던 점 · 배울 점" large={large} />
+            <LineInput label={`${section.title} 개선점`} marker="−" markerClass="text-rose-500" lineClass="border-rose-200 focus:border-rose-500" value={value[section.minus]} onChange={(text) => onChange(section.minus, text)} placeholder="아쉬운 점 · 개선 아이디어" large={large} />
           </div>
         </fieldset>
       ))}
@@ -136,7 +136,7 @@ export function FeedbackView({ data, dark = false }) {
     <div className="space-y-3">
       {data.originalMessage && (
         <p className={`break-keep text-[15px] font-bold leading-7 ${dark ? 'text-white' : 'text-slate-900'}`}>
-          <span className="mr-1 text-rose-400" aria-hidden="true">“</span>{data.originalMessage}<span className="ml-0.5 text-rose-400" aria-hidden="true">”</span>
+          <span className="mr-1 text-teal-400" aria-hidden="true">“</span>{data.originalMessage}<span className="ml-0.5 text-teal-400" aria-hidden="true">”</span>
         </p>
       )}
       {FEEDBACK_SECTIONS.map((section) => {

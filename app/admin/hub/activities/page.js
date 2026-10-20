@@ -59,7 +59,7 @@ export default function IntegratedActivitiesManager() {
         actions={<Button icon={ExternalLink} href={site.publicUrl(publicPaths[activeTab])} target="_blank">공개 화면 열기</Button>}
       />
       <ReadOnlyBanner role={role} />
-      <div className="mb-5 rounded-md border border-slate-200 bg-white px-2">
+      <div className="mb-5 rounded-lg bg-teal-50/40 px-2">
         <Tabs tabs={tabs.map((tab) => ({ key: tab.id, label: tab.name }))} value={activeTab} onChange={setActiveTab} label="활동 종류" />
       </div>
       <div className="space-y-8">

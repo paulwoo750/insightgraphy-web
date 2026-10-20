@@ -166,7 +166,7 @@ export default function HomeHub() {
             }
           />
 
-          <section aria-labelledby="my-submissions" className="rounded-lg border border-slate-200 p-4 sm:p-5">
+          <section aria-labelledby="my-submissions" className="border-t-2 border-teal-600 pt-4">
             <h2 id="my-submissions" className="text-base font-bold text-slate-900">W{week} 내 제출</h2>
             <ul className="mt-3 grid gap-2 sm:grid-cols-3">
               {SUBMISSIONS.map((item) => {
@@ -174,8 +174,8 @@ export default function HomeHub() {
                 const Icon = item.icon
                 return (
                   <li key={item.key}>
-                    <Link href={`${item.href}?week=${week}`} className="flex items-center gap-3 rounded-md border border-slate-200 px-3 py-2.5 hover:border-teal-400">
-                      <Icon className="h-5 w-5 text-slate-400" aria-hidden="true" />
+                    <Link href={`${item.href}?week=${week}`} className="flex items-center gap-3 rounded-lg bg-teal-50/50 px-3 py-2.5 transition hover:bg-teal-50">
+                      <Icon className="h-5 w-5 text-teal-600" aria-hidden="true" />
                       <span className="min-w-0 flex-1">
                         <span className="block text-sm font-bold text-slate-900">{item.label}</span>
                         <span className="block text-xs text-slate-500">{file ? formatKst(file.created_at) : weekDeadlines[item.key] ? `마감 ${formatKst(weekDeadlines[item.key])}` : '마감 미정'}</span>
@@ -188,12 +188,12 @@ export default function HomeHub() {
             </ul>
           </section>
 
-          <section aria-labelledby="recent-files" data-tour="member-recent">
+          <section aria-labelledby="recent-files" data-tour="member-recent" className="border-t-2 border-teal-600 pt-4">
             <div className="mb-3 flex items-end justify-between gap-2">
               <h2 id="recent-files" className="text-base font-bold text-slate-900">최근 올라온 자료</h2>
               <Link href={`/dashboard/slide?week=${week}`} className="text-sm font-bold text-teal-700 hover:underline">자료실 가기</Link>
             </div>
-            {recentFiles.length === 0 ? <p className="rounded-md border border-dashed border-slate-300 px-4 py-8 text-center text-sm text-slate-500">이번 학기에 올라온 자료가 없습니다.</p> : (
+            {recentFiles.length === 0 ? <p className="py-8 text-center text-sm text-slate-500">이번 학기에 올라온 자료가 없습니다.</p> : (
               <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {recentFiles.map((file) => {
                   const category = normalizeFileCategory(file.file_category)
@@ -214,12 +214,12 @@ export default function HomeHub() {
         </div>
 
         <aside className="min-w-0 space-y-6">
-          <section aria-labelledby="upcoming-deadlines" data-tour="member-deadlines" className="rounded-lg border border-slate-200">
-            <h2 id="upcoming-deadlines" className="border-b border-slate-100 px-4 py-3 text-base font-bold text-slate-900">다가오는 마감</h2>
-            {upcoming.length === 0 ? <p className="px-4 py-8 text-center text-sm text-slate-500">예정된 마감이 없습니다.</p> : (
+          <section aria-labelledby="upcoming-deadlines" data-tour="member-deadlines" className="border-t-2 border-teal-600">
+            <h2 id="upcoming-deadlines" className="pb-1 pt-4 text-base font-bold text-slate-900">다가오는 마감</h2>
+            {upcoming.length === 0 ? <p className="py-8 text-center text-sm text-slate-500">예정된 마감이 없습니다.</p> : (
               <ul className="divide-y divide-slate-100">
                 {upcoming.map((item) => (
-                  <li key={`${item.week}-${item.category}`} className="flex items-center gap-3 px-4 py-3">
+                  <li key={`${item.week}-${item.category}`} className="flex items-center gap-3 py-3">
                     <span className="w-10 shrink-0 rounded bg-teal-800 py-0.5 text-center text-xs font-bold text-white">W{item.week}</span>
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm font-bold text-slate-800">{deadlineLabel(item.category)}</span>
@@ -232,7 +232,7 @@ export default function HomeHub() {
             )}
           </section>
 
-          <section aria-labelledby="mypage-summary" data-tour="member-mypage-summary" className="rounded-lg border border-slate-200 p-4">
+          <section aria-labelledby="mypage-summary" data-tour="member-mypage-summary" className="border-t-2 border-teal-600 pt-4">
             <div className="flex items-center justify-between">
               <h2 id="mypage-summary" className="text-base font-bold text-slate-900">이번 학기 내 기록</h2>
               <Link href="/mypage" className="text-sm font-bold text-teal-700 hover:underline">마이페이지</Link>
@@ -248,7 +248,7 @@ export default function HomeHub() {
             {records?.ambiguousName && <p className="mt-2 text-xs text-slate-500">이름이 같은 학회원이 있어, 학회원 연결이 안 된 예전 기록 일부는 빠졌을 수 있습니다.</p>}
           </section>
 
-          <section aria-labelledby="calendar-title" className="rounded-lg border border-slate-200 p-4">
+          <section aria-labelledby="calendar-title" className="border-t-2 border-teal-600 pt-4">
             <div className="mb-3 flex items-center justify-between">
               <h2 id="calendar-title" className="flex items-center gap-1.5 text-base font-bold text-slate-900"><CalendarDays className="h-4 w-4 text-teal-700" aria-hidden="true" />{year}년 {monthIndex + 1}월</h2>
               <div className="flex gap-1">
@@ -288,7 +288,7 @@ export default function HomeHub() {
 function SummaryStat({ label, value, tone = '' }) {
   const color = tone === 'red' ? 'text-red-600' : tone === 'amber' ? 'text-amber-700' : 'text-slate-900'
   return (
-    <div className="rounded-md bg-slate-50 px-2 py-2.5">
+    <div className="rounded-lg bg-teal-50/50 px-2 py-2.5">
       <dt className="text-xs font-semibold text-slate-500">{label}</dt>
       <dd className={`text-lg font-extrabold ${color}`}>{value}</dd>
     </div>

@@ -93,7 +93,7 @@ export default function PastArchive({ currentCode, files, semesters, weekRows, a
       {!nav.semester && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {pastSemesters.length === 0 ? <p className="col-span-full text-slate-400 font-medium py-10 text-center">보관된 학기가 없습니다.</p> : pastSemesters.map((code) => (
-            <button key={code} onClick={() => setNav({ ...EMPTY_NAV, semester: code })} className="border border-slate-200 hover:border-teal-700 hover:bg-teal-50 p-6 font-extrabold text-lg text-slate-700 hover:text-teal-800 transition-all flex flex-col items-center gap-2">
+            <button key={code} onClick={() => setNav({ ...EMPTY_NAV, semester: code })} className="rounded-xl bg-teal-50/60 hover:bg-teal-100/70 p-6 font-extrabold text-lg text-slate-700 hover:text-teal-800 transition-all hover:-translate-y-0.5 flex flex-col items-center gap-2">
               <span className="text-3xl">📁</span>{semesterNameByCode[code] || code} 학기
             </button>
           ))}
@@ -111,9 +111,9 @@ export default function PastArchive({ currentCode, files, semesters, weekRows, a
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {weeks.length === 0 && <p className="col-span-full text-slate-400 font-medium py-10 text-center">보관된 제출 자료가 없습니다.</p>}
           {weeks.map((week) => (
-            <button key={week} onClick={() => setNav({ ...nav, week })} className="border border-slate-200 hover:border-teal-700 hover:bg-teal-50 p-5 text-left transition-all group flex justify-between items-center">
+            <button key={week} onClick={() => setNav({ ...nav, week })} className="rounded-xl bg-teal-50/50 hover:bg-teal-100/70 p-5 text-left transition-all group flex justify-between items-center">
               <div>
-                <span className="text-xs font-black bg-teal-800 text-white px-2 py-0.5 uppercase">Week {week}</span>
+                <span className="rounded-md text-xs font-black bg-teal-700 text-white px-2 py-0.5 uppercase">Week {week}</span>
                 <p className="text-base font-extrabold text-slate-800 mt-2">📚 {topicFor(week)}</p>
                 {weekdayTopicFor(week) && <p className="text-sm font-bold text-teal-700 mt-1">🏖️ {weekdayTopicFor(week)}</p>}
               </div>
@@ -133,8 +133,8 @@ export default function PastArchive({ currentCode, files, semesters, weekRows, a
       )}
 
       {nav.category && (
-        categoryFiles.length === 0 ? <p className="rounded-lg border border-dashed border-slate-300 px-4 py-12 text-center text-sm text-slate-500">등록된 자료가 없습니다.</p> : (
-          <ul className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
+        categoryFiles.length === 0 ? <p className="py-12 text-center text-sm text-slate-500">등록된 자료가 없습니다.</p> : (
+          <ul className="grid grid-cols-2 gap-x-4 gap-y-6 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
             {categoryFiles.map((file) => (
               <PastCard key={file.id} file={file} manage={canManage(file)} onDelete={() => onDeleteFile(file)} />
             ))}
@@ -188,7 +188,7 @@ export default function PastArchive({ currentCode, files, semesters, weekRows, a
 
 function SnapshotButton({ icon, label, onClick }) {
   return (
-    <button onClick={onClick} className="border border-teal-200 bg-teal-50 hover:bg-teal-100 p-5 flex items-center justify-between transition-colors group">
+    <button onClick={onClick} className="rounded-xl bg-teal-50 hover:bg-teal-100 p-5 flex items-center justify-between transition-colors group">
       <span className="flex items-center gap-3 font-extrabold text-teal-800"><span className="text-2xl">{icon}</span> {label}</span>
       <span className="text-teal-500 font-black text-sm group-hover:translate-x-1 transition-transform">보기 →</span>
     </button>
@@ -201,7 +201,7 @@ function CategoryGroup({ label, categories, onSelect, weekday = false }) {
       <p className={`text-xs font-black uppercase tracking-widest mb-2 ${weekday ? 'text-teal-700' : 'text-slate-400'}`}>{label}</p>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         {categories.map((category) => (
-          <button key={category} onClick={() => onSelect(category)} className={`p-8 font-extrabold text-lg transition-all flex flex-col items-center gap-3 border hover:border-teal-700 hover:bg-teal-50 ${weekday ? 'border-teal-200 bg-teal-50/40 text-teal-800' : 'border-slate-200 text-slate-700 hover:text-teal-800'}`}>
+          <button key={category} onClick={() => onSelect(category)} className={`rounded-xl p-8 font-extrabold text-lg transition-all hover:-translate-y-0.5 flex flex-col items-center gap-3 ${weekday ? 'bg-teal-50 text-teal-800 hover:bg-teal-100/70' : 'bg-indigo-50/60 text-slate-700 hover:bg-indigo-100/60 hover:text-indigo-800'}`}>
             <span className="text-3xl">{weekday ? '🏖️' : ''}{FILE_CATEGORIES[category].icon}</span>{fileCategoryLabel(category)}
           </button>
         ))}
@@ -212,7 +212,7 @@ function CategoryGroup({ label, categories, onSelect, weekday = false }) {
 
 function PastCard({ file, manage, onDelete }) {
   return (
-    <li className="flex min-w-0 flex-col rounded-xl border border-slate-200 bg-white p-2 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
+    <li className="flex min-w-0 flex-col transition hover:-translate-y-0.5">
       <FileThumbnail url={file.file_url} storagePath={file.storage_path} title={file.file_name} />
       <div className="mt-2 min-w-0">
         <p className="truncate text-sm font-bold text-slate-900" title={file.file_name}>{file.file_name}</p>

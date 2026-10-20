@@ -232,7 +232,7 @@ export default function AttendanceDashboardPage() {
       {loadError && <Notice tone="danger" className="mb-4">{loadError}</Notice>}
       {syncNote && <Notice tone={syncNote.tone} className="mb-4" onClose={() => setSyncNote(null)}>{syncNote.text}</Notice>}
 
-      <div className="mb-5 flex flex-col gap-3 rounded-md border border-slate-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="mb-5 flex flex-col gap-3 rounded-lg bg-teal-50/40 p-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="text-xs font-bold text-slate-500">회칙 적용 기준</p>
           <p className="mt-1 text-sm font-bold text-slate-950">

@@ -7,7 +7,7 @@ import { DateTimeInput } from './AttendanceTab'
 
 function Group({ title, help, keys, current, changes, canWrite, setDeadline }) {
   return (
-    <section className="space-y-3 rounded-md border border-slate-200 p-4">
+    <section className="space-y-3 rounded-lg bg-teal-50/40 p-4">
       <h3 className="flex items-center gap-1 text-sm font-bold text-slate-900">{title}{help && <HelpTip label={`${title} 설명`}>{help}</HelpTip>}</h3>
       {keys.map((key) => (
         <DateTimeInput key={key} id={`deadline-${key}`} label={deadlineLabel(key)} value={current.deadlines[key]} onChange={(value) => setDeadline(key, value)} disabled={!canWrite} changed={changes.includes(`deadline:${key}`)} />
@@ -28,7 +28,7 @@ export default function DeadlinesTab({ week, mode, current, changes, canWrite, s
           <Group title="평일 세션 공통 마감" help="모든 평일 조에 같게 적용됩니다." keys={WEEKDAY_DEADLINES} current={current} changes={changes} canWrite={canWrite} setDeadline={setDeadline} />
         </div>
         {!setupView.weekdaySession ? (
-          <p className="rounded-md border border-dashed border-slate-300 px-4 py-6 text-center text-sm text-slate-500">W{week}은 평일 세션을 진행하지 않도록 설정되어 있습니다.</p>
+          <p className="px-4 py-6 text-center text-sm text-slate-500">W{week}은 평일 세션을 진행하지 않도록 설정되어 있습니다.</p>
         ) : (
           <section className="space-y-3">
             <h3 className="flex items-center gap-1 text-sm font-bold text-slate-900">
@@ -40,7 +40,7 @@ export default function DeadlinesTab({ week, mode, current, changes, canWrite, s
                 const team = setupView.weekday?.[group] || {}
                 const auto = team.date ? `${team.date}T23:59` : ''
                 return (
-                  <div key={group} className="space-y-3 rounded-md border border-slate-200 p-4">
+                  <div key={group} className="space-y-3 rounded-lg bg-teal-50/40 p-4">
                     <h4 className="text-sm font-bold text-teal-800">평일 {group}조 {team.date ? `· 진행 ${team.date}` : '· 진행 날짜 미정'}</h4>
                     {[
                       { key: 'slideDl', label: '발표자료 마감', fallback: auto },

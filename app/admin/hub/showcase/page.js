@@ -132,7 +132,7 @@ export default function AdminShowcasePage() {
           {works.length === 0 ? <EmptyState title="등록된 작품이 없습니다." /> : (
             <ul className="grid gap-4 p-4 sm:grid-cols-2 xl:grid-cols-3">
               {works.map((work) => (
-                <li key={work.id} className="overflow-hidden rounded-md border border-slate-200">
+                <li key={work.id} className="overflow-hidden rounded-lg">
                   <div className="aspect-video bg-slate-100">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={work.thumb_url} alt="" loading="lazy" className="h-full w-full object-contain" />

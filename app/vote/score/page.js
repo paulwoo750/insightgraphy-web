@@ -226,9 +226,9 @@ export default function ScorePage() {
       <WeekRail weeks={weeks} week={week} onChange={changeWeek} topic={topic}>
         <p className="mb-5 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11px] font-black uppercase tracking-widest">
           <span className="text-slate-500">{semester.name}</span>
-          <span className="h-3 w-px bg-rose-200" aria-hidden="true" />
+          <span className="h-3 w-px bg-teal-200" aria-hidden="true" />
           <span className="text-slate-500">평가표 {version}</span>
-          {myInfo.cluster_id && <><span className="h-3 w-px bg-rose-200" aria-hidden="true" /><span className="text-rose-600">클러스터 {myInfo.cluster_id} · {myInfo.group_id}조</span></>}
+          {myInfo.cluster_id && <><span className="h-3 w-px bg-teal-200" aria-hidden="true" /><span className="text-teal-600">클러스터 {myInfo.cluster_id} · {myInfo.group_id}조</span></>}
         </p>
       </WeekRail>
 
@@ -239,16 +239,16 @@ export default function ScorePage() {
       )}
 
       {weekState.status === 'ready' && evalTargets.length > 0 && (
-        <div className="grid items-start gap-10 lg:grid-cols-[210px_minmax(0,1fr)] xl:grid-cols-[220px_minmax(0,1fr)_340px] xl:gap-12">
+        <div className="grid items-start gap-10 lg:grid-cols-[210px_minmax(0,1fr)] xl:grid-cols-[210px_minmax(0,1fr)_400px] xl:gap-12">
           <TargetRail items={railItems} selectedId={selectedTargetId} onSelect={selectTarget} />
 
           <div className="min-w-0">
             {allEvaluated ? (
-              <div className="border-y-2 border-rose-600 py-20 text-center">
+              <div className="border-y-2 border-teal-600 py-20 text-center">
                 <span className="text-6xl" aria-hidden="true">🏆</span>
                 <h2 className="mt-6 text-2xl font-black text-slate-900 sm:text-3xl">이 주차 평가를 모두 마쳤습니다</h2>
                 <p className="mt-2 text-sm text-slate-500">결과는 운영진이 공개하면 내 결과에서 확인할 수 있습니다.</p>
-                <Link href="/vote/results/my" className="mt-8 inline-block border-b-[3px] border-rose-600 pb-1 text-sm font-black text-rose-700 transition hover:text-rose-900">내 결과 보기 ↗</Link>
+                <Link href="/vote/results/my" className="mt-8 inline-block border-b-[3px] border-teal-600 pb-1 text-sm font-black text-teal-700 transition hover:text-teal-900">내 결과 보기 ↗</Link>
               </div>
             ) : !currentTarget ? (
               <EmptyState title="채점할 대상을 왼쪽에서 고르세요." description="내 발표와 이미 채점한 발표는 고를 수 없습니다." />
@@ -256,11 +256,11 @@ export default function ScorePage() {
               <EmptyState title={`평가표 ${version}을 찾지 못했습니다.`} description="운영진에게 평가표 설정을 확인해 달라고 알려 주세요." />
             ) : (
               <div className="space-y-14">
-                <div className="border-b-[3px] border-rose-600 pb-6 text-center">
-                  <p className="text-[11px] font-black uppercase tracking-[0.25em] text-rose-500">Now Scoring</p>
+                <div className="border-b-[3px] border-teal-600 pb-6 text-center">
+                  <p className="text-[11px] font-black uppercase tracking-[0.25em] text-teal-500">Now Scoring</p>
                   <p className="mt-2 break-keep text-3xl font-black tracking-tight text-slate-900 sm:text-4xl">{isTeamTarget(currentTarget) ? `${currentTarget.team_id}팀 (${currentTarget.members.join(', ')})` : `${currentTarget.members[0]} 님`}</p>
-                  <div className="mx-auto mt-5 h-1.5 max-w-xs overflow-hidden rounded-full bg-rose-100" role="progressbar" aria-valuemin={0} aria-valuemax={itemCount} aria-valuenow={scoredCount} aria-label="평가한 항목">
-                    <div className="h-full rounded-full bg-gradient-to-r from-rose-500 to-amber-400 transition-all" style={{ width: `${itemCount ? (scoredCount / itemCount) * 100 : 0}%` }} />
+                  <div className="mx-auto mt-5 h-1.5 max-w-xs overflow-hidden rounded-full bg-teal-100" role="progressbar" aria-valuemin={0} aria-valuemax={itemCount} aria-valuenow={scoredCount} aria-label="평가한 항목">
+                    <div className="h-full rounded-full bg-gradient-to-r from-teal-500 to-emerald-400 transition-all" style={{ width: `${itemCount ? (scoredCount / itemCount) * 100 : 0}%` }} />
                   </div>
                   <p className="mt-2 text-xs font-bold text-slate-400">{scoredCount} / {itemCount}개 항목 평가</p>
                 </div>
@@ -271,8 +271,8 @@ export default function ScorePage() {
                     ))}
                   </CategorySection>
                 ))}
-                <div className="border-y-2 border-rose-600 py-12 text-center">
-                  <p className="text-[11px] font-black uppercase tracking-[0.25em] text-rose-500">Total Score</p>
+                <div className="border-y-2 border-teal-600 py-12 text-center">
+                  <p className="text-[11px] font-black uppercase tracking-[0.25em] text-teal-500">Total Score</p>
                   <p className="mt-3 text-6xl font-black tracking-tight text-slate-900 sm:text-7xl">{grandTotal}<span className="ml-3 text-2xl text-slate-300 sm:text-3xl">/ {maxPossible}</span></p>
                   <Button variant="primary" size="lg" className="mt-8 w-full max-w-sm" loading={submitting} onClick={submit}>채점 제출</Button>
                 </div>
@@ -282,7 +282,7 @@ export default function ScorePage() {
 
           {!allEvaluated && currentTarget && (
             <aside className="min-w-0 lg:col-span-2 xl:sticky xl:top-24 xl:col-span-1">
-              <div className="flex items-end justify-between gap-2 border-b-2 border-rose-600 pb-3">
+              <div className="flex items-end justify-between gap-2 border-b-2 border-teal-600 pb-3">
                 <h2 className="break-keep text-lg font-black text-slate-900">{isSameGroup ? '정성 피드백' : '메모'}</h2>
                 <span className={`text-[11px] font-black uppercase tracking-widest ${isSameGroup ? 'text-amber-600' : 'text-slate-400'}`}>{isSameGroup ? '★ 같은 조' : '다른 조'}</span>
               </div>
@@ -290,7 +290,7 @@ export default function ScorePage() {
                 {isSameGroup ? (
                   <FeedbackFields value={feedback} onChange={(key, text) => setFeedback((prev) => ({ ...prev, [key]: text }))} />
                 ) : (
-                  <textarea aria-label="메모" value={feedback.memo} onChange={(event) => setFeedback((prev) => ({ ...prev, memo: event.target.value }))} className="min-h-80 w-full resize-y border-b-2 border-rose-200 bg-transparent py-1 text-sm leading-7 text-slate-800 outline-none transition placeholder:text-slate-300 focus:border-rose-500" placeholder="자유롭게 메모하세요." />
+                  <textarea aria-label="메모" value={feedback.memo} onChange={(event) => setFeedback((prev) => ({ ...prev, memo: event.target.value }))} className="min-h-80 w-full resize-y border-b-2 border-teal-200 bg-transparent py-1 text-sm leading-7 text-slate-800 outline-none transition placeholder:text-slate-300 focus:border-teal-500" placeholder="자유롭게 메모하세요." />
                 )}
               </div>
             </aside>

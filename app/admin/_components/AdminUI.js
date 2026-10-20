@@ -62,9 +62,9 @@ export function PageHeader({ eyebrow, title, description, actions, meta, emoji }
 
 export function Panel({ title, description, action, children, className = '', bodyClassName = '', id, tour }) {
   return (
-    <section id={id} data-tour={tour} className={`min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm shadow-slate-200/50 ${className}`}>
+    <section id={id} data-tour={tour} className={`min-w-0 overflow-hidden border-t-2 border-teal-700/80 bg-white ${className}`}>
       {(title || action) && (
-        <div className="flex min-h-14 flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 sm:px-5">
+        <div className="flex min-h-14 flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-5">
           <div className="min-w-0">
             {title && <h2 className="text-base font-bold text-slate-900">{title}</h2>}
             {description && <p className="mt-0.5 break-keep text-sm text-slate-500">{description}</p>}
@@ -77,17 +77,17 @@ export function Panel({ title, description, action, children, className = '', bo
   )
 }
 
-// 지표 카드: 색 띠 + 색 아이콘 타일
+// 지표 카드: 윤곽선 없이 위쪽 색 선 + 옅은 색 바탕 + 색 아이콘 타일
 const METRIC_STYLES = {
-  gray: { box: 'border-slate-200 from-slate-50', tile: 'bg-slate-100 text-slate-600', value: 'text-slate-950' },
-  teal: { box: 'border-teal-100 from-teal-50', tile: 'bg-teal-100 text-teal-700', value: 'text-teal-900' },
-  blue: { box: 'border-blue-100 from-blue-50', tile: 'bg-blue-100 text-blue-700', value: 'text-blue-900' },
-  green: { box: 'border-emerald-100 from-emerald-50', tile: 'bg-emerald-100 text-emerald-700', value: 'text-emerald-900' },
-  amber: { box: 'border-amber-100 from-amber-50', tile: 'bg-amber-100 text-amber-700', value: 'text-amber-900' },
-  red: { box: 'border-red-100 from-red-50', tile: 'bg-red-100 text-red-700', value: 'text-red-900' },
-  violet: { box: 'border-violet-100 from-violet-50', tile: 'bg-violet-100 text-violet-700', value: 'text-violet-900' },
-  rose: { box: 'border-rose-100 from-rose-50', tile: 'bg-rose-100 text-rose-700', value: 'text-rose-900' },
-  sky: { box: 'border-sky-100 from-sky-50', tile: 'bg-sky-100 text-sky-700', value: 'text-sky-900' },
+  gray: { box: 'border-slate-300 from-white', tile: 'bg-slate-100 text-slate-600', value: 'text-slate-950' },
+  teal: { box: 'border-teal-500 from-teal-50/80', tile: 'bg-teal-100 text-teal-700', value: 'text-teal-900' },
+  blue: { box: 'border-blue-500 from-blue-50/80', tile: 'bg-blue-100 text-blue-700', value: 'text-blue-900' },
+  green: { box: 'border-emerald-500 from-emerald-50/80', tile: 'bg-emerald-100 text-emerald-700', value: 'text-emerald-900' },
+  amber: { box: 'border-amber-500 from-amber-50/80', tile: 'bg-amber-100 text-amber-700', value: 'text-amber-900' },
+  red: { box: 'border-red-500 from-red-50/80', tile: 'bg-red-100 text-red-700', value: 'text-red-900' },
+  violet: { box: 'border-violet-500 from-violet-50/80', tile: 'bg-violet-100 text-violet-700', value: 'text-violet-900' },
+  rose: { box: 'border-rose-500 from-rose-50/80', tile: 'bg-rose-100 text-rose-700', value: 'text-rose-900' },
+  sky: { box: 'border-sky-500 from-sky-50/80', tile: 'bg-sky-100 text-sky-700', value: 'text-sky-900' },
 }
 
 export function Metric({ label, value, note, tone = 'gray', icon: Icon, href }) {
@@ -102,12 +102,12 @@ export function Metric({ label, value, note, tone = 'gray', icon: Icon, href }) 
       {note && <p className="mt-1 break-keep text-xs leading-5 text-slate-500">{note}</p>}
     </>
   )
-  const className = `block min-h-[112px] rounded-xl border bg-gradient-to-br to-white p-4 shadow-sm shadow-slate-200/50 ${style.box}`
-  if (href) return <a href={href} className={`${className} transition hover:-translate-y-0.5 hover:shadow-md`}>{body}</a>
+  const className = `block min-h-[112px] border-t-[3px] bg-gradient-to-b to-white px-4 pb-4 pt-3 ${style.box}`
+  if (href) return <a href={href} className={`${className} transition hover:-translate-y-0.5`}>{body}</a>
   return <div className={className}>{body}</div>
 }
 
-// 개발자 전용 화면 안내 (데이터 점검 도구·기존 기록 연결 검토)
+// 개발자 전용 화면 안내 (기존 기록 연결 검토)
 export function DeveloperOnly({ title }) {
   return (
     <AdminPage>
@@ -115,7 +115,23 @@ export function DeveloperOnly({ title }) {
         <div className="px-6 py-16 text-center">
           <span className="text-4xl" aria-hidden="true">🛠️</span>
           <h1 className="mt-4 text-lg font-bold text-slate-900">개발자 전용 화면입니다 · {title}</h1>
-          <p className="mx-auto mt-2 max-w-md break-keep text-sm leading-6 text-slate-600">데이터 점검과 기존 기록 연결은 개발자 계정만 사용합니다. 필요한 작업이 있으면 개발자에게 요청해 주세요.</p>
+          <p className="mx-auto mt-2 max-w-md break-keep text-sm leading-6 text-slate-600">기존 기록 연결 검토는 개발자 계정만 사용합니다. 필요한 작업이 있으면 개발자에게 요청해 주세요.</p>
+          <Button className="mt-6" variant="primary" href="/admin/hub">운영 현황으로</Button>
+        </div>
+      </Panel>
+    </AdminPage>
+  )
+}
+
+// 학회장·개발자 전용 화면 안내 (학기 마감 점검)
+export function PresidentOnly({ title }) {
+  return (
+    <AdminPage>
+      <Panel>
+        <div className="px-6 py-16 text-center">
+          <span className="text-4xl" aria-hidden="true">👑</span>
+          <h1 className="mt-4 text-lg font-bold text-slate-900">학회장 전용 화면입니다 · {title}</h1>
+          <p className="mx-auto mt-2 max-w-md break-keep text-sm leading-6 text-slate-600">학기 마감은 학회장과 개발자 계정만 진행합니다. 필요한 작업이 있으면 학회장에게 요청해 주세요.</p>
           <Button className="mt-6" variant="primary" href="/admin/hub">운영 현황으로</Button>
         </div>
       </Panel>
@@ -127,8 +143,8 @@ export function DeveloperOnly({ title }) {
 export function ReadOnlyBanner({ role }) {
   if (role !== 'viewer') return null
   return (
-    <div className="mb-5 flex items-start gap-3 rounded-md border border-slate-300 bg-white px-4 py-3 text-sm text-slate-700">
-      <Eye className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" aria-hidden="true" />
+    <div className="mb-5 flex items-start gap-3 rounded-lg bg-sky-50 px-4 py-3 text-sm text-sky-900">
+      <Eye className="mt-0.5 h-4 w-4 shrink-0 text-sky-600" aria-hidden="true" />
       <p className="break-keep leading-6">{READ_ONLY_NOTICE}</p>
     </div>
   )

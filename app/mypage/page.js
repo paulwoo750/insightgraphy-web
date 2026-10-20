@@ -102,14 +102,14 @@ export default function MyPage() {
           </section>
 
           <div className="grid gap-6 xl:grid-cols-2">
-            <section aria-labelledby="attendance-title" className="rounded-lg border border-slate-200">
-              <h2 id="attendance-title" className="border-b border-slate-100 px-4 py-3 text-base font-bold text-slate-900">출결 기록</h2>
-              {view.attendance.length === 0 ? <p className="px-4 py-8 text-center text-sm text-slate-500">출결 기록이 없습니다.</p> : (
+            <section aria-labelledby="attendance-title" className="border-t-2 border-teal-600">
+              <h2 id="attendance-title" className="pb-1 pt-3 text-base font-bold text-slate-900">출결 기록</h2>
+              {view.attendance.length === 0 ? <p className="py-8 text-center text-sm text-slate-500">출결 기록이 없습니다.</p> : (
                 <ul className="divide-y divide-slate-100">
                   {view.attendance.map((row) => {
                     const kind = attendanceKind(row.status)
                     return (
-                      <li key={row.id} className="flex flex-wrap items-center gap-2 px-4 py-2.5 text-sm">
+                      <li key={row.id} className="flex flex-wrap items-center gap-2 py-2.5 text-sm">
                         <span className="w-10 rounded bg-slate-800 py-0.5 text-center text-xs font-bold text-white">W{row.week}</span>
                         {row.session_type === 'weekday' && <StatusBadge tone="teal">평일</StatusBadge>}
                         <StatusBadge tone={KIND_TONES[kind]}>{ATTENDANCE_LABELS[kind]}</StatusBadge>
@@ -121,17 +121,17 @@ export default function MyPage() {
               )}
             </section>
 
-            <section aria-labelledby="fines-title" className="rounded-lg border border-slate-200">
-              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-3">
+            <section aria-labelledby="fines-title" className="border-t-2 border-teal-600">
+              <div className="flex flex-wrap items-center justify-between gap-2 pb-1 pt-3">
                 <h2 id="fines-title" className="text-base font-bold text-slate-900">벌금 내역</h2>
                 <SegmentedControl label="취소 내역" size="sm" value={showVoided ? 'all' : 'active'} onChange={(value) => setShowVoided(value === 'all')} options={[{ value: 'active', label: '유효' }, { value: 'all', label: '취소 포함' }]} />
               </div>
-              {visibleFines.length === 0 ? <p className="px-4 py-8 text-center text-sm text-slate-500">벌금이 없습니다.</p> : (
+              {visibleFines.length === 0 ? <p className="py-8 text-center text-sm text-slate-500">벌금이 없습니다.</p> : (
                 <ul className="divide-y divide-slate-100">
                   {visibleFines.map((fine) => {
                     const stateKey = fineState(fine)
                     return (
-                      <li key={fine.id} className="flex items-center gap-3 px-4 py-2.5 text-sm">
+                      <li key={fine.id} className="flex items-center gap-3 py-2.5 text-sm">
                         <span className="w-10 shrink-0 rounded bg-slate-800 py-0.5 text-center text-xs font-bold text-white">W{fine.week}</span>
                         <span className="min-w-0 flex-1">
                           <span className={`block truncate font-semibold ${stateKey === 'voided' ? 'text-slate-400 line-through' : 'text-slate-800'}`}>{fine.category}</span>
@@ -144,20 +144,20 @@ export default function MyPage() {
                   })}
                 </ul>
               )}
-              <p className="border-t border-slate-100 px-4 py-2.5 text-xs leading-5 text-slate-500">과제·피드백·출석 벌금은 자동으로 계산되고, 현장 지각 등은 운영진이 반영합니다. 납부 문의는 총무에게 해 주세요.</p>
+              <p className="pt-2.5 text-xs leading-5 text-slate-500">과제·피드백·출석 벌금은 자동으로 계산되고, 현장 지각 등은 운영진이 반영합니다. 납부 문의는 총무에게 해 주세요.</p>
             </section>
           </div>
 
           <div className="grid gap-6 xl:grid-cols-2">
-            <section aria-labelledby="absence-title" className="rounded-lg border border-slate-200">
-              <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
+            <section aria-labelledby="absence-title" className="border-t-2 border-teal-600">
+              <div className="flex items-center justify-between pb-1 pt-3">
                 <h2 id="absence-title" className="text-base font-bold text-slate-900">사유서</h2>
                 <Link href="/archive/absence" className="text-sm font-bold text-teal-700 hover:underline">사유서 쓰기</Link>
               </div>
-              {view.absences.length === 0 ? <p className="px-4 py-8 text-center text-sm text-slate-500">제출한 사유서가 없습니다.</p> : (
+              {view.absences.length === 0 ? <p className="py-8 text-center text-sm text-slate-500">제출한 사유서가 없습니다.</p> : (
                 <ul className="divide-y divide-slate-100">
                   {view.absences.map((absence) => (
-                    <li key={absence.id} className="px-4 py-2.5 text-sm">
+                    <li key={absence.id} className="py-2.5 text-sm">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-bold text-slate-800">W{absence.week ?? '-'} {absence.type}</span>
                         <StatusBadge tone={absence.status === '대기' ? 'amber' : absence.status?.includes('불허') ? 'red' : 'green'}>{absence.status === '대기' ? '결재 대기' : absence.status}</StatusBadge>
@@ -170,15 +170,15 @@ export default function MyPage() {
               )}
             </section>
 
-            <section aria-labelledby="evaluation-title" className="rounded-lg border border-slate-200 p-4">
+            <section aria-labelledby="evaluation-title" className="border-t-2 border-teal-600 pt-4">
               <h2 id="evaluation-title" className="text-base font-bold text-slate-900">평가·피드백</h2>
               <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                <Link href="/vote/results/my" className="flex items-center gap-3 rounded-md border border-slate-200 px-4 py-3 hover:border-teal-400">
+                <Link href="/vote/results/my" className="flex items-center gap-3 rounded-lg bg-teal-50/50 px-4 py-3 transition hover:bg-teal-50">
                   <BarChart3 className="h-5 w-5 text-teal-700" aria-hidden="true" />
                   <span className="min-w-0 flex-1"><span className="block text-sm font-bold text-slate-900">내 점수·분석</span><span className="block text-xs text-slate-500">주차별 점수 추이와 수상 내역</span></span>
                   <ArrowRight className="h-4 w-4 text-slate-400" aria-hidden="true" />
                 </Link>
-                <Link href="/vote/results/arxiv" className="flex items-center gap-3 rounded-md border border-slate-200 px-4 py-3 hover:border-teal-400">
+                <Link href="/vote/results/arxiv" className="flex items-center gap-3 rounded-lg bg-teal-50/50 px-4 py-3 transition hover:bg-teal-50">
                   <MessageSquareText className="h-5 w-5 text-teal-700" aria-hidden="true" />
                   <span className="min-w-0 flex-1"><span className="block text-sm font-bold text-slate-900">받은 피드백</span><span className="block text-xs text-slate-500">정성·셀프 피드백 모아보기</span></span>
                   <ArrowRight className="h-4 w-4 text-slate-400" aria-hidden="true" />
@@ -195,7 +195,7 @@ export default function MyPage() {
 function Stat({ label, value, note, tone = '' }) {
   const color = tone === 'red' ? 'text-red-600' : tone === 'amber' ? 'text-amber-700' : 'text-slate-950'
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4">
+    <div className="border-t-[3px] border-sky-400 bg-gradient-to-b from-sky-50/70 to-white px-4 pb-4 pt-3">
       <dt className="text-xs font-semibold text-slate-500">{label}</dt>
       <dd className={`mt-1 text-xl font-extrabold ${color}`}>{value}</dd>
       {note && <dd className="mt-0.5 text-xs text-slate-500">{note}</dd>}

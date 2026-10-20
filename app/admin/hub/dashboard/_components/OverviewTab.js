@@ -47,8 +47,8 @@ export default function OverviewTab({ ctx, week, mode, current, base, changes, c
             <Link href="/admin/hub/schedule" className="inline-flex items-center gap-1 text-sm font-bold text-teal-700 hover:text-teal-900"><CalendarDays className="h-4 w-4" aria-hidden="true" />전체 일정에서 편집</Link>
           </div>
           {mode === 'weekday' ? (
-            weekdayTeams.length === 0 ? <p className="rounded-md border border-dashed border-slate-300 px-4 py-6 text-center text-sm text-slate-500">평일 세션 조별 일정은 출석·장소 탭에서 정합니다.</p> : (
-              <ul className="divide-y divide-slate-100 rounded-md border border-slate-200">
+            weekdayTeams.length === 0 ? <p className="px-4 py-6 text-center text-sm text-slate-500">평일 세션 조별 일정은 출석·장소 탭에서 정합니다.</p> : (
+              <ul className="divide-y divide-slate-100 border-y border-slate-200">
                 {weekdayTeams.map(([group, team]) => (
                   <li key={group} className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm">
                     <span className="font-bold text-slate-800">{group}조</span>
@@ -58,11 +58,11 @@ export default function OverviewTab({ ctx, week, mode, current, base, changes, c
               </ul>
             )
           ) : schedules.length === 0 ? (
-            <p className="rounded-md border border-dashed border-slate-300 px-4 py-6 text-center text-sm text-slate-500">
+            <p className="px-4 py-6 text-center text-sm text-slate-500">
               {week === 0 ? 'OT 일정은 전체 일정에서 주차를 비우고 등록합니다.' : `전체 일정에 W${week}로 등록된 일정이 없습니다. 메인·타임라인에 보이려면 전체 일정에 등록하세요.`}
             </p>
           ) : (
-            <ul className="divide-y divide-slate-100 rounded-md border border-slate-200">
+            <ul className="divide-y divide-slate-100 border-y border-slate-200">
               {schedules.map((row) => (
                 <li key={row.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm">
                   <span className="min-w-0">

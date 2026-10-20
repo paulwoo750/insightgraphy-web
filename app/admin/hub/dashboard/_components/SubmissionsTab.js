@@ -64,7 +64,7 @@ export default function SubmissionsTab({ mode, summary, filesError, canWrite, on
         <p className="break-keep rounded-md bg-red-50 px-4 py-3 text-sm text-red-900"><strong>미제출</strong> {missingNames.join(', ')}</p>
       )}
 
-      <div className="overflow-x-auto rounded-md border border-slate-200">
+      <div className="overflow-x-auto border-y border-slate-200">
         <table className="w-full min-w-[760px] border-collapse text-left text-sm">
           <thead className="bg-slate-50 text-xs font-bold text-slate-600">
             <tr className="border-b border-slate-200">
@@ -83,7 +83,7 @@ export default function SubmissionsTab({ mode, summary, filesError, canWrite, on
               return (
                 <tr key={row.key} className="align-middle">
                   <td className="px-3 py-2">
-                    {row.latest ? <FileThumbnail url={row.latest.file_url} storagePath={row.latest.storage_path} title={row.latest.file_name} width={320} showOpen={false} /> : <div className="grid aspect-video place-items-center rounded-md border border-dashed border-slate-200 text-xs text-slate-400">없음</div>}
+                    {row.latest ? <FileThumbnail url={row.latest.file_url} storagePath={row.latest.storage_path} title={row.latest.file_name} width={320} showOpen={false} /> : <div className="grid aspect-video place-items-center rounded-lg bg-slate-100 text-xs text-slate-400">없음</div>}
                   </td>
                   <td className="px-3 py-2">
                     <p className="font-bold text-slate-900">{row.label}</p>
@@ -115,7 +115,7 @@ export default function SubmissionsTab({ mode, summary, filesError, canWrite, on
           <p className="mb-3 text-sm text-slate-600">개명·오타·명단 밖 업로드일 수 있습니다. 제출 현황 숫자에는 넣지 않았습니다.</p>
           <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             {entry.extra.map((file) => (
-              <li key={file.id} className="rounded-md border border-slate-200 p-3">
+              <li key={file.id} className="rounded-lg bg-teal-50/40 p-3">
                 <FileThumbnail url={file.file_url} storagePath={file.storage_path} title={file.file_name} width={320} />
                 <p className="mt-2 truncate text-sm font-bold text-slate-900" title={file.file_name}>{file.uploader}</p>
                 <p className="text-xs text-slate-500">{formatKst(file.created_at)}</p>
@@ -134,7 +134,7 @@ export default function SubmissionsTab({ mode, summary, filesError, canWrite, on
 function Count({ label, value, tone = 'gray', note }) {
   const tones = { gray: 'text-slate-900', green: 'text-emerald-700', amber: 'text-amber-700', red: 'text-red-700' }
   return (
-    <div className="rounded-md border border-slate-200 bg-white px-3 py-2.5">
+    <div className="rounded-lg bg-teal-50/40 px-3 py-2.5">
       <dt className="text-xs font-semibold text-slate-500">{label}</dt>
       <dd className={`text-xl font-bold ${tones[tone]}`}>{value}</dd>
       {note && <dd className="text-xs text-slate-500">{note}</dd>}
