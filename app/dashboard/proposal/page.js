@@ -10,7 +10,7 @@ import { MemberHeader, MemberPage, useMember } from '@/app/components/MemberShel
 import WeekOverviewCard from '@/app/components/WeekOverviewCard'
 import FileThumbnail from '@/app/components/FileThumbnail'
 import { Button, ErrorState, Field, LoadingState, Modal, StatusBadge, textareaClass, useAsyncAction, useToast } from '@/app/components/ui'
-import { RenameDialog, SubmissionList, useWeekSelection, WeekSelector } from '../_components/shared'
+import { RenameDialog, SubmissionList, useSessionDetails, useWeekSelection, WeekSelector } from '../_components/shared'
 
 const MAX_UPLOAD_BYTES = 30 * 1024 * 1024
 const ALLOWED_EXTENSIONS = ['pdf', 'doc', 'docx', 'hwp', 'hwpx', 'ppt', 'pptx']
@@ -65,6 +65,7 @@ export default function ProposalRoom() {
 
   const deadlines = useMemo(() => groupDeadlines(deadlineRows), [deadlineRows])
   const selection = useWeekSelection({ ready: state.status === 'ready', totalWeeks: semester?.totalWeeks || 0, defaultWeek: semester?.currentWeek ?? 1, allowWeekday: false })
+  const sessionDetails = useSessionDetails(semester)
   const week = selection.week ?? 0
   const setup = semester?.weeklySetup?.[week] || {}
   const team = setup.evalMode === 'team' ? (setup.memberTeams || setup.members || {})[name] : null
@@ -162,6 +163,7 @@ export default function ProposalRoom() {
           week={week}
           topic={displayTopic(semester.weekTopics, week)}
           cancelled={semester.weeks?.[week]?.status === 'cancelled'}
+          {...sessionDetails(week)}
           attendance={{ open: deadlines[week]?.attendance_start, late: deadlines[week]?.session_start, end: deadlines[week]?.attendance_end }}
           groupLabel={team ? `${team}팀` : group ? `${group}조` : ''}
           deadlines={[{ key: 'proposal', at: deadlines[week]?.proposal }, { key: 'proposal_comment', at: deadlines[week]?.proposal_comment }]}

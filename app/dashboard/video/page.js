@@ -8,7 +8,7 @@ import WeekOverviewCard from '@/app/components/WeekOverviewCard'
 import { Send, Trash2, X } from 'lucide-react'
 import { Button, IconButton, LoadingState, Modal, inputClass, useToast } from '@/app/components/ui'
 import { Avatar, FeedbackFields, FeedbackView, hasFeedbackContent } from '@/app/vote/_components/Editorial'
-import { SubmissionList, WeekSelector } from '../_components/shared'
+import { SubmissionList, useSessionDetails, WeekSelector } from '../_components/shared'
 
 // 주소(?week=&session=)를 지금 보는 주차·세션으로 맞추고, 다른 자료실 메뉴에도 이어지게 기억한다
 function syncWeekUrl(week, mode) {
@@ -58,6 +58,7 @@ export default function VideoRoom() {
   // 🌟 방학학기: 정규세션/평일세션 모드
   const [semesterType, setSemesterType] = useState('regular')
   const [semesterInfo, setSemesterInfo] = useState(null)
+  const sessionDetails = useSessionDetails(semesterInfo)
   const [sessionMode, setSessionMode] = useState('regular') // 'regular' | 'weekday'
   const fileCategory = sessionMode === 'weekday' ? 'weekday_video' : 'video'
 
@@ -336,7 +337,7 @@ export default function VideoRoom() {
           sessionMode={sessionMode}
           topic={displayTopic(weekTopics, selectedWeek, sessionMode)}
           cancelled={semesterInfo?.weeks?.[selectedWeek]?.status === 'cancelled'}
-          scheduleDate={sessionMode === 'weekday' ? myWeekdayTeam(selectedWeek)?.date : undefined}
+          {...sessionDetails(selectedWeek, sessionMode, sessionMode === 'weekday' && myWeekdayTeam(selectedWeek) ? { group: myWeekdayGroup, ...myWeekdayTeam(selectedWeek) } : null)}
           attendance={sessionMode === 'weekday' ? {} : { open: deadlines[selectedWeek]?.attendance_start, late: deadlines[selectedWeek]?.session_start, end: deadlines[selectedWeek]?.attendance_end }}
           groupLabel={sessionMode === 'weekday' ? (myWeekdayGroup ? `평일 ${myWeekdayGroup}조` : '') : myTeamNo ? `${myTeamNo}팀` : myRegularGroup ? `${myRegularGroup}조` : ''}
           deadlines={[

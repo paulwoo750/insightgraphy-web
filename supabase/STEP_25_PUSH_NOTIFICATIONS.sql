@@ -460,7 +460,9 @@ begin
   if auth.uid() is null then
     raise exception 'LOGIN_REQUIRED';
   end if;
-  if not exists (select 1 from public.members m where m.auth_user_id = auth.uid() and m.status in ('active', 'leave', 'inactive', 'alumni')) then
+  -- 승인 학회원 또는 활성 관리자(명단에 없는 졸업생 운영진·개발자 포함)
+  if not exists (select 1 from public.members m where m.auth_user_id = auth.uid() and m.status in ('active', 'leave', 'inactive', 'alumni'))
+     and not public.is_admin(array['super_admin', 'admin', 'operator', 'viewer']) then
     raise exception 'NOT_MEMBER';
   end if;
   if coalesce(p_endpoint, '') !~ '^https://' or char_length(p_endpoint) > 2000 or coalesce(p_p256dh, '') = '' or coalesce(p_auth, '') = '' then

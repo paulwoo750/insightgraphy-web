@@ -8,7 +8,7 @@ import { currentSemesterIdFilter, displayTopic, fetchCurrentSemester, formatKst,
 import { MemberHeader, MemberPage, useMember } from '@/app/components/MemberShell'
 import WeekOverviewCard from '@/app/components/WeekOverviewCard'
 import { Button, ErrorState, Field, inputClass, LoadingState, useAsyncAction, useToast } from '@/app/components/ui'
-import { RenameDialog, SubmissionList, useWeekSelection, WeekSelector } from '../_components/shared'
+import { RenameDialog, SubmissionList, useSessionDetails, useWeekSelection, WeekSelector } from '../_components/shared'
 
 const GOOGLE_DRIVE_FOLDER_URL = 'https://drive.google.com/drive/folders/1F-YFI422wyYQxd0lBeJ9boaNDlr0iwFJ'
 
@@ -60,6 +60,7 @@ export default function SlideRoom() {
   }, [identity.status, identity.session, router, fetchFiles])
 
   const deadlines = useMemo(() => groupDeadlines(deadlineRows), [deadlineRows])
+  const sessionDetails = useSessionDetails(semester)
   const selection = useWeekSelection({
     ready: state.status === 'ready',
     totalWeeks: semester?.totalWeeks || 0,
@@ -164,7 +165,7 @@ export default function SlideRoom() {
           sessionMode={mode}
           topic={topic}
           cancelled={semester.weeks?.[week]?.status === 'cancelled'}
-          scheduleDate={mode === 'weekday' ? myWeekdayTeam?.date : undefined}
+          {...sessionDetails(week, mode, myWeekdayTeam)}
           attendance={mode === 'weekday' ? {} : { open: deadlines[week]?.attendance_start, late: deadlines[week]?.session_start, end: deadlines[week]?.attendance_end }}
           groupLabel={mode === 'weekday' ? (myWeekdayTeam ? `평일 ${myWeekdayTeam.group}조` : '') : team ? `${team}팀` : memberGroup(semester.weeklySetup, week, name) ? `${memberGroup(semester.weeklySetup, week, name)}조` : ''}
           deadlines={[{ key: 'slide', label: mode === 'weekday' ? '평일 발표자료 마감' : '슬라이드 제출', at: activeDeadline }]}

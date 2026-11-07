@@ -4,7 +4,9 @@
 // - 제출 목록: 조별로 묶고 실제 미리보기(썸네일)를 보여 준다. 수정·삭제는 본인 제출물(또는 관리자)만
 import { useCallback, useEffect, useState } from 'react'
 import { ExternalLink, Pencil, Trash2 } from 'lucide-react'
-import { formatKst, groupSubmissionsByTeam, weekFromParam } from '@/lib/semester'
+import { supabase } from '@/lib/supabase'
+import { formatKst, groupSubmissionsByTeam, locationName, weekFromParam } from '@/lib/semester'
+import { fetchSemesterSchedules, scheduleTimeLabel } from '@/lib/schedules'
 import { canWrite } from '@/lib/permissions'
 import { rememberWeekContext } from '@/app/components/MemberShell'
 import FileThumbnail from '@/app/components/FileThumbnail'
@@ -39,6 +41,48 @@ export function useWeekSelection({ ready, totalWeeks, defaultWeek, allowWeekday 
   }, [])
 
   return { ...selection, setWeek: (week) => update({ week }), setSession: (session) => update({ session }) }
+}
+
+// 주차 카드에 넣을 세션 일시·장소. 홈 화면과 같은 기준:
+// 정규 = 전체 일정의 그 주차 세션 + 조 편성의 장소, 평일 = 내 조의 날짜·시작 시간·장소. 장소 이름은 즐겨찾기 장소로 바꾼다.
+export function useSessionDetails(semester) {
+  const [data, setData] = useState({ schedules: [], favorites: [] })
+
+  useEffect(() => {
+    if (!semester?.code) return undefined
+    let active = true
+    Promise.all([
+      fetchSemesterSchedules(semester, { publicOnly: false }),
+      supabase.from('pr_config').select('value').eq('key', 'favorite_locations').maybeSingle(),
+    ]).then(([scheduleResult, favoriteResult]) => {
+      if (!active) return
+      let favorites = []
+      try {
+        favorites = JSON.parse(favoriteResult.data?.value || '[]')
+      } catch {
+        favorites = []
+      }
+      setData({ schedules: scheduleResult.data || [], favorites: Array.isArray(favorites) ? favorites : [] })
+    }).catch(() => {})
+    return () => { active = false }
+  }, [semester])
+
+  return useCallback((week, session = 'regular', weekdayTeam = null) => {
+    if (session === 'weekday') {
+      const venue = weekdayTeam?.lat && weekdayTeam?.lng ? { lat: weekdayTeam.lat, lng: weekdayTeam.lng } : null
+      return {
+        scheduleDate: weekdayTeam?.date,
+        scheduleTitle: weekdayTeam?.sessionStart ? `${weekdayTeam.group ? `평일 ${weekdayTeam.group}조` : '평일 세션'} · ${weekdayTeam.sessionStart} 시작` : '',
+        locationLabel: locationName(venue, data.favorites),
+      }
+    }
+    const row = data.schedules.find((item) => String(item.week || '') === String(week) && !item.is_break)
+    return {
+      scheduleDate: row?.full_date,
+      scheduleTitle: row ? `${row.title} · ${scheduleTimeLabel(row)}` : '',
+      locationLabel: locationName(semester?.weeklySetup?.[week]?.location, data.favorites),
+    }
+  }, [data, semester])
 }
 
 // 본인 제출물인지 (학회원 ID → 이름 → 팀 이름 순)
