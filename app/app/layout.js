@@ -1,3 +1,4 @@
+import ThemeScope from '@/app/components/ThemeScope'
 import AppShell from './_components/AppShell'
 
 export const metadata = {
@@ -16,5 +17,5 @@ export const viewport = {
 }
 
 export default function MemberAppLayout({ children }) {
-  return <AppShell>{children}</AppShell>
+  return <><ThemeScope /><AppShell>{children}</AppShell></>
 }

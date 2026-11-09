@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { currentSemesterIdFilter, displayTopic, fetchCurrentSemester, fetchSemesterMembers, formatDateTime, fromKstInput, groupDeadlines, memberGroup, submissionTopic, weekFromParam } from '@/lib/semester'
 import { MemberHeader, MemberPage, rememberWeekContext, useMember } from '@/app/components/MemberShell'
 import WeekOverviewCard from '@/app/components/WeekOverviewCard'
+import Glyph from '@/app/components/Glyph'
 import { Send, Trash2, X } from 'lucide-react'
 import { Button, IconButton, LoadingState, Modal, inputClass, useToast } from '@/app/components/ui'
 import { Avatar, FeedbackFields, FeedbackView, hasFeedbackContent } from '@/app/vote/_components/Editorial'
@@ -394,7 +395,7 @@ export default function VideoRoom() {
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/70 p-0 backdrop-blur-sm sm:p-4" role="dialog" aria-modal="true" aria-label={`${viewingFile.file_name} 피드백`}>
           <button type="button" onClick={() => setViewingFile(null)} aria-label="닫기" className="fixed right-3 top-3 z-[110] grid h-10 w-10 place-items-center rounded-full bg-slate-900/80 text-white shadow-lg backdrop-blur lg:hidden"><X className="h-5 w-5" aria-hidden="true" /></button>
           <div className="relative flex h-full w-full max-w-[1500px] flex-col overflow-y-auto bg-white shadow-2xl sm:h-[92vh] sm:rounded-2xl lg:flex-row lg:overflow-hidden">
-            <div className={`flex shrink-0 flex-col bg-slate-950 transition-[flex-grow] lg:overflow-y-auto ${composerOpen ? 'lg:flex-[1.05]' : 'lg:flex-[1.45]'}`}>
+            <div className={`theme-fixed flex shrink-0 flex-col bg-slate-950 transition-[flex-grow] lg:overflow-y-auto ${composerOpen ? 'lg:flex-[1.05]' : 'lg:flex-[1.45]'}`}>
               <div className="aspect-video w-full shrink-0 bg-black">
                 <iframe className="h-full w-full" title={viewingFile.file_name} src={`https://www.youtube.com/embed/${getYoutubeId(viewingFile.file_url)}?autoplay=1`} allow="autoplay; encrypted-media; picture-in-picture" allowFullScreen />
               </div>
@@ -404,8 +405,8 @@ export default function VideoRoom() {
                 {draftFeedback && hasFeedbackContent(draftFeedback) && (
                   <div className="mt-6 border-t border-white/10 pt-5">
                     <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-                      <p className="text-sm font-black text-amber-300">📒 내 임시 저장 노트</p>
-                      <button type="button" onClick={() => { setNewCommentData({ ...EMPTY_COMMENT, ...pickComment(draftFeedback) }); setComposerOpen(true) }} className="rounded-full bg-amber-300/15 px-3 py-1.5 text-xs font-bold text-amber-200 transition hover:bg-amber-300/25">작성칸에 불러오기 ↘</button>
+                      <p className="flex items-center gap-1.5 text-sm font-black text-amber-300"><Glyph name="notebook" />내 임시 저장 노트</p>
+                      <button type="button" onClick={() => { setNewCommentData({ ...EMPTY_COMMENT, ...pickComment(draftFeedback) }); setComposerOpen(true) }} className="rounded-full bg-amber-300/15 px-3 py-1.5 text-xs font-bold text-amber-200 transition hover:bg-amber-300/25">작성칸에 불러오기</button>
                     </div>
                     <FeedbackView data={draftFeedback} dark />
                   </div>
@@ -418,11 +419,11 @@ export default function VideoRoom() {
                 <div className="min-w-0">
                   {composerOpen ? (
                     <>
-                      <h2 className="text-xl font-black tracking-tight text-slate-900">✍️ {isMeVideoOwner ? '셀프 피드백' : '조원 피드백'} 작성</h2>
+                      <h2 className="flex items-center gap-2 text-xl font-black tracking-tight text-slate-900"><Glyph name="pen" className="text-teal-700" />{isMeVideoOwner ? '셀프 피드백' : '조원 피드백'} 작성</h2>
                       <button type="button" onClick={() => setComposerOpen(false)} className="mt-1 text-sm font-bold text-teal-700 hover:underline">← 댓글 {comments.length}개 보기</button>
                     </>
                   ) : (
-                    <h2 className="text-xl font-black tracking-tight text-slate-900">💬 피드백 <span className="ml-1 text-base text-teal-500">{comments.length}</span></h2>
+                    <h2 className="flex items-center gap-2 text-xl font-black tracking-tight text-slate-900"><Glyph name="chat" className="text-teal-700" />피드백 <span className="text-base text-teal-500">{comments.length}</span></h2>
                   )}
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     {getQualitativeDeadline(viewingFile.week) && <span className="rounded-full bg-teal-50 px-2.5 py-1 text-[11px] font-bold text-teal-700">조원 마감 {formatDateTime(getQualitativeDeadline(viewingFile.week))}</span>}
@@ -439,7 +440,7 @@ export default function VideoRoom() {
                     <FeedbackFields wide large value={newCommentData} onChange={(key, text) => setNewCommentData((prev) => ({ ...prev, [key]: text }))} messageLabel="핵심 메시지" messagePlaceholder="전체적인 핵심 메시지와 느낀 점" required />
                   </div>
                   <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 bg-gradient-to-b from-white to-teal-50/60 px-5 py-4 shadow-[0_-12px_24px_-16px_rgba(15,23,42,0.25)] sm:px-6">
-                    {draftFeedback && hasFeedbackContent(draftFeedback) && <Button variant="ghost" onClick={() => setNewCommentData({ ...EMPTY_COMMENT, ...pickComment(draftFeedback) })}>📒 임시 저장 노트 불러오기</Button>}
+                    {draftFeedback && hasFeedbackContent(draftFeedback) && <Button variant="ghost" onClick={() => setNewCommentData({ ...EMPTY_COMMENT, ...pickComment(draftFeedback) })}><span className="inline-flex items-center gap-1.5"><Glyph name="notebook" />임시 저장 노트 불러오기</span></Button>}
                     <Button variant="ghost" onClick={() => setComposerOpen(false)}>닫기</Button>
                     <Button type="submit" variant="primary" icon={Send} loading={posting}>등록</Button>
                   </div>
@@ -472,7 +473,7 @@ export default function VideoRoom() {
                     <button type="button" onClick={() => setComposerOpen(true)} className="flex w-full items-center gap-3 rounded-xl bg-white px-3 py-3 text-left shadow-sm ring-1 ring-teal-100 transition hover:ring-teal-300">
                       <Avatar name={loggedInUserName} />
                       <span className="min-w-0 flex-1 text-sm font-semibold text-slate-400">{isMeVideoOwner ? '내 발표를 돌아보며 셀프 피드백 남기기…' : '이 발표에 피드백 남기기…'}</span>
-                      <span className="rounded-full bg-teal-700 px-3 py-1.5 text-xs font-bold text-white">✍️ 작성하기</span>
+                      <span className="inline-flex items-center gap-1 rounded-full bg-teal-700 px-3 py-1.5 text-xs font-bold text-white"><Glyph name="pen" />작성하기</span>
                     </button>
                   </div>
                 </>

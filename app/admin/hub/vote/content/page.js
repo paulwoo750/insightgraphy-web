@@ -5,6 +5,10 @@ import { useCallback, useEffect, useState } from 'react'
 import { Plus, Save, Trash2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { sameJson } from '@/lib/semester'
+import Glyph, { categoryGlyph } from '@/app/components/Glyph'
+
+// 카테고리 아이콘 (학회원 채점 화면 제목 옆에 보인다)
+const CATEGORY_ICON_OPTIONS = [['bulb', '전구'], ['palette', '팔레트'], ['mic', '마이크'], ['voice', '목소리'], ['handshake', '협업'], ['chart', '그래프'], ['star', '별'], ['pinned', '핀']]
 import { useAdminRole } from '@/app/admin/_components/AdminShell'
 import {
   AdminPage,
@@ -41,7 +45,7 @@ function migrateLegacyData(legacy) {
     const bucket = key.startsWith('i') ? 'i' : key.startsWith('g') ? 'g' : key.startsWith('d') ? 'd' : 'c'
     buckets[bucket].push(item)
   })
-  const meta = { i: ['인사이트', '💡', 'blue'], g: ['그래픽', '🎨', 'purple'], d: ['딜리버리', '🎤', 'pink'], c: ['상호보완성', '🔗', 'emerald'] }
+  const meta = { i: ['인사이트', 'bulb', 'blue'], g: ['그래픽', 'palette', 'purple'], d: ['딜리버리', 'mic', 'pink'], c: ['상호보완성', 'handshake', 'emerald'] }
   return Object.entries(buckets).filter(([, items]) => items.length).map(([key, items]) => ({ id: `cat_${key}`, title: meta[key][0], icon: meta[key][1], color: meta[key][2], items }))
 }
 
@@ -173,19 +177,19 @@ export default function VoteContentManager() {
         </div>
       </Panel>
 
-      {categories.length === 0 ? <Panel><EmptyState title="카테고리가 없습니다." action={<Button icon={Plus} disabled={!canWrite} onClick={() => update((data) => data.push({ id: newId('cat'), title: '새 카테고리', icon: '📌', color: 'blue', items: [] }))}>카테고리 추가</Button>} /></Panel> : (
+      {categories.length === 0 ? <Panel><EmptyState title="카테고리가 없습니다." action={<Button icon={Plus} disabled={!canWrite} onClick={() => update((data) => data.push({ id: newId('cat'), title: '새 카테고리', icon: 'pinned', color: 'blue', items: [] }))}>카테고리 추가</Button>} /></Panel> : (
         <div className="space-y-5">
           {categories.map((category, categoryIndex) => {
             const color = COLORS[category.color] || COLORS.blue
             return (
               <Panel
                 key={category.id}
-                title={<span className="flex items-center gap-2"><span aria-hidden="true">{category.icon}</span>{category.title}</span>}
+                title={<span className="flex items-center gap-2">{categoryGlyph(category) && <Glyph name={categoryGlyph(category)} className="text-teal-700" />}{category.title}</span>}
                 action={<Button size="sm" variant="danger" icon={Trash2} disabled={!canWrite} onClick={() => { if (confirm(`'${category.title}' 카테고리와 항목을 모두 지울까요?`)) update((data) => data.splice(categoryIndex, 1)) }}>카테고리 삭제</Button>}
               >
                 <div className="space-y-4 p-4 sm:p-5">
                   <div className="grid gap-3 sm:grid-cols-[80px_minmax(0,1fr)_auto]">
-                    <input aria-label="아이콘" value={category.icon} onChange={(event) => update((data) => { data[categoryIndex].icon = event.target.value })} disabled={!canWrite} className={`${inputClass} text-center text-xl`} />
+                    <select aria-label="아이콘" value={categoryGlyph(category) || 'pinned'} onChange={(event) => update((data) => { data[categoryIndex].icon = event.target.value })} disabled={!canWrite} className={inputClass}>{CATEGORY_ICON_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
                     <input aria-label="카테고리 이름" value={category.title} onChange={(event) => update((data) => { data[categoryIndex].title = event.target.value })} disabled={!canWrite} className={inputClass} />
                     <div className="flex items-center gap-1.5" role="radiogroup" aria-label="색상">
                       {Object.entries(COLORS).map(([key, value]) => (
@@ -217,7 +221,7 @@ export default function VoteContentManager() {
               </Panel>
             )
           })}
-          <Button variant="dark" icon={Plus} className="w-full" disabled={!canWrite} onClick={() => update((data) => data.push({ id: newId('cat'), title: '새 카테고리', icon: '📌', color: 'blue', items: [] }))}>카테고리 추가</Button>
+          <Button variant="dark" icon={Plus} className="w-full" disabled={!canWrite} onClick={() => update((data) => data.push({ id: newId('cat'), title: '새 카테고리', icon: 'pinned', color: 'blue', items: [] }))}>카테고리 추가</Button>
         </div>
       )}
     </AdminPage>

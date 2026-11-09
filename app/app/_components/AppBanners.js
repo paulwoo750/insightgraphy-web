@@ -36,7 +36,7 @@ export function AppBanners() {
     try {
       await enablePush()
       setEnv((current) => ({ ...current, push: { ...current.push, subscribed: true, permission: 'granted' } }))
-      setMessage('알림을 켰어요 🔔')
+      setMessage('알림을 켰어요.')
     } catch (error) {
       setMessage(PUSH_ERRORS[error.message] || `알림을 켜지 못했어요: ${error.message}`)
     } finally {

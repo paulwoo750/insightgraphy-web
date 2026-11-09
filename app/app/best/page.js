@@ -6,9 +6,9 @@ import { fetchCurrentSemester } from '@/lib/semester'
 import { loadRanking } from '@/lib/memberApp'
 import { buildEntries, weekRanking } from '@/lib/ranking'
 import { useMember } from '@/app/components/MemberShell'
+import Glyph, { RankMedal } from '@/app/components/Glyph'
 import { AppSection, AppTitle } from '../_components/AppShell'
 
-const MEDALS = ['🥇', '🥈', '🥉']
 
 export default function AppBest() {
   const identity = useMember()
@@ -48,7 +48,7 @@ export default function AppBest() {
       {data.status === 'error' && <p className="py-6 text-sm text-red-600">결과를 불러오지 못했어요.</p>}
       {data.status === 'ready' && data.weeks.length === 0 && (
         <div className="rounded-3xl bg-gradient-to-br from-indigo-50 to-violet-50 px-6 py-10 text-center">
-          <p className="text-4xl" aria-hidden="true">🏆</p>
+          <p className="text-[40px] text-violet-700" aria-hidden="true"><Glyph name="trophy" duo /></p>
           <p className="mt-2 font-bold text-slate-800">아직 채점된 발표가 없어요</p>
           <p className="mt-1 text-sm text-slate-500">세션이 끝나고 채점이 모이면 여기에 나와요.</p>
         </div>
@@ -64,7 +64,7 @@ export default function AppBest() {
 
           {view && (
             <>
-              <div className="mt-4 overflow-hidden rounded-3xl bg-gradient-to-br from-slate-950 via-indigo-950 to-violet-900 px-5 py-5 text-white">
+              <div className="theme-fixed mt-4 overflow-hidden rounded-3xl bg-gradient-to-br from-slate-950 via-indigo-950 to-violet-900 px-5 py-5 text-white">
                 <p className="text-xs font-bold text-amber-200">W{activeWeek}{view.topic ? ` · ${view.topic}` : ''}</p>
                 <div className="mt-3 space-y-4">
                   {view.clusters.map((cluster) => (
@@ -73,7 +73,7 @@ export default function AppBest() {
                       <ol className="space-y-1.5">
                         {cluster.ranks.map((entry, index) => (
                           <li key={entry.key} className={`flex items-center gap-3 rounded-2xl px-3 py-2.5 ${index === 0 ? 'bg-gradient-to-r from-amber-300 to-yellow-200 text-amber-950' : 'bg-white/10'}`}>
-                            <span className="text-2xl" aria-label={`${index + 1}위`}>{MEDALS[index]}</span>
+                            <span className="text-[28px]"><RankMedal rank={index + 1} title={`${index + 1}위`} /></span>
                             <span className="min-w-0 flex-1">
                               <span className={`block truncate font-black ${index === 0 ? 'text-lg' : ''}`}>{entry.name}</span>
                               {entry.members.length > 1 && <span className={`block truncate text-xs ${index === 0 ? 'text-amber-900/80' : 'text-white/70'}`}>{entry.members.join(', ')}</span>}

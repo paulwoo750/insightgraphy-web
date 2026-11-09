@@ -2,6 +2,8 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { ArrowRight, Loader2 } from 'lucide-react'
+import Glyph from '@/app/components/Glyph'
 
 export default function WelcomePage() {
   const router = useRouter()
@@ -28,7 +30,7 @@ export default function WelcomePage() {
       <div className="w-full max-w-lg bg-white p-12 rounded-[3rem] shadow-2xl border border-slate-100 text-center relative z-10 flex flex-col items-center">
         
         <div className="w-24 h-24 bg-gradient-to-tr from-teal-500 to-blue-600 rounded-full flex items-center justify-center shadow-lg mb-8 animate-bounce">
-          <span className="text-4xl">🎉</span>
+          <span className="text-[44px] text-white"><Glyph name="check" strokeWidth={2} /></span>
         </div>
 
         <h1 className="text-3xl md:text-4xl font-black mb-4 text-slate-800 tracking-tight">
@@ -46,11 +48,11 @@ export default function WelcomePage() {
             className="w-full py-5 bg-slate-900 text-white rounded-2xl font-black text-lg hover:bg-teal-600 hover:shadow-lg hover:shadow-teal-600/30 transition-all active:scale-95 flex items-center justify-center gap-2 group"
           >
             InsightGraphy Hub 입장하기 
-            <span className="group-hover:translate-x-1 transition-transform">🚀</span>
+            <ArrowRight className="h-5 w-5 group-hover:translate-x-1 transition-transform" aria-hidden="true" />
           </Link>
         ) : (
           <button disabled className="w-full py-5 bg-slate-200 text-slate-400 rounded-2xl font-black text-lg flex items-center justify-center gap-2 cursor-wait">
-            <span className="animate-spin">🔄</span> 로그인 처리 중...
+            <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" /> 로그인 처리 중...
           </button>
         )}
         

@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { CheckCircle2, Loader2, MapPin, RefreshCw } from 'lucide-react'
+import Glyph from '@/app/components/Glyph'
 import { AttendanceError, SESSION_LABELS, checkIn, fetchAttendanceContext, liveState, messageFor, remaining } from '@/lib/attendance'
 
 const TIME_FORMAT = new Intl.DateTimeFormat('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Seoul' })
@@ -100,7 +101,7 @@ export default function AttendanceCard({ installHref = '/app/install', compact =
   if (!session) {
     return (
       <div className="rounded-3xl bg-teal-50/70 px-5 py-8 text-center">
-        <p className="text-3xl" aria-hidden="true">🗓️</p>
+        <p className="text-[32px] text-teal-700" aria-hidden="true"><Glyph name="calendar" duo /></p>
         <p className="mt-2 font-bold text-teal-900">이번 학기 출석 일정이 아직 없어요</p>
         <p className="mt-1 text-sm text-teal-800/80">운영진이 출석 시간을 정하면 여기에서 출석할 수 있어요.</p>
       </div>
@@ -125,7 +126,7 @@ export default function AttendanceCard({ installHref = '/app/install', compact =
   const CircleIcon = circle.icon
 
   return (
-    <section aria-label="출석 체크" className={`relative overflow-hidden rounded-3xl bg-gradient-to-br from-teal-600 via-teal-700 to-emerald-700 text-white shadow-lg shadow-teal-900/20 ${compact ? 'px-5 pb-5 pt-4' : 'px-5 pb-6 pt-5 sm:px-6'}`}>
+    <section aria-label="출석 체크" className={`theme-fixed relative overflow-hidden rounded-3xl bg-gradient-to-br from-teal-600 via-teal-700 to-emerald-700 text-white shadow-lg shadow-teal-900/20 ${compact ? 'px-5 pb-5 pt-4' : 'px-5 pb-6 pt-5 sm:px-6'}`}>
       <svg className="pointer-events-none absolute -right-10 -top-10 h-44 w-44 opacity-20" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="48" fill="none" stroke="white" strokeWidth="2" strokeDasharray="4 6" /><circle cx="50" cy="50" r="30" fill="none" stroke="white" strokeWidth="2" /></svg>
       <div className="relative flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm font-bold text-teal-50">

@@ -40,7 +40,7 @@ export default function Signup() {
     if (signupError) {
       // DB 트리거가 가입을 거절하면 Supabase Auth는 이 문구만 돌려준다 (가입 코드 불일치가 대부분)
       if (signupError.message?.includes('Database error saving new user')) {
-        alert("학회 코드가 맞지 않아 가입하지 못했어. 운영진에게 받은 코드를 다시 확인해줘! 🤫")
+        alert("학회 코드가 맞지 않아 가입하지 못했어. 운영진에게 받은 코드를 다시 확인해줘!")
       } else {
         alert("가입 실패: " + signupError.message)
       }
@@ -71,7 +71,7 @@ export default function Signup() {
       alert("가입은 됐지만 명단 등록에 실패했어. 운영진에게 알려줘!")
     } else {
       // 가입 성공 후 알림 및 로그인 페이지로 이동
-      alert("가입 신청이 접수됐어! 🎉 이메일함에서 인증 버튼을 누르고, 운영진 승인이 끝나면 학회원 공간을 쓸 수 있어. 이미 명단에 있는 학회원이면 운영진이 예전 기록과 연결해줄 거야.")
+      alert("가입 신청이 접수됐어! 이메일함에서 인증 버튼을 누르고, 운영진 승인이 끝나면 학회원 공간을 쓸 수 있어. 이미 명단에 있는 학회원이면 운영진이 예전 기록과 연결해줄 거야.")
       router.push('/login')
     }
 

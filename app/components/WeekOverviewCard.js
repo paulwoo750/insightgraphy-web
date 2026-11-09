@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { CalendarClock, Clock3, MapPin, UsersRound } from 'lucide-react'
 import { deadlineLabel, formatKst, formatKstDate } from '@/lib/semester'
+import Glyph from '@/app/components/Glyph'
 
 // 남은 시간 표시와 색 (하루 안 = 빨강, 사흘 안 = 주황)
 function relative(iso, now) {
@@ -10,7 +11,7 @@ function relative(iso, now) {
   if (Number.isNaN(diff)) return { text: '', tone: 'text-slate-400' }
   if (diff < 0) return { text: '마감됨', tone: 'bg-slate-100 text-slate-500' }
   const hours = Math.floor(diff / 3600000)
-  if (hours < 24) return { text: `🔥 ${Math.max(1, hours)}시간 남음`, tone: 'bg-rose-100 text-rose-700' }
+  if (hours < 24) return { text: `${Math.max(1, hours)}시간 남음`, tone: 'bg-rose-100 text-rose-700', urgent: true }
   const days = Math.floor(hours / 24)
   return { text: `D-${days}`, tone: days <= 3 ? 'bg-amber-100 text-amber-800' : 'bg-teal-100 text-teal-800' }
 }
@@ -40,10 +41,10 @@ export default function WeekOverviewCard({
   const visibleDeadlines = deadlines.filter((item) => item.at).sort((a, b) => new Date(a.at) - new Date(b.at))
   return (
     <article data-tour={tour} className={`min-w-0 ${className}`}>
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-gradient-to-r from-teal-600 via-emerald-600 to-violet-600 px-4 py-3 text-white sm:px-5">
+      <div className="theme-fixed flex flex-wrap items-center justify-between gap-2 rounded-xl bg-gradient-to-r from-teal-600 via-emerald-600 to-violet-600 px-4 py-3 text-white sm:px-5">
         <p className="flex items-center gap-2 text-sm font-bold">
           <span className="rounded-lg bg-white/20 px-2 py-0.5 text-base font-black ring-1 ring-inset ring-white/30">W{week}</span>
-          {semesterName} · {sessionMode === 'weekday' ? '🏖️' : '🎤'} {sessionLabel}
+          {semesterName} · <Glyph name={sessionMode === 'weekday' ? 'sun' : 'mic'} className="text-[15px]" /> {sessionLabel}
         </p>
         <div className="flex flex-wrap items-center gap-1.5">
           {cancelled && <span className="rounded-full bg-red-50 px-2 py-0.5 text-xs font-bold text-red-700 ring-1 ring-inset ring-red-200">휴강</span>}
@@ -65,10 +66,10 @@ export default function WeekOverviewCard({
               const done = label.text === '마감됨'
               return (
                 <li key={item.key} className="flex items-center justify-between gap-3 py-2 text-sm">
-                  <span className={`font-semibold ${done ? 'text-slate-400' : 'text-slate-700'}`}>{done ? '✓ ' : '⏳ '}{item.label || deadlineLabel(item.key)}</span>
+                  <span className={`flex items-center gap-1.5 font-semibold ${done ? 'text-slate-400' : 'text-slate-700'}`}><Glyph name={done ? 'check' : 'hourglass'} className={`text-[15px] ${done ? 'text-slate-400' : 'text-teal-600'}`} />{item.label || deadlineLabel(item.key)}</span>
                   <span className="flex shrink-0 items-center gap-2">
                     <span className="text-slate-600">{formatKst(item.at)}</span>
-                    <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${label.tone}`}>{label.text}</span>
+                    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-bold ${label.tone}`}>{label.urgent && <Glyph name="clock" />}{label.text}</span>
                   </span>
                 </li>
               )

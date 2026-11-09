@@ -7,6 +7,7 @@ import { fetchMyRecords } from '@/lib/myRecords'
 import { absenceThresholds, attendanceKind, ATTENDANCE_LABELS, inSemester, summarizeAttendance } from '@/lib/memberRecords'
 import { useMember } from '@/app/components/MemberShell'
 import AttendanceCard from '@/app/components/AttendanceCard'
+import Glyph from '@/app/components/Glyph'
 import { AppSection, AppTitle } from '../_components/AppShell'
 
 const KIND_STYLE = {
@@ -66,7 +67,7 @@ export default function AppAttendance() {
                 )
               })}
             </ul>
-            <Link href="/archive/absence" className="mt-3 block rounded-2xl bg-amber-50 px-4 py-3 text-sm font-bold text-amber-900">📮 결석·지각 예정이면 사유서 쓰기</Link>
+            <Link href="/archive/absence" className="mt-3 block rounded-2xl bg-amber-50 px-4 py-3 text-sm font-bold text-amber-900"><span className="inline-flex items-center gap-1.5"><Glyph name="envelope" />결석·지각 예정이면 사유서 쓰기</span></Link>
           </>
         )}
       </AppSection>

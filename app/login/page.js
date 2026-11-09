@@ -22,7 +22,7 @@ export default function Login() {
     if (error) {
       alert("로그인 실패: " + error.message)
     } else {
-      alert("반가워요! 로그인 성공 🎊")
+      alert("반가워요! 로그인했습니다.")
       const requestedPath = new URLSearchParams(window.location.search).get('next')
       const safePath = requestedPath?.startsWith('/') && !requestedPath.startsWith('//') ? requestedPath : '/home'
       router.push(safePath)

@@ -8,6 +8,7 @@ import { currentSemesterIdFilter, displayTopic, fetchCurrentSemester, formatKst 
 import { MemberHeader, MemberPage, useMember } from '@/app/components/MemberShell'
 import { Button, ErrorState, Field, inputClass, LoadingState, SegmentedControl, textareaClass, useAsyncAction, useToast } from '@/app/components/ui'
 import { useWeekSelection, WeekSelector } from '@/app/dashboard/_components/shared'
+import Glyph from '@/app/components/Glyph'
 
 const GOOGLE_DRIVE_FOLDER_URL = 'https://drive.google.com/drive/folders/1kXKB1l3O9vIhCjdhINzRic_Gn6IKtZlw'
 const EMPTY_FORM = { date: '', type: '결석', time: '', reason: '', proofUrl: '' }
@@ -28,7 +29,7 @@ function deadlineChip(iso, now) {
   if (Number.isNaN(diff)) return null
   if (diff < 0) return { text: '마감 지남', tone: 'bg-red-100 text-red-700' }
   const hours = Math.floor(diff / 3600000)
-  if (hours < 24) return { text: `🔥 ${Math.max(1, hours)}시간 남음`, tone: 'bg-red-100 text-red-700' }
+  if (hours < 24) return { text: `${Math.max(1, hours)}시간 남음`, tone: 'bg-red-100 text-red-700', urgent: true }
   const days = Math.floor(hours / 24)
   return { text: `D-${days}`, tone: days <= 3 ? 'bg-amber-100 text-amber-800' : 'bg-teal-100 text-teal-800' }
 }
@@ -182,10 +183,10 @@ export default function AbsencePage() {
 
       <div className="mt-6 grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_420px]">
         <section aria-labelledby="week-absence" className="min-w-0">
-          <div className="rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 px-5 py-3 text-white">
+          <div className="theme-fixed rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 px-5 py-3 text-white">
             <p className="flex flex-wrap items-center gap-2 text-sm font-bold">
               <span className="rounded-lg bg-white/20 px-2 py-0.5 text-base font-black ring-1 ring-inset ring-white/30">W{week}</span>
-              {semester.name} · {isWeekday ? '🏖️ 평일 세션' : week === 0 ? 'OT' : '🎤 정규 세션'}
+              {semester.name} · {week === 0 && !isWeekday ? 'OT' : <span className="inline-flex items-center gap-1"><Glyph name={isWeekday ? 'sun' : 'mic'} />{isWeekday ? '평일 세션' : '정규 세션'}</span>}
             </p>
           </div>
           <div className="px-1 pt-4">
@@ -195,7 +196,7 @@ export default function AbsencePage() {
               {activeDeadline ? (
                 <>
                   <span className={`text-base font-extrabold ${activeIsLate ? 'text-red-700' : 'text-slate-900'}`}>{formatKst(activeDeadline, { weekday: true })}</span>
-                  {chip && <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${chip.tone}`}>{chip.text}</span>}
+                  {chip && <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-bold ${chip.tone}`}>{chip.urgent && <Glyph name="clock" />}{chip.text}</span>}
                 </>
               ) : <span className="text-sm font-bold text-slate-400">마감 미설정</span>}
             </div>

@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { displayTopic, fetchCurrentSemester, presentationWeekFor, weekFromParam } from '@/lib/semester'
 import { MemberHeader, MemberPage, rememberWeekContext, useMember } from '@/app/components/MemberShell'
+import Glyph, { categoryGlyph } from '@/app/components/Glyph'
 import { Button, EmptyState, ErrorState, LoadingState, useAsyncAction, useToast } from '@/app/components/ui'
 import { EMPTY_FEEDBACK, FeedbackFields, TargetRail, WeekRail } from '../_components/Editorial'
 
@@ -245,10 +246,10 @@ export default function ScorePage() {
           <div className="min-w-0">
             {allEvaluated ? (
               <div className="border-y-2 border-teal-600 py-20 text-center">
-                <span className="text-6xl" aria-hidden="true">🏆</span>
+                <span className="text-[64px] text-teal-700" aria-hidden="true"><Glyph name="trophy" duo /></span>
                 <h2 className="mt-6 text-2xl font-black text-slate-900 sm:text-3xl">이 주차 평가를 모두 마쳤습니다</h2>
                 <p className="mt-2 text-sm text-slate-500">결과는 운영진이 공개하면 내 결과에서 확인할 수 있습니다.</p>
-                <Link href="/vote/results/my" className="mt-8 inline-block border-b-[3px] border-teal-600 pb-1 text-sm font-black text-teal-700 transition hover:text-teal-900">내 결과 보기 ↗</Link>
+                <Link href="/vote/results/my" className="mt-8 inline-block border-b-[3px] border-teal-600 pb-1 text-sm font-black text-teal-700 transition hover:text-teal-900">내 결과 보기 →</Link>
               </div>
             ) : !currentTarget ? (
               <EmptyState title="채점할 대상을 왼쪽에서 고르세요." description="내 발표와 이미 채점한 발표는 고를 수 없습니다." />
@@ -305,7 +306,7 @@ function CategorySection({ category, total, theme, children }) {
   return (
     <section>
       <div className={`flex items-end justify-between gap-3 border-b-2 pb-3 ${theme.border}`}>
-        <h2 className={`flex items-center gap-2 text-2xl font-black tracking-tight sm:text-3xl ${theme.text}`}>{category.icon && <span aria-hidden="true">{category.icon}</span>}{category.title}</h2>
+        <h2 className={`flex items-center gap-2 text-2xl font-black tracking-tight sm:text-3xl ${theme.text}`}>{categoryGlyph(category) && <Glyph name={categoryGlyph(category)} duo />}{category.title}</h2>
         <p className="text-xs font-black uppercase tracking-widest text-slate-400">Score <span className={`ml-1 text-2xl ${theme.text}`}>{total}</span><span className="text-sm">/{categoryMax(category)}</span></p>
       </div>
       <div className="mt-8 space-y-12">{children}</div>

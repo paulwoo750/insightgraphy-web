@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { displayTopic, fetchCurrentSemester, presentationWeekFor, sortSemestersDesc, weekFromParam } from '@/lib/semester'
 import { MemberPage, useMember } from '@/app/components/MemberShell'
+import Glyph, { RankMedal } from '@/app/components/Glyph'
 import { ErrorState, LoadingState } from '@/app/components/ui'
 import { avgOf, buildEntries, isRealScore } from '@/lib/ranking'
 
@@ -127,7 +128,7 @@ export default function RankingPage() {
   return (
     <MemberPage>
       <style>{CEREMONY_CSS}</style>
-      <section className="relative overflow-hidden rounded-3xl bg-gradient-to-b from-slate-950 via-indigo-950 to-violet-900 px-4 pb-10 pt-8 text-white shadow-2xl shadow-indigo-900/30 sm:px-8 sm:pt-10">
+      <section className="theme-fixed relative overflow-hidden rounded-3xl bg-gradient-to-b from-slate-950 via-indigo-950 to-violet-900 px-4 pb-10 pt-8 text-white shadow-2xl shadow-indigo-900/30 sm:px-8 sm:pt-10">
         <Spotlights />
         <Confetti />
         <div className="relative mx-auto max-w-3xl text-center">
@@ -135,10 +136,10 @@ export default function RankingPage() {
           <h1 className="mt-3 text-3xl font-black tracking-tight sm:text-5xl">
             <span className="bg-gradient-to-r from-amber-200 via-yellow-300 to-amber-400 bg-clip-text text-transparent">W{activeWeek} 베스트 프레젠터</span>
           </h1>
-          <p className="mt-3 break-keep text-sm text-indigo-100 sm:text-base">🎤 {topic}</p>
+          <p className="mt-3 flex items-center justify-center gap-1.5 break-keep text-sm text-indigo-100 sm:text-base"><Glyph name="mic" className="text-amber-200" />{topic}</p>
           <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
             <label className="flex items-center gap-2 rounded-full bg-white/10 px-3 py-1.5 text-sm font-semibold text-indigo-100 ring-1 ring-inset ring-white/20">
-              🎓 학기
+              <Glyph name="graduate" />학기
               <select value={semester || ''} onChange={(event) => { setSelectedSemester(event.target.value); setWeek(null) }} className="rounded-md bg-transparent font-bold text-white outline-none [&>option]:text-slate-900">
                 {base.codes.map((code) => <option key={code} value={code}>{semesterName(code)}</option>)}
               </select>
@@ -152,12 +153,12 @@ export default function RankingPage() {
         </div>
 
         <div className="relative mt-10">
-          {!semester ? <StageMessage emoji="🎭" title="시상할 학기가 없습니다." /> : semesterData.status === 'loading' ? (
-            <StageMessage emoji="🥁" title="시상 결과를 집계하고 있습니다…" />
+          {!semester ? <StageMessage glyph="stage" title="시상할 학기가 없습니다." /> : semesterData.status === 'loading' ? (
+            <StageMessage glyph="hourglass" title="시상 결과를 집계하고 있습니다…" />
           ) : semesterData.status === 'error' ? (
-            <StageMessage emoji="⚠️" title="이 학기 평가 기록을 불러오지 못했습니다." description={semesterData.error} />
+            <StageMessage glyph="alert" title="이 학기 평가 기록을 불러오지 못했습니다." description={semesterData.error} />
           ) : podiums.length === 0 ? (
-            <StageMessage emoji="🎬" title="이 주차의 시상은 아직입니다." description="발표가 등록되고 정량 평가가 모이면 시상대가 열립니다." />
+            <StageMessage glyph="clapper" title="이 주차의 시상은 아직입니다." description="발표가 등록되고 정량 평가가 모이면 시상대가 열립니다." />
           ) : (
             <div className="flex flex-wrap items-end justify-center gap-x-10 gap-y-12">
               {podiums.map((cluster) => <Podium key={String(cluster.cluster)} cluster={cluster.cluster} ranks={cluster.ranks} single={podiums.length === 1} />)}
@@ -168,12 +169,12 @@ export default function RankingPage() {
 
       {semesterData.status === 'ready' && (
         <div className="mt-6 grid gap-5 md:grid-cols-2">
-          <section className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-500 via-teal-500 to-cyan-500 p-6 text-white shadow-lg shadow-teal-600/20">
+          <section className="theme-fixed relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-500 via-teal-500 to-cyan-500 p-6 text-white shadow-lg shadow-teal-600/20">
             <svg className="pointer-events-none absolute -right-6 -top-6 h-40 w-40 opacity-25" viewBox="0 0 100 100" aria-hidden="true">
               <path d="M10 90 L40 55 L58 70 L90 20" fill="none" stroke="white" strokeWidth="8" strokeLinecap="round" strokeLinejoin="round" />
               <path d="M72 18 L92 18 L92 38" fill="none" stroke="white" strokeWidth="8" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
-            <p className="text-sm font-bold text-emerald-50">🚀 W{activeWeek} 성장상</p>
+            <p className="flex items-center gap-1.5 text-sm font-bold text-emerald-50"><Glyph name="trend" />W{activeWeek} 성장상</p>
             {result.improved && result.improved.diff > 0 ? (
               <div className="relative mt-3">
                 <p className="text-3xl font-black">{result.improved.name} <span className="text-lg font-bold text-emerald-50">님</span></p>
@@ -184,12 +185,12 @@ export default function RankingPage() {
           </section>
 
           <section className="relative overflow-hidden rounded-2xl border-2 border-amber-300 bg-gradient-to-br from-amber-50 via-yellow-50 to-white p-6 shadow-lg shadow-amber-500/10">
-            <p className="text-sm font-bold text-amber-800">🏅 {semesterName(semester)} 명예의 전당 · 클러스터 1위 횟수</p>
+            <p className="flex items-center gap-1.5 text-sm font-bold text-amber-800"><Glyph name="medal" />{semesterName(semester)} 명예의 전당 · 클러스터 1위 횟수</p>
             {result.hallOfFame.length > 0 ? (
               <ol className="mt-3 space-y-2">
                 {result.hallOfFame.map((hero, index) => (
                   <li key={hero.name} className={`flex items-center justify-between rounded-xl px-4 py-2.5 ${index === 0 ? 'bg-gradient-to-r from-amber-300 to-yellow-200 shadow-sm' : 'bg-white ring-1 ring-inset ring-amber-200'}`}>
-                    <span className="flex items-center gap-2 text-base font-black text-slate-900"><span aria-hidden="true">{['👑', '⭐', '✨'][index]}</span>{hero.name}</span>
+                    <span className="flex items-center gap-2 text-base font-black text-slate-900"><Glyph name={['crown', 'star', 'sparkle'][index]} className={index === 0 ? 'text-amber-700' : 'text-amber-500'} />{hero.name}</span>
                     <span className="text-xl font-black text-amber-900">{hero.count}<span className="ml-0.5 text-xs font-bold">회</span></span>
                   </li>
                 ))}
@@ -262,10 +263,10 @@ function Confetti() {
   )
 }
 
-function StageMessage({ emoji, title, description }) {
+function StageMessage({ glyph, title, description }) {
   return (
     <div className="mx-auto max-w-md rounded-2xl bg-white/5 px-6 py-10 text-center ring-1 ring-inset ring-white/15">
-      <p className="text-4xl" aria-hidden="true">{emoji}</p>
+      <p className="text-[40px] text-amber-200" aria-hidden="true"><Glyph name={glyph} duo /></p>
       <p className="mt-3 text-base font-bold text-white">{title}</p>
       {description && <p className="mt-1 break-keep text-sm text-indigo-200">{description}</p>}
     </div>
@@ -273,9 +274,9 @@ function StageMessage({ emoji, title, description }) {
 }
 
 const PLACES = {
-  1: { height: 'h-36 sm:h-44', step: 'from-amber-200 via-yellow-400 to-amber-500', medal: '🥇', ring: 'ring-amber-300', avatar: 'from-amber-300 to-yellow-500 text-amber-950', score: 'text-amber-300', label: '1위', delay: 0.5 },
-  2: { height: 'h-24 sm:h-32', step: 'from-slate-100 via-slate-300 to-slate-400', medal: '🥈', ring: 'ring-slate-300', avatar: 'from-slate-200 to-slate-400 text-slate-800', score: 'text-slate-200', label: '2위', delay: 0.25 },
-  3: { height: 'h-16 sm:h-24', step: 'from-orange-200 via-amber-600 to-orange-700', medal: '🥉', ring: 'ring-orange-400', avatar: 'from-orange-300 to-amber-700 text-orange-950', score: 'text-orange-200', label: '3위', delay: 0 },
+  1: { height: 'h-36 sm:h-44', step: 'from-amber-200 via-yellow-400 to-amber-500', ring: 'ring-amber-300', avatar: 'from-amber-300 to-yellow-500 text-amber-950', score: 'text-amber-300', label: '1위', delay: 0.5 },
+  2: { height: 'h-24 sm:h-32', step: 'from-slate-100 via-slate-300 to-slate-400', ring: 'ring-slate-300', avatar: 'from-slate-200 to-slate-400 text-slate-800', score: 'text-slate-200', label: '2위', delay: 0.25 },
+  3: { height: 'h-16 sm:h-24', step: 'from-orange-200 via-amber-600 to-orange-700', ring: 'ring-orange-400', avatar: 'from-orange-300 to-amber-700 text-orange-950', score: 'text-orange-200', label: '3위', delay: 0 },
 }
 
 // 클러스터 시상대: 2위 · 1위 · 3위 순으로 세운다
@@ -291,7 +292,7 @@ function Podium({ cluster, ranks, single }) {
             <div key={place} className="ig-anim flex min-w-0 flex-col items-center" style={{ animation: `ig-rise .7s ease-out ${style.delay}s both` }}>
               {entry ? (
                 <>
-                  {place === 1 && <span className="ig-anim text-3xl sm:text-4xl" style={{ animation: 'ig-float 2.4s ease-in-out infinite' }} aria-hidden="true">👑</span>}
+                  {place === 1 && <span className="ig-anim text-3xl text-amber-300 sm:text-4xl" style={{ animation: 'ig-float 2.4s ease-in-out infinite' }} aria-hidden="true"><Glyph name="crown" duo /></span>}
                   <span className={`grid h-12 w-12 place-items-center rounded-full bg-gradient-to-br text-lg font-black shadow-lg ring-4 sm:h-16 sm:w-16 sm:text-2xl ${style.avatar} ${style.ring} ${place === 1 ? 'shadow-amber-400/50' : ''}`} aria-hidden="true">
                     {String(entry.name).slice(0, 1)}
                   </span>
@@ -301,7 +302,7 @@ function Podium({ cluster, ranks, single }) {
                 </>
               ) : <p className="pb-2 text-xs text-indigo-300/60">—</p>}
               <div className={`mt-2 flex w-full flex-col items-center rounded-t-xl bg-gradient-to-b pt-2 shadow-xl ${style.step} ${style.height}`}>
-                <span className="text-2xl sm:text-3xl" role="img" aria-label={style.label}>{style.medal}</span>
+                <span className="text-[28px] sm:text-[34px]"><RankMedal rank={place} title={style.label} /></span>
                 <span className="text-lg font-black text-white/90 drop-shadow sm:text-2xl">{place}</span>
               </div>
             </div>

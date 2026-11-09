@@ -3,10 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "predev": "node tools/dark-theme.mjs",
     "dev": "next dev",
+    "prebuild": "node tools/dark-theme.mjs",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "theme": "node tools/dark-theme.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.135.0",

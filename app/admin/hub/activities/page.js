@@ -4,6 +4,7 @@ import { ExternalLink } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useSiteUrls } from '@/lib/siteUrls'
 import { useAdminRole } from '@/app/admin/_components/AdminShell'
+import Glyph from '@/app/components/Glyph'
 import { AdminPage, Button, LoadingState, PageHeader, ReadOnlyBanner, Tabs, useToast } from '@/app/admin/_components/AdminUI'
 
 // 표의 행을 화면 목록과 맞춘다: 기존 행은 id로 고치고, 새 행은 추가하고, 빠진 행은 마지막에 지운다.
@@ -227,14 +228,14 @@ function RegularManager() {
         {/* 기존 입력칸 유지 */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           <div className="space-y-3 bg-slate-50 p-6 rounded-none">
-            <h3 className="font-black text-[#32a4a1] mb-2">📝 기획서 업로드 규정</h3>
+            <h3 className="font-black text-[#32a4a1] mb-2">기획서 업로드 규정</h3>
             <input type="text" value={rulesData.planDeadline} onChange={e => setRulesData({...rulesData, planDeadline: e.target.value})} placeholder="마감 기한 (예: 매주 수요일 23:59)" className="w-full p-3 rounded-none text-sm" />
             <input type="text" value={rulesData.planFiles} onChange={e => setRulesData({...rulesData, planFiles: e.target.value})} placeholder="필수 파일 (예: .docx 및 캡처본)" className="w-full p-3 rounded-none text-sm" />
             <input type="text" value={rulesData.planNaming} onChange={e => setRulesData({...rulesData, planNaming: e.target.value})} placeholder="파일명 양식 (예: [연도_학기_주차_이름])" className="w-full p-3 rounded-none text-sm" />
             <input type="text" value={rulesData.planNamingEx} onChange={e => setRulesData({...rulesData, planNamingEx: e.target.value})} placeholder="파일명 예시" className="w-full p-3 rounded-none text-xs text-slate-500" />
           </div>
           <div className="space-y-3 bg-slate-50 p-6 rounded-none">
-            <h3 className="font-black text-slate-800 mb-2">💬 피드백 규정</h3>
+            <h3 className="font-black text-slate-800 mb-2">피드백 규정</h3>
             <input type="text" value={rulesData.fbDeadlineDay} onChange={e => setRulesData({...rulesData, fbDeadlineDay: e.target.value})} placeholder="마감 요일 (예: 매주 목요일)" className="w-full p-3 rounded-none text-sm" />
             <input type="text" value={rulesData.fbDeadlineTime} onChange={e => setRulesData({...rulesData, fbDeadlineTime: e.target.value})} placeholder="마감 시간 (예: 23:59 PM)" className="w-full p-3 rounded-none text-sm" />
             <input type="text" value={rulesData.fbPolicy} onChange={e => setRulesData({...rulesData, fbPolicy: e.target.value})} placeholder="정책 (예: 조원 기획서 댓글 피드백)" className="w-full p-3 rounded-none text-sm" />
@@ -285,7 +286,7 @@ function RegularManager() {
               ))}
             </div>
             <p className="text-xs font-black text-slate-400 mb-3">화면 예시 코멘트 수정 (미리보기형)</p>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-[#f8f9fa] p-6 rounded-none">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-slate-50 p-6 rounded-none">
               <div className="bg-white p-4 rounded-none shadow-sm border-l-4 border-[#32a4a1]">
                 <p className="text-xs font-black text-slate-400 uppercase mb-1">Insight</p>
                 <textarea value={feedbackData.qualInsight} onChange={e => setFeedbackData({...feedbackData, qualInsight: e.target.value})} className="w-full bg-transparent text-sm font-bold text-black outline-none resize-none" rows="3" placeholder="Insight 예시문"></textarea>
@@ -315,7 +316,7 @@ function RegularManager() {
               ))}
             </div>
             <p className="text-xs font-black text-slate-400 mb-3">KPT 회고 예시문 수정 (미리보기형)</p>
-            <div className="bg-[#f8f9fa] p-6 rounded-none space-y-3">
+            <div className="bg-slate-50 p-6 rounded-none space-y-3">
               <div className="bg-slate-50 p-3 rounded-none border-l-4 border-teal-400 flex flex-col">
                 <span className="text-xs font-black text-slate-500 mb-1">잘한 점 (Keep)</span>
                 <input type="text" value={feedbackData.selfKeep} onChange={e => setFeedbackData({...feedbackData, selfKeep: e.target.value})} className="w-full bg-transparent text-sm font-bold text-black outline-none" placeholder="Keep 예시" />
@@ -492,7 +493,7 @@ function EducationManager() {
       {/* 1. 상단 컨트롤 바 */}
       <div className="bg-white p-6 rounded-none shadow-sm border border-slate-100 flex justify-between items-center sticky top-20 z-10">
         <div>
-          <h2 className="text-xl font-black text-slate-800">📚 교육 세션 전체 관리</h2>
+          <h2 className="text-xl font-black text-slate-800">교육 세션 전체 관리</h2>
           <p className="text-xs font-bold text-slate-400 mt-1">수정 후 반드시 우측의 Save All 버튼을 눌러주세요.</p>
         </div>
         <button onClick={handleSaveAll} disabled={saving || !canWrite} className="bg-[#32a4a1] text-white px-8 py-3 rounded-none font-black uppercase hover:bg-[#238986] transition-all shadow-sm hover:scale-105">
@@ -516,7 +517,7 @@ function EducationManager() {
         {['insight', 'graphic', 'delivery'].map(category => (
           <div key={category} className="mb-8 pb-8 border-b border-slate-100 last:border-0 last:mb-0 last:pb-0">
             <h4 className="text-xl font-black uppercase mb-4 flex items-center gap-2">
-              {category === 'insight' ? '💡' : category === 'graphic' ? '🎨' : '🎤'} {category}
+              <Glyph name={category === 'insight' ? 'bulb' : category === 'graphic' ? 'palette' : 'mic'} /> {category}
             </h4>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
@@ -718,7 +719,7 @@ function UnionManager() {
       {/* 1. 상단 컨트롤 바 */}
       <div className="bg-white p-6 rounded-none shadow-sm border border-slate-100 flex justify-between items-center sticky top-20 z-10">
         <div>
-          <h2 className="text-xl font-black text-slate-800">✨ 연합 세션 전체 관리</h2>
+          <h2 className="text-xl font-black text-slate-800">연합 세션 전체 관리</h2>
           <p className="text-xs font-bold text-slate-400 mt-1">학기별 프로젝트와 활동 사진을 관리하세요.</p>
         </div>
         <button onClick={handleSaveAll} disabled={saving || !canWrite} className="bg-[#32a4a1] text-white px-8 py-3 rounded-none font-black uppercase hover:bg-[#238986] transition-all shadow-sm hover:scale-105">
@@ -822,7 +823,7 @@ function UnionManager() {
 
           {galleryUrls.length === 0 && (
             <div className="col-span-full py-12 text-center flex flex-col items-center">
-              <span className="text-4xl mb-2">📸</span>
+              <span className="mb-2 text-4xl text-slate-400"><Glyph name="image" /></span>
               <p className="text-sm font-bold text-slate-400">등록된 활동 사진이 없습니다.<br/>우측 상단의 버튼을 눌러 사진을 추가해 주세요.</p>
             </div>
           )}
@@ -1009,7 +1010,7 @@ function CorporateManager() {
       {/* 1. 상단 컨트롤 바 */}
       <div className="bg-white p-6 rounded-none shadow-sm border border-slate-100 flex justify-between items-center sticky top-20 z-10">
         <div>
-          <h2 className="text-xl font-black text-slate-800">🤝 기업 세션 전체 관리</h2>
+          <h2 className="text-xl font-black text-slate-800">기업 세션 전체 관리</h2>
           <p className="text-xs font-bold text-slate-400 mt-1">파트너사와 케이스 스터디를 관리하세요.</p>
         </div>
         <button onClick={handleSaveAll} disabled={saving || !canWrite} className="bg-[#32a4a1] text-white px-8 py-3 rounded-none font-black uppercase hover:bg-[#238986] transition-all shadow-sm hover:scale-105">

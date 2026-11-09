@@ -11,11 +11,15 @@ import { supabase } from '@/lib/supabase'
 import { fetchCurrentSemester, sortSemestersDesc } from '@/lib/semester'
 import { MemberHeader, MemberPage, useMember } from '@/app/components/MemberShell'
 import { ErrorState, LoadingState, StatusBadge } from '@/app/components/ui'
+import { useIsDark } from '@/lib/colorMode'
 
 const CATEGORY_COLORS = ['#0f766e', '#0369a1', '#be185d', '#b45309', '#4338ca']
+const CATEGORY_COLORS_DARK = ['#2dd4bf', '#38bdf8', '#f472b6', '#fbbf24', '#a5b4fc']
 // 종합 카테고리('종합', '4. 종합')는 영역 분석에서 뺀다
 const isSummaryCategory = (title) => String(title || '').replace(/^\d+\.\s*/, '').trim() === '종합'
-const TOOLTIP_STYLE = { borderRadius: '6px', border: '1px solid #cbd5e1', boxShadow: 'none', fontSize: 12 }
+// 그래프는 CSS 색 변환이 닿지 않아 밝은·어두운 화면 색을 따로 둔다
+const CHART_LIGHT = { grid: '#cbd5e1', tick: '#64748b', axis: '#334155', me: '#0f766e', meFill: '#ccfbf1', base: '#94a3b8', baseFill: '#f1f5f9', range: '#e2e8f0', tooltip: { borderRadius: '6px', border: '1px solid #cbd5e1', boxShadow: 'none', fontSize: 12 } }
+const CHART_DARK = { grid: '#334157', tick: '#97a3b6', axis: '#cbd4df', me: '#2dd4bf', meFill: '#134e4a', base: '#7a879b', baseFill: '#1b2434', range: '#304057', tooltip: { borderRadius: '6px', border: '1px solid #334157', background: '#151d2b', color: '#e1e7ef', boxShadow: 'none', fontSize: 12 } }
 
 // 정성 피드백만 임시 저장한 행(점수 없음, 0점)은 평가로 세지 않는다
 const isRealScore = (row) => Boolean(row.details?.scores) || Number(row.total_score) > 0
@@ -25,6 +29,8 @@ const average = (rows) => (rows.length ? round1(rows.reduce((sum, row) => sum + 
 export default function MyAnalytics() {
   const router = useRouter()
   const identity = useMember()
+  const isDark = useIsDark()
+  const chart = isDark ? CHART_DARK : CHART_LIGHT
   const [state, setState] = useState({ status: 'loading', error: '' })
   const [data, setData] = useState({ presentations: [], scores: [], files: [], semesterRows: [], criteria: [], currentCode: '' })
   const [selectedSemester, setSelectedSemester] = useState(null)
@@ -80,9 +86,10 @@ export default function MyAnalytics() {
         if (!isSummaryCategory(category.title) && !names.includes(category.title)) names.push(category.title)
       })
     })
-    const colorMap = Object.fromEntries(names.map((name, index) => [name, CATEGORY_COLORS[index % CATEGORY_COLORS.length]]))
+    const palette = isDark ? CATEGORY_COLORS_DARK : CATEGORY_COLORS
+    const colorMap = Object.fromEntries(names.map((name, index) => [name, palette[index % palette.length]]))
     return { names, colorMap, criteriaMap }
-  }, [data.criteria])
+  }, [data.criteria, isDark])
 
   const semesterOptions = useMemo(() => {
     const codes = new Set([...data.scores.map((row) => row.semester), ...data.files.map((row) => row.semester), ...data.presentations.filter((row) => row.presenter_name === myName).map((row) => row.semester)].filter(Boolean))
@@ -237,44 +244,44 @@ export default function MyAnalytics() {
       <div className="mt-10 grid gap-8 lg:grid-cols-2">
         <ChartCard title="총점 추이" empty={scoredWeeks.length === 0}>
           <LineChart data={scoredWeeks} margin={{ right: 20, left: -10, top: 10 }}>
-            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#cbd5e1" />
-            <XAxis dataKey="name" tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
-            <YAxis domain={[0, report.maxTotal]} tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
-            <Tooltip contentStyle={TOOLTIP_STYLE} />
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chart.grid} />
+            <XAxis dataKey="name" tick={{ fontSize: 12, fill: chart.tick }} axisLine={false} tickLine={false} />
+            <YAxis domain={[0, report.maxTotal]} tick={{ fontSize: 12, fill: chart.tick }} axisLine={false} tickLine={false} />
+            <Tooltip contentStyle={chart.tooltip} />
             <Legend iconType="circle" wrapperStyle={{ fontSize: 12 }} />
-            <Line type="monotone" dataKey="total" name="내 점수" stroke="#0f766e" strokeWidth={3} dot={{ r: 4, fill: '#0f766e' }} />
-            <Line data={report.clubTrend.filter((row) => row.clubTotal > 0)} type="monotone" dataKey="clubTotal" name="학회 평균" stroke="#94a3b8" strokeWidth={2} strokeDasharray="5 5" dot={false} />
+            <Line type="monotone" dataKey="total" name="내 점수" stroke={chart.me} strokeWidth={3} dot={{ r: 4, fill: chart.me }} />
+            <Line data={report.clubTrend.filter((row) => row.clubTotal > 0)} type="monotone" dataKey="clubTotal" name="학회 평균" stroke={chart.base} strokeWidth={2} strokeDasharray="5 5" dot={false} />
           </LineChart>
         </ChartCard>
 
         <ChartCard title="영역 균형 (학회 평균과 비교)" empty={!report.myOverall}>
           <RadarChart cx="50%" cy="50%" outerRadius="70%" data={radarData}>
-            <PolarGrid stroke="#cbd5e1" />
-            <PolarAngleAxis dataKey="subject" tick={{ fontSize: 12, fill: '#334155' }} />
-            <Radar name="내 평균" dataKey="me" stroke="#0f766e" fill="#ccfbf1" fillOpacity={0.6} strokeWidth={2} />
-            <Radar name="학회 평균" dataKey="base" stroke="#94a3b8" fill="#f1f5f9" fillOpacity={0.4} />
+            <PolarGrid stroke={chart.grid} />
+            <PolarAngleAxis dataKey="subject" tick={{ fontSize: 12, fill: chart.axis }} />
+            <Radar name="내 평균" dataKey="me" stroke={chart.me} fill={chart.meFill} fillOpacity={0.6} strokeWidth={2} />
+            <Radar name="학회 평균" dataKey="base" stroke={chart.base} fill={chart.baseFill} fillOpacity={0.4} />
             <Legend iconType="circle" wrapperStyle={{ fontSize: 12 }} />
-            <Tooltip contentStyle={TOOLTIP_STYLE} />
+            <Tooltip contentStyle={chart.tooltip} />
           </RadarChart>
         </ChartCard>
 
         <ChartCard title="주차별 점수 분포" empty={report.variance.length === 0}>
           <ComposedChart data={report.variance} margin={{ right: 20, left: -10, top: 10 }}>
-            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#cbd5e1" />
-            <XAxis dataKey="name" tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
-            <YAxis domain={[0, report.maxTotal]} tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
-            <Tooltip contentStyle={TOOLTIP_STYLE} />
-            <Bar dataKey="range" fill="#e2e8f0" radius={[2, 2, 2, 2]} barSize={24} name="최저~최고" />
-            <Line dataKey="avg" stroke="#0f766e" strokeWidth={3} dot={{ r: 4, fill: '#0f766e' }} name="학회 평균" />
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chart.grid} />
+            <XAxis dataKey="name" tick={{ fontSize: 12, fill: chart.tick }} axisLine={false} tickLine={false} />
+            <YAxis domain={[0, report.maxTotal]} tick={{ fontSize: 12, fill: chart.tick }} axisLine={false} tickLine={false} />
+            <Tooltip contentStyle={chart.tooltip} />
+            <Bar dataKey="range" fill={chart.range} radius={[2, 2, 2, 2]} barSize={24} name="최저~최고" />
+            <Line dataKey="avg" stroke={chart.me} strokeWidth={3} dot={{ r: 4, fill: chart.me }} name="학회 평균" />
           </ComposedChart>
         </ChartCard>
 
         <ChartCard title="영역별 추이" empty={scoredWeeks.length === 0}>
           <LineChart data={scoredWeeks} margin={{ right: 20, left: -10, top: 10 }}>
-            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#cbd5e1" />
-            <XAxis dataKey="name" tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
-            <YAxis tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
-            <Tooltip contentStyle={TOOLTIP_STYLE} />
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chart.grid} />
+            <XAxis dataKey="name" tick={{ fontSize: 12, fill: chart.tick }} axisLine={false} tickLine={false} />
+            <YAxis tick={{ fontSize: 12, fill: chart.tick }} axisLine={false} tickLine={false} />
+            <Tooltip contentStyle={chart.tooltip} />
             <Legend iconType="circle" wrapperStyle={{ fontSize: 12 }} />
             {categoryInfo.names.map((name) => <Line key={name} name={name} type="monotone" dataKey={name} stroke={categoryInfo.colorMap[name]} strokeWidth={2.5} dot={{ r: 3 }} />)}
           </LineChart>

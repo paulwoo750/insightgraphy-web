@@ -1,4 +1,6 @@
 @import "tailwindcss";
+/* 다크 모드 색 변환표 (자동 생성: tools/dark-theme.mjs). 내부·관리자·앱 화면에만 적용된다 */
+@import "./dark-theme.css";
 
 :root {
   --background: #ffffff;
@@ -6,21 +8,35 @@
 }
 
 @theme inline {
-  --color-background: #ffffff;
-  --color-foreground: #171717;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+/* 다크 모드 상단 바(앱은 아래 탭 바도): 바탕보다 한 단계 어둡게 + 옅은 경계선으로 구분 */
+:root[data-theme="dark"]:has(.ig-themed) .ig-topbar {
+  background-color: rgb(4 7 12 / 0.97);
+  border-color: rgb(255 255 255 / 0.1);
+}
+:root[data-theme="dark"]:has(.ig-themed) .ig-subbar {
+  background-color: rgb(10 15 24 / 0.92);
+  border-color: rgb(255 255 255 / 0.06);
+}
+/* 앱 탭 바·헤더처럼 테두리가 없는 바는 선을 그어 준다 */
+:root[data-theme="dark"]:has(.ig-themed) header.ig-topbar { box-shadow: inset 0 -1px 0 rgb(255 255 255 / 0.1); }
+:root[data-theme="dark"]:has(.ig-themed) nav.ig-topbar { box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.1); }
+
+/* 다크 모드: 선택 고리(ring-offset)의 틈이 흰색으로 보이지 않게 */
+:root[data-theme="dark"]:has(.ig-themed) * { --tw-ring-offset-color: #0f1623; }
+
+/* 다크 모드에서 로고의 검은 면이 바탕에 묻히지 않게 */
+:root[data-theme="dark"]:has(.ig-themed) .ig-logo {
+  filter: drop-shadow(0 0 1px rgb(255 255 255 / 0.35));
 }

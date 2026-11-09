@@ -9,6 +9,8 @@ import { Bell, CalendarClock, Home, LogOut, MapPin, Trophy, UserRound } from 'lu
 import { supabase } from '@/lib/supabase'
 import { isAwaitingApproval, loadIdentity, MemberContext, resetIdentityCache } from '@/app/components/MemberShell'
 import { ToastProvider } from '@/app/components/ui'
+import { ColorModeToggle } from '@/app/components/ColorModeControl'
+import Glyph from '@/app/components/Glyph'
 import { registerServiceWorker } from '@/lib/push'
 
 const TABS = [
@@ -66,13 +68,14 @@ export default function AppShell({ children }) {
       <ToastProvider>
         <div className="min-h-dvh bg-white text-slate-900">
           <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col">
-            <header className="sticky top-0 z-40 bg-white/90 pt-[env(safe-area-inset-top)] backdrop-blur">
+            <header className="ig-topbar sticky top-0 z-40 bg-white/90 pt-[env(safe-area-inset-top)] backdrop-blur">
               <div className="flex h-14 items-center gap-2.5 px-4">
                 <Link href="/app" className="flex items-center gap-2" aria-label="앱 첫 화면">
-                  <Image src="/logo.png" alt="" width={28} height={28} className="h-7 w-7" priority />
+                  <Image src="/logo.png" alt="" width={28} height={28} className="ig-logo h-7 w-7" priority />
                   <span className="text-[15px] font-black tracking-tight text-teal-900">인사이트그래피</span>
                 </Link>
                 <div className="ml-auto flex items-center gap-1">
+                  <ColorModeToggle className="rounded-full text-slate-500" />
                   {signedIn && !awaiting && !isPublic && (
                     <Link href="/app/me#notifications" className="grid h-9 w-9 place-items-center rounded-full text-slate-500 hover:bg-teal-50 hover:text-teal-800" aria-label="알림 설정"><Bell className="h-5 w-5" aria-hidden="true" /></Link>
                   )}
@@ -85,7 +88,7 @@ export default function AppShell({ children }) {
             <main className={`flex-1 px-4 pt-2 ${isPublic ? 'pb-10' : 'pb-28'}`}>{body}</main>
 
             {!isPublic && signedIn && !awaiting && (
-              <nav aria-label="앱 메뉴" className="fixed inset-x-0 bottom-0 z-40 bg-white/95 pb-[env(safe-area-inset-bottom)] shadow-[0_-8px_24px_-12px_rgba(15,23,42,0.18)] backdrop-blur">
+              <nav aria-label="앱 메뉴" className="ig-topbar fixed inset-x-0 bottom-0 z-40 bg-white/95 pb-[env(safe-area-inset-bottom)] shadow-[0_-8px_24px_-12px_rgba(15,23,42,0.18)] backdrop-blur">
                 <ul className="mx-auto grid max-w-md grid-cols-5">
                   {TABS.map((tab) => {
                     const active = tab.exact ? pathname === tab.href : pathname.startsWith(tab.href)
@@ -123,7 +126,7 @@ function AppLoading() {
 function AwaitingApproval({ onSignOut }) {
   return (
     <div className="mt-10 rounded-3xl bg-gradient-to-br from-teal-50 to-violet-50 px-6 py-10 text-center">
-      <p className="text-4xl" aria-hidden="true">⏳</p>
+      <p className="text-[40px] text-teal-700" aria-hidden="true"><Glyph name="hourglass" duo /></p>
       <h1 className="mt-3 text-lg font-black text-slate-900">가입 승인 대기 중이에요</h1>
       <p className="mt-2 break-keep text-sm leading-6 text-slate-600">운영진이 승인하면 출석·마감·벌금을 앱에서 볼 수 있어요.</p>
       <button type="button" onClick={onSignOut} className="mt-6 inline-flex items-center gap-1.5 text-sm font-bold text-slate-500 hover:text-slate-800"><LogOut className="h-4 w-4" aria-hidden="true" />로그아웃</button>

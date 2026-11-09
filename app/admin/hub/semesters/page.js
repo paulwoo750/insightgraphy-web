@@ -384,7 +384,7 @@ export default function SemesterManagerPage() {
                 <Field
                   label="현재 주차 (진행 상태 기준)"
                   htmlFor="semester-current"
-                  hint={context?.isActive && context.currentWeekSource === 'schedule' ? `📍 실제 세션 날짜 기준 W${context.currentWeek}${context.currentWeekDate ? ` (${formatKst(`${context.currentWeekDate}T00:00:00+09:00`, { time: false })} 세션)` : ''} · 화면 표시는 이 날짜 기준을 씁니다` : '세션 날짜가 없으면 이 값으로 현재 주차를 표시합니다'}
+                  hint={context?.isActive && context.currentWeekSource === 'schedule' ? `실제 세션 날짜 기준 W${context.currentWeek}${context.currentWeekDate ? ` (${formatKst(`${context.currentWeekDate}T00:00:00+09:00`, { time: false })} 세션)` : ''} · 화면 표시는 이 날짜 기준을 씁니다` : '세션 날짜가 없으면 이 값으로 현재 주차를 표시합니다'}
                 >
                   <div className="flex gap-2">
                     <select id="semester-current" value={draft.current_week_no} onChange={(event) => setDraft({ ...draft, current_week_no: Number(event.target.value) })} disabled={!canWrite} className={inputClass}>{rows.filter((row) => row.week_no > 0).map((row) => <option key={row.week_no} value={row.week_no}>{row.week_no}주차</option>)}</select>

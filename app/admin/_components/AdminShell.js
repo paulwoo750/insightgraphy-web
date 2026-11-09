@@ -15,7 +15,6 @@ import {
   CircleGauge,
   CircleHelp,
   ClipboardCheck,
-  Eye,
   FileText,
   FolderKanban,
   Globe2,
@@ -37,11 +36,13 @@ import {
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { getAdminAccess } from '@/lib/adminAuth'
-import { canWrite, isPresidentRole, roleEmoji, roleLabel } from '@/lib/permissions'
+import { canWrite, isPresidentRole, roleGlyph, roleLabel } from '@/lib/permissions'
+import Glyph from '@/app/components/Glyph'
 import { fetchResolvedCurrentWeek } from '@/lib/semester'
 import { useSiteUrls } from '@/lib/siteUrls'
 import { ADMIN_TOUR, TOUR_AUTO_START } from '@/lib/tours'
 import { ToastProvider } from '@/app/components/ui'
+import { ColorModeToggle } from '@/app/components/ColorModeControl'
 import GuidedTour, { useTourState } from '@/app/components/GuidedTour'
 import AdminChangelogDialog, { hasUnseenRelease, markReleaseSeen } from '@/app/admin/_components/AdminChangelog'
 
@@ -240,11 +241,11 @@ export default function AdminShell({ children }) {
       <ToastProvider>
         <div className="min-h-screen bg-white text-slate-950">
           {/* 메뉴 줄(64px)만 상단에 고정한다. 페이지 안의 sticky 요소는 top-16 이상을 기준으로 둔다 */}
-          <header className="sticky top-0 z-40 border-b border-slate-200 bg-white">
+          <header className="ig-topbar sticky top-0 z-40 border-b border-slate-200 bg-white">
             <div className={`h-1 bg-gradient-to-r ${currentTone.bar}`} aria-hidden="true" />
             <div ref={navRef} className="mx-auto flex h-16 max-w-[1440px] items-center gap-3 px-4 sm:px-6 lg:px-8">
               <Link href="/admin/hub" onClick={closeMenus} className="flex shrink-0 items-center gap-2.5">
-                <Image src="/logo.png" alt="" width={28} height={28} className="object-contain" />
+                <Image src="/logo.png" alt="" width={28} height={28} className="ig-logo object-contain" />
                 <span className="leading-tight">
                   <span className="block text-sm font-bold text-slate-950">InsightGraphy</span>
                   <span className="block text-xs font-semibold text-slate-500">관리자</span>
@@ -279,6 +280,7 @@ export default function AdminShell({ children }) {
               </nav>
 
               <div className="ml-auto flex items-center gap-2">
+                <ColorModeToggle />
                 <button type="button" data-tour="admin-help" onClick={tour.start} className="flex h-9 items-center gap-2 whitespace-nowrap rounded-lg bg-teal-50 px-3 text-sm font-bold text-teal-800 hover:bg-teal-100" aria-label="화면에서 도움말 보기">
                   <CircleHelp className="h-4 w-4" aria-hidden="true" />
                   <span className="hidden sm:inline">도움말</span>
@@ -288,21 +290,20 @@ export default function AdminShell({ children }) {
                   <span className="hidden 2xl:inline">새 소식</span>
                   {unseenRelease && <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-rose-500 ring-2 ring-white" aria-hidden="true" />}
                 </button>
-                <a href={site.publicUrl('/')} target={linkTarget} rel={linkTarget ? 'noopener noreferrer' : undefined} className="hidden h-9 items-center gap-2 whitespace-nowrap rounded-md border border-slate-300 bg-white px-3 text-sm font-bold text-slate-600 hover:bg-slate-50 xl:flex">
+                <a href={site.publicUrl('/')} title="외부 홈페이지" aria-label="외부 홈페이지" target={linkTarget} rel={linkTarget ? 'noopener noreferrer' : undefined} className="hidden h-9 items-center gap-2 whitespace-nowrap rounded-md border border-slate-300 bg-white px-3 text-sm font-bold text-slate-600 hover:bg-slate-50 xl:flex">
                   <Globe2 className="h-4 w-4" aria-hidden="true" />
-                  외부 홈페이지
+                  <span className="hidden 2xl:inline">외부 홈페이지</span>
                 </a>
-                <a href={site.memberUrl('/home')} target={linkTarget} rel={linkTarget ? 'noopener noreferrer' : undefined} className="hidden h-9 items-center gap-2 whitespace-nowrap rounded-md border border-slate-300 bg-white px-3 text-sm font-bold text-slate-600 hover:bg-slate-50 xl:flex">
+                <a href={site.memberUrl('/home')} title="학회원 화면" aria-label="학회원 화면" target={linkTarget} rel={linkTarget ? 'noopener noreferrer' : undefined} className="hidden h-9 items-center gap-2 whitespace-nowrap rounded-md border border-slate-300 bg-white px-3 text-sm font-bold text-slate-600 hover:bg-slate-50 xl:flex">
                   <UsersRound className="h-4 w-4" aria-hidden="true" />
-                  학회원 화면
+                  <span className="hidden 2xl:inline">학회원 화면</span>
                 </a>
                 <div className="hidden items-center gap-2 border-l border-slate-200 pl-3 lg:flex">
                   <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-gradient-to-br from-teal-500 to-violet-500 text-xs font-bold text-white">{String(displayName).slice(0, 1).toUpperCase()}</div>
                   <div className="max-w-[140px] leading-tight">
                     <p className="truncate text-sm font-bold text-slate-800">{displayName}</p>
                     <p className="flex items-center gap-1 truncate text-xs text-slate-500">
-                      {role === 'viewer' && <Eye className="h-3 w-3" aria-hidden="true" />}
-                      {roleEmoji(role)} {roleLabel(role)}{role === 'viewer' ? ' · 열람 전용' : ''}
+                      <Glyph name={roleGlyph(role)} />{roleLabel(role)}{role === 'viewer' ? ' · 열람 전용' : ''}
                     </p>
                   </div>
                   <button type="button" onClick={signOut} className="grid h-8 w-8 place-items-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-900" title="로그아웃" aria-label="로그아웃">
@@ -340,7 +341,7 @@ export default function AdminShell({ children }) {
             )}
           </header>
 
-          <div className="border-b border-slate-200 bg-white/80">
+          <div className="ig-subbar border-b border-slate-200 bg-white/80">
             <div className="mx-auto flex min-h-12 max-w-[1440px] items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
               {currentGroup ? (
                 <nav data-tour="admin-section-tabs" aria-label={`${currentGroup.label} 화면`} className="flex min-w-0 items-center gap-1.5 overflow-x-auto py-2">

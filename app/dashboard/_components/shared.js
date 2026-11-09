@@ -10,6 +10,7 @@ import { fetchSemesterSchedules, scheduleTimeLabel } from '@/lib/schedules'
 import { canWrite } from '@/lib/permissions'
 import { rememberWeekContext } from '@/app/components/MemberShell'
 import FileThumbnail from '@/app/components/FileThumbnail'
+import Glyph from '@/app/components/Glyph'
 import { Button, Field, IconButton, inputClass, Modal, SegmentedControl, StatusBadge } from '@/app/components/ui'
 
 export function useWeekSelection({ ready, totalWeeks, defaultWeek, allowWeekday }) {
@@ -139,8 +140,8 @@ export function SubmissionList({ files, weeklySetup, week, session, owner, admin
                     <p className="line-clamp-2 text-[13px] font-bold leading-5 text-slate-900" title={file.file_name}>{file.file_name}</p>
                     <p className="mt-0.5 truncate text-xs text-slate-500">{file.uploader} · {formatKst(file.created_at, { weekday: false })}</p>
                     <div className="mt-1 flex flex-wrap gap-1">
-                      {mine && <StatusBadge tone="violet">✨ 내 제출</StatusBadge>}
-                      {file.is_late && <StatusBadge tone="red">⏰ 지각</StatusBadge>}
+                      {mine && <StatusBadge tone="violet"><Glyph name="person" />내 제출</StatusBadge>}
+                      {file.is_late && <StatusBadge tone="red"><Glyph name="alarm" />지각</StatusBadge>}
                     </div>
                   </div>
                   <div className="mt-2 flex items-center gap-1">

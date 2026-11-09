@@ -8,6 +8,7 @@ import { fetchCurrentSemester } from '@/lib/semester'
 import { loadRanking } from '@/lib/memberApp'
 import { weekRanking, winnersLine } from '@/lib/ranking'
 import { useAdminRole } from '@/app/admin/_components/AdminShell'
+import Glyph from '@/app/components/Glyph'
 import { Button, Panel, useAsyncAction, useToast } from '@/app/admin/_components/AdminUI'
 
 const MISSING_FUNCTION = new Set(['PGRST202', '42883'])
@@ -61,7 +62,7 @@ export default function BestPresenterPush() {
   }
 
   return (
-    <Panel title="🏆 베스트 프레젠터 알림" description="채점이 끝난 주차를 골라 학회원 휴대폰 앱으로 1위를 알립니다. 같은 주차는 한 번만 보내집니다." className="mt-8">
+    <Panel title="베스트 프레젠터 알림" description="채점이 끝난 주차를 골라 학회원 휴대폰 앱으로 1위를 알립니다. 같은 주차는 한 번만 보내집니다." className="mt-8">
       <div className="space-y-4 px-4 pb-5 sm:px-5">
         {pushStatus && !pushStatus.missing && !pushStatus.error && (
           <p className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg bg-teal-50/70 px-3 py-2 text-xs font-semibold text-teal-900">
@@ -83,9 +84,9 @@ export default function BestPresenterPush() {
               ))}
             </div>
             {preview && (
-              <div className="rounded-xl bg-gradient-to-br from-indigo-950 via-violet-900 to-fuchsia-800 px-4 py-3 text-white">
+              <div className="theme-fixed rounded-xl bg-gradient-to-br from-indigo-950 via-violet-900 to-fuchsia-800 px-4 py-3 text-white">
                 <p className="text-xs font-bold text-amber-200">알림 미리보기</p>
-                <p className="mt-1 font-black">🏆 W{activeWeek} 베스트 프레젠터 발표!</p>
+                <p className="mt-1 flex items-center gap-1.5 font-black"><Glyph name="trophy" className="text-amber-300" />W{activeWeek} 베스트 프레젠터 발표!</p>
                 <p className="text-sm text-white/85">{preview.line}</p>
               </div>
             )}

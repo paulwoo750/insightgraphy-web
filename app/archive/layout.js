@@ -1,5 +1,6 @@
 import MemberShell from '@/app/components/MemberShell'
+import ThemeScope from '@/app/components/ThemeScope'
 
 export default function MemberLayout({ children }) {
-  return <MemberShell>{children}</MemberShell>
+  return <><ThemeScope /><MemberShell>{children}</MemberShell></>
 }

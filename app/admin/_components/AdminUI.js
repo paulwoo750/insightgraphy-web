@@ -3,7 +3,8 @@
 import { usePathname } from 'next/navigation'
 import { Eye } from 'lucide-react'
 import { READ_ONLY_NOTICE } from '@/lib/permissions'
-import { ADMIN_GROUP_TONES, adminEmojiFor, toneOf } from '@/lib/theme'
+import { ADMIN_GROUP_TONES, adminGlyphFor, toneOf } from '@/lib/theme'
+import Glyph from '@/app/components/Glyph'
 import { HeroDecoration } from '@/app/components/Decor'
 import { Button } from '@/app/components/ui'
 
@@ -38,7 +39,7 @@ export function AdminPage({ children, className = '' }) {
 }
 
 // 모든 관리자 화면의 제목 영역. eyebrow는 상위 메뉴 이름(한국어)이고, 그 묶음의 색을 쓴다.
-export function PageHeader({ eyebrow, title, description, actions, meta, emoji }) {
+export function PageHeader({ eyebrow, title, description, actions, meta, glyph }) {
   const pathname = usePathname() || ''
   const theme = toneOf(ADMIN_GROUP_TONES[eyebrow])
   return (
@@ -46,7 +47,7 @@ export function PageHeader({ eyebrow, title, description, actions, meta, emoji }
       <HeroDecoration theme={theme} />
       <div className="relative flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div className="flex min-w-0 gap-4">
-          <span className={`hidden h-12 w-12 shrink-0 place-items-center rounded-2xl bg-white text-2xl shadow-sm sm:grid`} aria-hidden="true">{emoji || adminEmojiFor(pathname)}</span>
+          <span className={`hidden h-12 w-12 shrink-0 place-items-center rounded-2xl bg-white text-[26px] shadow-sm sm:grid ${theme.accent}`} aria-hidden="true"><Glyph name={glyph || adminGlyphFor(pathname)} duo /></span>
           <div className="min-w-0">
             {eyebrow && <p className={`mb-1 text-xs font-bold ${theme.accent}`}>{eyebrow}</p>}
             <h1 className="text-2xl font-extrabold tracking-tight text-slate-950 sm:text-[28px]">{title}</h1>
@@ -113,7 +114,7 @@ export function DeveloperOnly({ title }) {
     <AdminPage>
       <Panel>
         <div className="px-6 py-16 text-center">
-          <span className="text-4xl" aria-hidden="true">🛠️</span>
+          <span className="inline-grid h-16 w-16 place-items-center rounded-2xl bg-slate-100 text-[34px] text-slate-700"><Glyph name="wrench" duo /></span>
           <h1 className="mt-4 text-lg font-bold text-slate-900">개발자 전용 화면입니다 · {title}</h1>
           <p className="mx-auto mt-2 max-w-md break-keep text-sm leading-6 text-slate-600">기존 기록 연결 검토는 개발자 계정만 사용합니다. 필요한 작업이 있으면 개발자에게 요청해 주세요.</p>
           <Button className="mt-6" variant="primary" href="/admin/hub">운영 현황으로</Button>
@@ -129,7 +130,7 @@ export function PresidentOnly({ title }) {
     <AdminPage>
       <Panel>
         <div className="px-6 py-16 text-center">
-          <span className="text-4xl" aria-hidden="true">👑</span>
+          <span className="inline-grid h-16 w-16 place-items-center rounded-2xl bg-amber-50 text-[34px] text-amber-700"><Glyph name="crown" duo /></span>
           <h1 className="mt-4 text-lg font-bold text-slate-900">학회장 전용 화면입니다 · {title}</h1>
           <p className="mx-auto mt-2 max-w-md break-keep text-sm leading-6 text-slate-600">학기 마감은 학회장과 개발자 계정만 진행합니다. 필요한 작업이 있으면 학회장에게 요청해 주세요.</p>
           <Button className="mt-6" variant="primary" href="/admin/hub">운영 현황으로</Button>

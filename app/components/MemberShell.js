@@ -20,6 +20,8 @@ import { MEMBER_TOUR, TOUR_AUTO_START } from '@/lib/tours'
 import { memberThemeFor, toneOf } from '@/lib/theme'
 import { HeroDecoration } from '@/app/components/Decor'
 import { Button, StatusBadge, ToastProvider, useAsyncAction, useToast } from '@/app/components/ui'
+import { ColorModeToggle } from '@/app/components/ColorModeControl'
+import Glyph from '@/app/components/Glyph'
 import GuidedTour, { useTourState } from '@/app/components/GuidedTour'
 
 // 휴대폰 앱(/app)도 같은 학회원 문맥을 쓴다
@@ -227,11 +229,11 @@ export default function MemberShell({ children }) {
     <MemberContext.Provider value={contextValue}>
       <ToastProvider>
         <div className="min-h-screen bg-gradient-to-b from-slate-50/60 via-white to-white text-slate-900">
-          <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/95 backdrop-blur">
+          <header className="ig-topbar sticky top-0 z-50 border-b border-slate-200 bg-white/95 backdrop-blur">
             <div className={`h-1 bg-gradient-to-r ${theme.bar}`} aria-hidden="true" />
             <div ref={navRef} className="mx-auto flex h-16 w-full max-w-[1440px] items-center gap-3 px-4 sm:px-6 lg:px-8">
               <Link href="/home" onClick={closeAll} className="flex shrink-0 items-center gap-2">
-                <Image src="/logo.png" alt="" width={28} height={28} className="object-contain" />
+                <Image src="/logo.png" alt="" width={28} height={28} className="ig-logo object-contain" />
                 <span className="text-base font-black tracking-tight text-teal-800">InsightGraphy</span>
               </Link>
 
@@ -277,9 +279,9 @@ export default function MemberShell({ children }) {
               </nav>}
 
               <div className="ml-auto flex items-center gap-2">
-                <a data-tour="member-external" href={site.publicUrl('/')} target={externalTarget} rel={externalTarget ? 'noopener noreferrer' : undefined} className="inline-flex h-9 items-center gap-1.5 whitespace-nowrap rounded-md border border-sky-200 bg-sky-50 px-3 text-sm font-bold text-sky-800 hover:bg-sky-100">
+                <a data-tour="member-external" title="외부 홈페이지" aria-label="외부 홈페이지" href={site.publicUrl('/')} target={externalTarget} rel={externalTarget ? 'noopener noreferrer' : undefined} className="inline-flex h-9 items-center gap-1.5 whitespace-nowrap rounded-md border border-sky-200 bg-sky-50 px-3 text-sm font-bold text-sky-800 hover:bg-sky-100">
                   <Globe2 className="h-4 w-4" aria-hidden="true" />
-                  <span className="hidden sm:inline">외부 홈페이지</span>
+                  <span className="hidden sm:inline xl:hidden 2xl:inline">외부 홈페이지</span>
                 </a>
                 {!awaitingApproval && (
                   <Link href="/app/install" className="inline-flex h-9 items-center gap-1.5 whitespace-nowrap rounded-md bg-teal-700 px-2.5 text-sm font-bold text-white hover:bg-teal-800" aria-label="휴대폰 앱 설치 안내">
@@ -287,6 +289,7 @@ export default function MemberShell({ children }) {
                     <span className="hidden sm:inline">앱</span>
                   </Link>
                 )}
+                <ColorModeToggle />
                 {!awaitingApproval && (
                   <button type="button" data-tour="member-help" onClick={tour.start} className="inline-flex h-9 items-center gap-1.5 rounded-md border border-teal-200 bg-teal-50 px-2.5 text-sm font-bold text-teal-800 hover:bg-teal-100" aria-label="화면에서 도움말 보기" title="화면에서 도움말 보기">
                     <CircleHelp className="h-4 w-4" aria-hidden="true" />
@@ -431,7 +434,7 @@ function ApprovalPendingPanel({ member, email, externalHref, externalTarget, onS
       <section className="relative w-full max-w-md overflow-hidden rounded-2xl bg-gradient-to-br from-teal-50 via-white to-violet-50 p-7 sm:p-9">
         <span className={`grid h-12 w-12 place-items-center rounded-2xl ${unlinked ? 'bg-amber-100 text-amber-700' : 'bg-teal-100 text-teal-700'}`}><Icon className="h-6 w-6" aria-hidden="true" /></span>
         <p className="mt-5 text-xs font-bold text-teal-700">학회원 승인</p>
-        <h1 className="mt-1 text-xl font-bold text-slate-950">{unlinked ? '학회원 명단과 연결되지 않은 계정입니다.' : '가입 승인 대기 중입니다. ⏳'}</h1>
+        <h1 className="mt-1 text-xl font-bold text-slate-950">{unlinked ? '학회원 명단과 연결되지 않은 계정입니다.' : '가입 승인 대기 중입니다.'}</h1>
         <p className="mt-3 break-keep text-sm leading-6 text-slate-600">{unlinked ? '운영진에게 문의해 주세요. 기존 학회원은 운영진이 명단에 연결해 드립니다.' : '운영진이 승인하면 이용할 수 있습니다. 기존 학회원이라면 운영진이 명단에 연결해 드립니다.'}</p>
         <dl className="mt-5 divide-y divide-slate-100 border-y border-slate-200 text-sm">
           {email && (
@@ -469,7 +472,7 @@ export function MemberPage({ children, className = '' }) {
 }
 
 // 학회원 화면 제목 영역: 메뉴별 색·이모지와 장식 그림
-export function MemberHeader({ eyebrow, title, description, actions, children, emoji }) {
+export function MemberHeader({ eyebrow, title, description, actions, children, glyph }) {
   const pathname = usePathname() || ''
   const theme = memberThemeFor(pathname)
   return (
@@ -477,7 +480,7 @@ export function MemberHeader({ eyebrow, title, description, actions, children, e
       <HeroDecoration theme={theme} />
       <div className="relative flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div className="flex min-w-0 gap-3 sm:gap-4">
-          <span className={`grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-white text-2xl shadow-sm sm:h-14 sm:w-14 sm:text-3xl`} aria-hidden="true">{emoji || theme.emoji}</span>
+          <span className={`grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-white text-[26px] shadow-sm sm:h-14 sm:w-14 sm:text-[30px] ${theme.accent}`} aria-hidden="true"><Glyph name={glyph || theme.glyph} duo /></span>
           <div className="min-w-0">
             {eyebrow && <p className={`mb-1 text-xs font-bold ${theme.accent}`}>{eyebrow}</p>}
             <h1 className="text-2xl font-extrabold tracking-tight text-slate-950 sm:text-3xl">{title}</h1>

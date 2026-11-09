@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react'
 import { ExternalLink, Trash2 } from 'lucide-react'
 import ArchiveModal from './ArchiveModal'
 import FileThumbnail from '@/app/components/FileThumbnail'
+import Glyph from '@/app/components/Glyph'
 import { Button, IconButton } from '@/app/components/ui'
 import { formatKst, sortSemestersDesc } from '@/lib/semester'
 import {
@@ -87,14 +88,14 @@ export default function PastArchive({ currentCode, files, semesters, weekRows, a
         <button onClick={() => setNav(EMPTY_NAV)} className="hover:text-teal-800">학기 선택</button>
         {nav.semester && <><span className="opacity-40">/</span><button onClick={() => setNav({ ...nav, week: null, category: null })} className="hover:text-teal-800">{semesterNameByCode[nav.semester] || nav.semester}</button></>}
         {nav.week != null && <><span className="opacity-40">/</span><button onClick={() => setNav({ ...nav, category: null })} className="hover:text-teal-800">{nav.week}주차</button></>}
-        {nav.category && <><span className="opacity-40">/</span><span className="text-teal-800">{FILE_CATEGORIES[nav.category]?.session === 'weekday' ? '🏖️ ' : ''}{fileCategoryLabel(nav.category)}</span></>}
+        {nav.category && <><span className="opacity-40">/</span><span className="text-teal-800">{fileCategoryLabel(nav.category)}</span></>}
       </div>
 
       {!nav.semester && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {pastSemesters.length === 0 ? <p className="col-span-full text-slate-400 font-medium py-10 text-center">보관된 학기가 없습니다.</p> : pastSemesters.map((code) => (
             <button key={code} onClick={() => setNav({ ...EMPTY_NAV, semester: code })} className="rounded-xl bg-teal-50/60 hover:bg-teal-100/70 p-6 font-extrabold text-lg text-slate-700 hover:text-teal-800 transition-all hover:-translate-y-0.5 flex flex-col items-center gap-2">
-              <span className="text-3xl">📁</span>{semesterNameByCode[code] || code} 학기
+              <span className="text-[30px] text-teal-700"><Glyph name="folder" duo /></span>{semesterNameByCode[code] || code} 학기
             </button>
           ))}
         </div>
@@ -102,8 +103,8 @@ export default function PastArchive({ currentCode, files, semesters, weekRows, a
 
       {nav.semester && nav.week == null && (timelineSnapshot || hasAbsences) && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {timelineSnapshot && <SnapshotButton icon="📅" label="타임라인 열람" onClick={() => setTimelineView(parseSnapshot(timelineSnapshot))} />}
-          {hasAbsences && <SnapshotButton icon="📝" label="사유서 열람" onClick={openAbsences} />}
+          {timelineSnapshot && <SnapshotButton icon="calendar" label="타임라인 열람" onClick={() => setTimelineView(parseSnapshot(timelineSnapshot))} />}
+          {hasAbsences && <SnapshotButton icon="envelope" label="사유서 열람" onClick={openAbsences} />}
         </div>
       )}
 
@@ -114,8 +115,8 @@ export default function PastArchive({ currentCode, files, semesters, weekRows, a
             <button key={week} onClick={() => setNav({ ...nav, week })} className="rounded-xl bg-teal-50/50 hover:bg-teal-100/70 p-5 text-left transition-all group flex justify-between items-center">
               <div>
                 <span className="rounded-md text-xs font-black bg-teal-700 text-white px-2 py-0.5 uppercase">Week {week}</span>
-                <p className="text-base font-extrabold text-slate-800 mt-2">📚 {topicFor(week)}</p>
-                {weekdayTopicFor(week) && <p className="text-sm font-bold text-teal-700 mt-1">🏖️ {weekdayTopicFor(week)}</p>}
+                <p className="text-base font-extrabold text-slate-800 mt-2 flex items-center gap-1.5"><Glyph name="mic" className="text-slate-400" />{topicFor(week)}</p>
+                {weekdayTopicFor(week) && <p className="text-sm font-bold text-teal-700 mt-1 flex items-center gap-1.5"><Glyph name="sun" />{weekdayTopicFor(week)}</p>}
               </div>
               <span className="text-teal-500 font-black text-sm">→</span>
             </button>
@@ -125,9 +126,9 @@ export default function PastArchive({ currentCode, files, semesters, weekRows, a
 
       {nav.semester && nav.week != null && !nav.category && (
         <div className="space-y-5">
-          <CategoryGroup label={`📚 정규세션 · ${topicFor(nav.week)}`} categories={REGULAR_FILE_CATEGORIES} onSelect={(category) => setNav({ ...nav, category })} />
+          <CategoryGroup label={`정규세션 · ${topicFor(nav.week)}`} categories={REGULAR_FILE_CATEGORIES} onSelect={(category) => setNav({ ...nav, category })} />
           {weekdayCategories.length > 0 && (
-            <CategoryGroup weekday label={`🏖️ 평일세션${weekdayTopicFor(nav.week) ? ` · ${weekdayTopicFor(nav.week)}` : ''}`} categories={weekdayCategories} onSelect={(category) => setNav({ ...nav, category })} />
+            <CategoryGroup weekday label={`평일세션${weekdayTopicFor(nav.week) ? ` · ${weekdayTopicFor(nav.week)}` : ''}`} categories={weekdayCategories} onSelect={(category) => setNav({ ...nav, category })} />
           )}
         </div>
       )}
@@ -143,7 +144,7 @@ export default function PastArchive({ currentCode, files, semesters, weekRows, a
       )}
 
       {timelineView && (
-        <ArchiveModal icon="📅" title="지난 학기 타임라인" onClose={() => setTimelineView(null)}>
+        <ArchiveModal icon="calendar" title="지난 학기 타임라인" onClose={() => setTimelineView(null)}>
           {timelineView.length === 0 ? <p className="text-slate-400 font-medium text-center py-12">보관된 일정이 없습니다.</p> : (
             <div className="border-t border-slate-200">
               {timelineView.map((event, index) => (
@@ -162,7 +163,7 @@ export default function PastArchive({ currentCode, files, semesters, weekRows, a
       )}
 
       {absenceView && (
-        <ArchiveModal icon="📝" title="지난 학기 사유서" onClose={() => setAbsenceView(null)}>
+        <ArchiveModal icon="envelope" title="지난 학기 사유서" onClose={() => setAbsenceView(null)}>
           {absenceView.length === 0 ? <p className="text-slate-400 font-medium text-center py-12">보관된 사유서가 없습니다.</p> : (
             <div className="border-t border-slate-200">
               {absenceView.map((absence, index) => (
@@ -189,7 +190,7 @@ export default function PastArchive({ currentCode, files, semesters, weekRows, a
 function SnapshotButton({ icon, label, onClick }) {
   return (
     <button onClick={onClick} className="rounded-xl bg-teal-50 hover:bg-teal-100 p-5 flex items-center justify-between transition-colors group">
-      <span className="flex items-center gap-3 font-extrabold text-teal-800"><span className="text-2xl">{icon}</span> {label}</span>
+      <span className="flex items-center gap-3 font-extrabold text-teal-800"><span className="text-2xl"><Glyph name={icon} duo /></span> {label}</span>
       <span className="text-teal-500 font-black text-sm group-hover:translate-x-1 transition-transform">보기 →</span>
     </button>
   )
@@ -202,7 +203,7 @@ function CategoryGroup({ label, categories, onSelect, weekday = false }) {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         {categories.map((category) => (
           <button key={category} onClick={() => onSelect(category)} className={`rounded-xl p-8 font-extrabold text-lg transition-all hover:-translate-y-0.5 flex flex-col items-center gap-3 ${weekday ? 'bg-teal-50 text-teal-800 hover:bg-teal-100/70' : 'bg-indigo-50/60 text-slate-700 hover:bg-indigo-100/60 hover:text-indigo-800'}`}>
-            <span className="text-3xl">{weekday ? '🏖️' : ''}{FILE_CATEGORIES[category].icon}</span>{fileCategoryLabel(category)}
+            <span className="text-[30px]"><Glyph name={FILE_CATEGORIES[category].icon} duo /></span>{fileCategoryLabel(category)}
           </button>
         ))}
       </div>

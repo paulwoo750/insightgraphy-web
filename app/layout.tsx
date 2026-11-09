@@ -1,5 +1,6 @@
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { COLOR_MODE_SCRIPT } from "@/lib/colorModeScript";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -41,7 +42,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="ko">
+    // data-theme은 아래 스크립트가 그리기 전에 붙인다 (밝게/어둡게). 공개 페이지는 늘 밝게 보인다
+    <html lang="ko" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: COLOR_MODE_SCRIPT }} />
+      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >

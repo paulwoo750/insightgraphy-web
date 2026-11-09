@@ -10,6 +10,7 @@ import { dueChip, loadDeadlines, loadRanking } from '@/lib/memberApp'
 import { weekRanking, winnersLine } from '@/lib/ranking'
 import { useMember } from '@/app/components/MemberShell'
 import AttendanceCard from '@/app/components/AttendanceCard'
+import Glyph from '@/app/components/Glyph'
 import { AppSection } from './_components/AppShell'
 import { AppBanners } from './_components/AppBanners'
 
@@ -60,7 +61,7 @@ export default function AppToday() {
     <div>
       <div className="mb-4 mt-1">
         <p className="text-sm font-bold text-teal-700">{data.status === 'ready' ? `${data.semester.name} · ${data.semester.currentWeek}주차` : ' '}</p>
-        <h1 className="text-2xl font-black tracking-tight text-slate-950">{name}님, 반가워요 👋</h1>
+        <h1 className="text-2xl font-black tracking-tight text-slate-950">{name}님, 반가워요</h1>
         {data.status === 'ready' && displayTopic(data.semester.weekTopics, data.semester.currentWeek) && (
           <p className="mt-0.5 text-sm text-slate-500">이번 주제 · {displayTopic(data.semester.weekTopics, data.semester.currentWeek)}</p>
         )}
@@ -71,17 +72,17 @@ export default function AppToday() {
 
       <AppSection title="다가오는 마감" action={<Link href="/app/deadlines" className="flex items-center text-sm font-bold text-teal-700">전체<ChevronRight className="h-4 w-4" aria-hidden="true" /></Link>}>
         {data.status === 'loading' && <p className="py-4 text-sm text-slate-400">불러오는 중…</p>}
-        {data.status === 'ready' && upcoming.length === 0 && <p className="py-4 text-sm text-slate-500">예정된 마감이 없어요 🎉</p>}
+        {data.status === 'ready' && upcoming.length === 0 && <p className="py-4 text-sm text-slate-500">예정된 마감이 없어요.</p>}
         <ul className="divide-y divide-slate-100">
           {upcoming.map((item) => {
             const chip = dueChip(item.at, now)
             return (
               <li key={item.key}>
                 <Link href={item.href} className="flex items-center gap-3 py-3">
-                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-teal-50 text-xl" aria-hidden="true">{item.emoji}</span>
+                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-teal-50 text-[21px] text-teal-700" aria-hidden="true"><Glyph name={item.glyph} duo /></span>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-bold text-slate-900">W{item.week} {item.label}</span>
-                    <span className="block text-xs text-slate-500">{formatKst(item.at)}{item.submission ? (item.submitted ? ' · ✅ 제출함' : ' · 아직 안 냄') : ''}</span>
+                    <span className="block text-xs text-slate-500">{formatKst(item.at)}{item.submission ? (item.submitted ? ' · 제출함' : ' · 아직 안 냄') : ''}</span>
                   </span>
                   <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-bold ${chip.tone}`}>{chip.text}</span>
                 </Link>
@@ -103,8 +104,8 @@ export default function AppToday() {
       </AppSection>
 
       {latestBest && (
-        <Link href="/app/best" className="mt-7 flex items-center gap-3 rounded-3xl bg-gradient-to-br from-indigo-950 via-violet-900 to-fuchsia-800 px-5 py-4 text-white">
-          <span className="text-3xl" aria-hidden="true">🏆</span>
+        <Link href="/app/best" className="theme-fixed mt-7 flex items-center gap-3 rounded-3xl bg-gradient-to-br from-indigo-950 via-violet-900 to-fuchsia-800 px-5 py-4 text-white">
+          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-white/10 text-[26px] text-amber-300" aria-hidden="true"><Glyph name="trophy" duo /></span>
           <span className="min-w-0 flex-1">
             <span className="block text-xs font-bold text-amber-200">W{latestBest.week} 베스트 프레젠터</span>
             <span className="block truncate font-black">{latestBest.line}</span>

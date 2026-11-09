@@ -10,6 +10,8 @@ import { fetchMyRecords } from '@/lib/myRecords'
 import { absenceThresholds, ATTENDANCE_LABELS, attendanceKind, FINE_STATE_LABELS, fineState, inSemester, summarizeAttendance, summarizeFines } from '@/lib/memberRecords'
 import { MemberHeader, MemberPage, useMember } from '@/app/components/MemberShell'
 import { EmptyState, ErrorState, LoadingState, Notice, SegmentedControl, StatusBadge } from '@/app/components/ui'
+import { ColorModeSetting } from '@/app/components/ColorModeControl'
+import Glyph from '@/app/components/Glyph'
 
 const KIND_TONES = { attended: 'green', full: 'green', late: 'amber', partial: 'blue', unauthorized: 'red', missing: 'gray' }
 const FINE_TONES = { unpaid: 'red', paid: 'green', waived: 'blue', voided: 'gray' }
@@ -84,7 +86,7 @@ export default function MyPage() {
           </label>
         )}
       />
-      {records.nameFallback && <Notice tone="info" className="mb-4" title="🎓 졸업생 계정">이름으로 찾은 기록을 보여 줍니다.</Notice>}
+      {records.nameFallback && <Notice tone="info" className="mb-4" title={<span className="inline-flex items-center gap-1.5"><Glyph name="graduate" />졸업생 계정</span>}>이름으로 찾은 기록을 보여 줍니다.</Notice>}
       {records.ambiguousName && <Notice tone="info" className="mb-4">이름이 같은 학회원이 있어, 학회원 연결이 안 된 예전 기록 일부는 표시하지 않습니다. 빠진 기록이 있으면 운영진에게 알려 주세요.</Notice>}
 
       {!view ? <EmptyState title="표시할 기록이 없습니다." /> : (
@@ -188,6 +190,14 @@ export default function MyPage() {
           </div>
         </div>
       )}
+
+      <section aria-labelledby="display-title" className="mt-8 border-t-2 border-teal-600 pt-4">
+        <h2 id="display-title" className="text-base font-bold text-slate-900">화면 밝기</h2>
+        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+          <ColorModeSetting />
+          <p className="text-sm text-slate-500">이 기기에만 저장됩니다. ‘기기 설정’은 휴대폰·컴퓨터의 다크 모드를 따라갑니다.</p>
+        </div>
+      </section>
     </MemberPage>
   )
 }

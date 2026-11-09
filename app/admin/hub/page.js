@@ -106,12 +106,12 @@ export default function AdminHubPage() {
       ) : (
         <>
           <div className="mb-5 grid grid-cols-2 gap-3 xl:grid-cols-4">
-            <Metric label="👥 활성 학회원" value={state.status === 'loading' ? '-' : `${summary.members}명`} note="활동 중인 학회원" tone="sky" icon={UsersRound} />
-            <Metric label="🎓 이번 학기 참여" value={state.status === 'loading' ? '-' : `${summary.participants}명`} note={semester?.name || '활성 학기 없음'} tone="teal" icon={CheckCircle2} />
-            <Metric label="📅 다가오는 일정" value={state.status === 'loading' ? '-' : `${summary.upcomingEvents.length}건`} note="오늘 이후 5건까지 · 내부 일정 포함" tone="blue" icon={CalendarDays} />
+            <Metric label="활성 학회원" value={state.status === 'loading' ? '-' : `${summary.members}명`} note="활동 중인 학회원" tone="sky" icon={UsersRound} />
+            <Metric label="이번 학기 참여" value={state.status === 'loading' ? '-' : `${summary.participants}명`} note={semester?.name || '활성 학기 없음'} tone="teal" icon={CheckCircle2} />
+            <Metric label="다가오는 일정" value={state.status === 'loading' ? '-' : `${summary.upcomingEvents.length}건`} note="오늘 이후 5건까지 · 내부 일정 포함" tone="blue" icon={CalendarDays} />
             {isDeveloper ? (
               <Metric
-                label="🔗 연결 확인이 필요한 기존 기록"
+                label="연결 확인이 필요한 기존 기록"
                 value={state.status === 'loading' ? '-' : summary.issues == null ? '확인 불가' : `${summary.issues}건`}
                 note={summary.issuesError ? '열람 권한이 없거나 조회에 실패했습니다.' : '학회원과 연결되지 않은 예전 기록 (개발자 전용)'}
                 tone={summary.issues ? 'amber' : 'green'}
@@ -120,7 +120,7 @@ export default function AdminHubPage() {
               />
             ) : (
               <Metric
-                label="📍 현재 주차"
+                label="현재 주차"
                 value={state.status === 'loading' || !summary.week ? '-' : `W${summary.week.current}`}
                 note={summary.week?.date ? `다음 세션 ${formatKst(`${summary.week.date}T00:00:00+09:00`, { time: false })} · 날짜 기준` : '세션 날짜가 없어 저장된 주차'}
                 tone="violet"

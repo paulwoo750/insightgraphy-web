@@ -11,6 +11,8 @@ import { FINE_STATE_LABELS, fineState, inSemester, summarizeFines } from '@/lib/
 import { disablePush, enablePush, isStandalone, loadPushState, platformOf, PUSH_ERRORS, PUSH_KINDS, pushConfigured, pushSupported, savePushPrefs, sendTestPush } from '@/lib/push'
 import { resetIdentityCache, useMember } from '@/app/components/MemberShell'
 import { AppSection, AppTitle } from '../_components/AppShell'
+import { ColorModeSetting } from '@/app/components/ColorModeControl'
+import Glyph from '@/app/components/Glyph'
 
 const FINE_TONES = { unpaid: 'bg-red-100 text-red-700', paid: 'bg-emerald-100 text-emerald-800', waived: 'bg-sky-100 text-sky-800', voided: 'bg-slate-100 text-slate-500' }
 
@@ -68,10 +70,10 @@ export default function AppMe() {
         {data.status === 'error' && <p className="py-4 text-sm text-red-600">기록을 불러오지 못했어요.</p>}
         {data.status === 'ready' && (
           <>
-            <div className={`rounded-3xl px-5 py-4 ${data.fineSummary.unpaidTotal ? 'bg-gradient-to-br from-red-500 to-rose-600 text-white' : 'bg-emerald-50 text-emerald-900'}`}>
+            <div className={`rounded-3xl px-5 py-4 ${data.fineSummary.unpaidTotal ? 'theme-fixed bg-gradient-to-br from-red-500 to-rose-600 text-white' : 'bg-emerald-50 text-emerald-900'}`}>
               <p className="text-xs font-bold opacity-80">이번 학기 미납 벌금</p>
               <p className="mt-1 text-3xl font-black">₩{data.fineSummary.unpaidTotal.toLocaleString()}</p>
-              <p className="mt-1 text-xs font-semibold opacity-80">{data.fineSummary.unpaidTotal ? `${data.fineSummary.unpaidCount}건 · 납부는 총무에게 문의해 주세요` : '미납 벌금이 없어요 👍'}{data.fineSummary.paidTotal ? ` · 납부 완료 ₩${data.fineSummary.paidTotal.toLocaleString()}` : ''}</p>
+              <p className="mt-1 text-xs font-semibold opacity-80">{data.fineSummary.unpaidTotal ? `${data.fineSummary.unpaidCount}건 · 납부는 총무에게 문의해 주세요` : '미납 벌금이 없어요'}{data.fineSummary.paidTotal ? ` · 납부 완료 ₩${data.fineSummary.paidTotal.toLocaleString()}` : ''}</p>
             </div>
             <ul className="mt-2 divide-y divide-slate-100">
               {visibleFines.map((fine) => {
@@ -110,6 +112,11 @@ export default function AppMe() {
       </AppSection>
 
       <NotificationSettings />
+
+      <AppSection title="화면 밝기">
+        <ColorModeSetting />
+        <p className="mt-2 text-xs leading-5 text-slate-500">이 휴대폰에만 저장돼요. ‘기기 설정’은 휴대폰의 다크 모드를 따라가요.</p>
+      </AppSection>
 
       <AppSection title="더 보기">
         <div className="space-y-2">
@@ -151,7 +158,7 @@ function NotificationSettings() {
       } else {
         await enablePush()
         setState((current) => ({ ...current, subscribed: true, permission: 'granted' }))
-        setMessage('알림을 켰어요 🔔')
+        setMessage('알림을 켰어요.')
       }
     } catch (error) {
       setMessage(PUSH_ERRORS[error.message] || `바꾸지 못했어요: ${error.message}`)
@@ -207,7 +214,7 @@ function NotificationSettings() {
                 <Switch checked={Boolean(state.subscribed)} disabled={busy || state.permission === 'denied'} onChange={toggle} label="이 기기로 알림 받기" />
               </div>
               {state.permission === 'denied' && <Link href="/app/install#notifications" className="mt-2 inline-block text-sm font-bold text-teal-700">알림 허용하는 법 보기 →</Link>}
-              {state.subscribed && <button type="button" onClick={test} disabled={busy} className="mt-2 text-sm font-bold text-teal-700 disabled:opacity-50">🔔 알림 테스트 보내기</button>}
+              {state.subscribed && <button type="button" onClick={test} disabled={busy} className="mt-2 text-sm font-bold text-teal-700 disabled:opacity-50"><span className="inline-flex items-center gap-1.5"><Glyph name="bell" />알림 테스트 보내기</span></button>}
               <ul className="mt-2 divide-y divide-slate-100">
                 {PUSH_KINDS.map((kind) => (
                   <li key={kind.key} className="flex items-center gap-3 py-3">

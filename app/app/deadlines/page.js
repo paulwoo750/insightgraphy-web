@@ -7,6 +7,7 @@ import { fetchCurrentSemester, formatKst } from '@/lib/semester'
 import { dueChip, loadDeadlines } from '@/lib/memberApp'
 import { useMember } from '@/app/components/MemberShell'
 import { SegmentedControl } from '@/app/components/ui'
+import Glyph from '@/app/components/Glyph'
 import { AppSection, AppTitle } from '../_components/AppShell'
 
 const DAY = 24 * 3600 * 1000
@@ -53,7 +54,7 @@ export default function AppDeadlines() {
 
       {data.status === 'loading' && <p className="py-6 text-sm text-slate-400">불러오는 중…</p>}
       {data.status === 'error' && <p className="py-6 text-sm text-red-600">마감을 불러오지 못했어요.</p>}
-      {data.status === 'ready' && groups.length === 0 && <p className="py-10 text-center text-sm text-slate-500">{view === 'upcoming' ? '예정된 마감이 없어요 🎉' : '지난 2주 동안 마감이 없었어요.'}</p>}
+      {data.status === 'ready' && groups.length === 0 && <p className="py-10 text-center text-sm text-slate-500">{view === 'upcoming' ? '예정된 마감이 없어요.' : '지난 2주 동안 마감이 없었어요.'}</p>}
 
       {groups.map(([week, items]) => (
         <AppSection key={week} title={`W${week}${data.semester.weekTopics?.[week] ? ` · ${data.semester.weekTopics[week]}` : ''}`} className="first-of-type:mt-2">
@@ -64,13 +65,13 @@ export default function AppDeadlines() {
               return (
                 <li key={item.key}>
                   <Link href={item.href} className="flex items-center gap-3 py-3">
-                    <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-teal-50 text-xl" aria-hidden="true">{item.emoji}</span>
+                    <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-teal-50 text-[21px] text-teal-700" aria-hidden="true"><Glyph name={item.glyph} duo /></span>
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm font-bold text-slate-900">{item.label}</span>
                       <span className="block text-xs text-slate-500">{formatKst(item.at)}</span>
                       {item.submission && (
                         <span className={`mt-0.5 inline-block text-xs font-bold ${item.submitted ? (late ? 'text-amber-700' : 'text-emerald-700') : 'text-red-600'}`}>
-                          {item.submitted ? (late ? '⏰ 지각 제출함' : '✅ 제출함') : '아직 안 냈어요'}
+                          {item.submitted ? <span className="inline-flex items-center gap-1"><Glyph name={late ? 'alarm' : 'check'} />{late ? '지각 제출함' : '제출함'}</span> : '아직 안 냈어요'}
                         </span>
                       )}
                     </span>
